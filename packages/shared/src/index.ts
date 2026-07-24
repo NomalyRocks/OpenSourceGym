@@ -105,6 +105,8 @@ export type ApiErrorCode =
   | "AUTH_REQUIRED"
   | "FORBIDDEN"
   | "PASSWORD_CHANGE_REQUIRED"
+  /** Beklenmeyen sunucu hatası — ayrıntı istemciye sızdırılmaz */
+  | "INTERNAL_ERROR"
   | "PAYLOAD_TOO_LARGE"
   | "PROFILE_PHOTO_MISSING"
   | "PROFILE_PHOTO_INVALID"

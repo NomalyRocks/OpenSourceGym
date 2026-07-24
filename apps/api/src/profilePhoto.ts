@@ -6,9 +6,9 @@ import {
 } from "@aws-sdk/client-s3";
 import { ObjectId } from "mongodb";
 import sharp from "sharp";
-import { db } from "./db.js";
+import { userCollection } from "./db.js";
 import { env } from "./env.js";
-import { redis } from "./redis.js";
+import { acquireLock, redis, releaseLock } from "./redis.js";
 
 const MAX_INPUT_PIXELS = 40_000_000;
 const PROFILE_PHOTO_SIZE = 1024;
@@ -188,11 +188,7 @@ async function withProfilePhotoLock<T>(
 ): Promise<T> {
   const key = `og:lock:profile-photo:${userId}`;
   const token = randomUUID();
-  const acquired = await redis.set(key, token, {
-    NX: true,
-    PX: PROFILE_PHOTO_LOCK_TTL_MS,
-  });
-  if (acquired !== "OK") {
+  if (!(await acquireLock(key, token, PROFILE_PHOTO_LOCK_TTL_MS))) {
     throw new ProfilePhotoBusyError(
       "Başka bir profil fotoğrafı işlemi devam ediyor.",
     );
@@ -201,10 +197,7 @@ async function withProfilePhotoLock<T>(
   try {
     return await operation();
   } finally {
-    await redis.eval(
-      "if redis.call('get', KEYS[1]) == ARGV[1] then return redis.call('del', KEYS[1]) else return 0 end",
-      { keys: [key], arguments: [token] },
-    );
+    await releaseLock(key, token);
   }
 }
 
@@ -233,7 +226,7 @@ export async function storeUserProfilePhoto(
   const processed = await processProfilePhoto(input, contentType);
 
   return withProfilePhotoLock(userId, async () => {
-    const users = db.collection("user");
+    const users = userCollection();
     const objectId = new ObjectId(userId);
     const user = await users.findOne(
       { _id: objectId },
@@ -241,8 +234,7 @@ export async function storeUserProfilePhoto(
     );
     if (!user) throw new Error("Kullanıcı bulunamadı.");
 
-    const existingKey =
-      typeof user.profilePhotoKey === "string" ? user.profilePhotoKey : null;
+    const existingKey = user.profilePhotoKey ?? null;
     const key = existingKey ?? `profile-photos/${userId}/${randomUUID()}.jpg`;
     const updatedAt = new Date();
     await putProfilePhotoObject(key, processed);
@@ -273,13 +265,13 @@ export async function storeUserProfilePhoto(
 
 export async function removeUserProfilePhoto(userId: string): Promise<void> {
   await withProfilePhotoLock(userId, async () => {
-    const users = db.collection("user");
+    const users = userCollection();
     const objectId = new ObjectId(userId);
     const user = await users.findOne(
       { _id: objectId },
       { projection: { profilePhotoKey: 1 } },
     );
-    if (!user || typeof user.profilePhotoKey !== "string") return;
+    if (!user?.profilePhotoKey) return;
 
     await deleteProfilePhotoObject(user.profilePhotoKey);
     const result = await users.updateOne(
@@ -294,13 +286,11 @@ export async function deleteUserProfilePhotoForAccountDeletion(
   userId: string,
 ): Promise<void> {
   await withProfilePhotoLock(userId, async () => {
-    const user = await db
-      .collection("user")
-      .findOne(
-        { _id: new ObjectId(userId) },
-        { projection: { profilePhotoKey: 1 } },
-      );
-    if (typeof user?.profilePhotoKey === "string") {
+    const user = await userCollection().findOne(
+      { _id: new ObjectId(userId) },
+      { projection: { profilePhotoKey: 1 } },
+    );
+    if (user?.profilePhotoKey) {
       await deleteProfilePhotoObject(user.profilePhotoKey);
     }
   });

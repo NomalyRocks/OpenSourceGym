@@ -6,6 +6,7 @@ import type { WebTranslationKey } from "./resources";
 const codeMessages: Record<ApiErrorCode, WebTranslationKey> = {
   AUTH_REQUIRED: "Oturum gerekli.",
   FORBIDDEN: "Bu işlem için yetkiniz yok.",
+  INTERNAL_ERROR: "Beklenmeyen bir hata oluştu. Lütfen tekrar deneyin.",
   INVALID_PHONE_NUMBER: "Geçerli bir telefon numarası girin.",
   PHONE_ALREADY_EXISTS: "Bu telefon numarası zaten kullanımda.",
   PASSWORD_CHANGE_REQUIRED: "Devam etmeden önce şifrenizi değiştirmelisiniz.",

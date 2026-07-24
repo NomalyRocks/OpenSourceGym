@@ -9,6 +9,7 @@ function required(name: string, fallback?: string): string {
 export const env = {
   port: Number(process.env.PORT ?? 3000),
   nodeEnv: process.env.NODE_ENV ?? "development",
+  enableApiDocs: process.env.ENABLE_API_DOCS === "true",
   mongodbUri: required("MONGODB_URI", "mongodb://localhost:27017/opengym"),
   redisUrl: required("REDIS_URL", "redis://localhost:6379"),
   betterAuthSecret: required(

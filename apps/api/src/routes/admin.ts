@@ -4,18 +4,27 @@ import { fromNodeHeaders } from "better-auth/node";
 import { z } from "zod";
 import type {
   AdminStats,
+  ApiErrorCode,
   DeletionRequest,
   EntryEvent,
   GymSettings,
   PublicUser,
-  Role,
 } from "@opengym/shared";
 import { auth } from "../auth.js";
 import { sendApiError } from "../apiError.js";
-import { db } from "../db.js";
+import {
+  db,
+  findGymSettings,
+  gymSettingsCollection,
+  toObjectId,
+  userCollection,
+  GYM_SETTINGS_ID,
+  type GymSettingsDocument,
+  type UserDocument,
+} from "../db.js";
 import { redis } from "../redis.js";
 import { logAudit } from "../audit.js";
-import { requireRole } from "../middleware.js";
+import { authed, requireRole } from "../middleware.js";
 import { markOutside } from "../occupancy.js";
 import { revokeUserSessions } from "../sessions.js";
 import {
@@ -41,21 +50,7 @@ import {
 
 export const adminRouter: Router = Router();
 
-function toPublicUser(doc: {
-  _id: ObjectId;
-  name?: string;
-  email?: string;
-  firstName?: string;
-  lastName?: string;
-  phone?: string;
-  phoneE164?: string;
-  role?: string;
-  emailVerified?: boolean;
-  twoFactorEnabled?: boolean;
-  profilePhotoKey?: string;
-  profilePhotoUpdatedAt?: Date;
-  createdAt?: Date;
-}): PublicUser {
+function toPublicUser(doc: UserDocument): PublicUser {
   return {
     id: doc._id.toString(),
     name: doc.name ?? "",
@@ -64,7 +59,7 @@ function toPublicUser(doc: {
     lastName: doc.lastName ?? "",
     phone:
       doc.phoneE164 ?? tryNormalizePhoneToE164(doc.phone) ?? doc.phone ?? "",
-    role: (doc.role ?? "member") as Role,
+    role: doc.role ?? "member",
     emailVerified: doc.emailVerified ?? false,
     twoFactorEnabled: doc.twoFactorEnabled ?? false,
     profilePhotoUrl: buildProfilePhotoUrl(
@@ -75,21 +70,18 @@ function toPublicUser(doc: {
   };
 }
 
-function parseObjectId(value: string): ObjectId | null {
-  return ObjectId.isValid(value) ? new ObjectId(value) : null;
-}
+const initialPasswordSchema = z.object({
+  currentPassword: z.string(),
+  newPassword: z.string().min(8),
+});
 
 // US-2: ilk giriş sonrası zorunlu şifre değişimi
 adminRouter.post(
   "/initial-password",
   requireRole("admin", "staff", "member"),
-  async (req, res) => {
-    const { currentPassword, newPassword } = req.body ?? {};
-    if (
-      typeof currentPassword !== "string" ||
-      typeof newPassword !== "string" ||
-      newPassword.length < 8
-    ) {
+  authed(async (req, res) => {
+    const parsed = initialPasswordSchema.safeParse(req.body ?? {});
+    if (!parsed.success) {
       sendApiError(
         res,
         400,
@@ -98,6 +90,7 @@ adminRouter.post(
       );
       return;
     }
+    const { currentPassword, newPassword } = parsed.data;
     try {
       await auth.api.changePassword({
         headers: fromNodeHeaders(req.headers),
@@ -112,15 +105,13 @@ adminRouter.post(
       );
       return;
     }
-    await db
-      .collection("user")
-      .updateOne(
-        { _id: new ObjectId(req.user!.id) },
-        { $set: { mustChangePassword: false } },
-      );
-    await logAudit(req.user!, "initial-password-changed");
+    await userCollection().updateOne(
+      { _id: new ObjectId(req.user.id) },
+      { $set: { mustChangePassword: false } },
+    );
+    await logAudit(req.user, "initial-password-changed");
     res.json({ ok: true });
-  },
+  }),
 );
 
 // US-3: telefon, e-posta, ad veya soyad ile üye arama (personel + admin)
@@ -139,13 +130,14 @@ adminRouter.get("/users", requireRole("admin", "staff"), async (req, res) => {
   const conflictUserIds = phoneE164
     ? await findActivePhoneConflictUserIds(phoneE164)
     : [];
-  const docs = await db
-    .collection("user")
+  const docs = await userCollection()
     .find(buildUserSearchFilter(query, conflictUserIds))
     .limit(USER_SEARCH_LIMIT)
     .toArray();
-  res.json(docs.map((d) => toPublicUser(d as never)));
+  res.json(docs.map(toPublicUser));
 });
+
+const roleSchema = z.object({ role: z.enum(["admin", "staff", "member"]) });
 
 const mfaSchema = z.object({
   mfaCode: z.string().min(1),
@@ -153,98 +145,107 @@ const mfaSchema = z.object({
 });
 
 // US-3: rol atama (yalnızca admin) — çağıranın MFA'sı etkinse ek doğrulama gerekir
-adminRouter.post("/users/:id/role", requireRole("admin"), async (req, res) => {
-  const idParam = String(req.params.id ?? "");
-  const targetId = parseObjectId(idParam);
-  const role = req.body?.role as Role | undefined;
-  if (!targetId || !role || !["admin", "staff", "member"].includes(role)) {
-    sendApiError(
-      res,
-      400,
-      "INVALID_USER_OR_ROLE",
-      "Geçersiz kullanıcı veya rol.",
-    );
-    return;
-  }
-  // ObjectId.equals ile karşılaştır: ham string eşitliği kanonik olmayan
-  // hex (ör. büyük harf) girdisinde kendi rolünü değiştirme korumasını atlatır
-  if (targetId.equals(req.user!.id)) {
-    sendApiError(
-      res,
-      400,
-      "SELF_ROLE_CHANGE",
-      "Kendi rolünüzü değiştiremezsiniz.",
-    );
-    return;
-  }
-
-  // MFA etkin adminler için rol atama, TOTP veya OTP ile ek doğrulama gerektirir
-  let mfaVerified = false;
-  if (req.user!.twoFactorEnabled) {
-    const parsedMfa = mfaSchema.safeParse(req.body);
-    if (!parsedMfa.success) {
+adminRouter.post(
+  "/users/:id/role",
+  requireRole("admin"),
+  authed(async (req, res) => {
+    const idParam = String(req.params.id ?? "");
+    const targetId = toObjectId(idParam);
+    const parsedRole = roleSchema.safeParse(req.body ?? {});
+    if (!targetId || !parsedRole.success) {
       sendApiError(
         res,
-        403,
-        "MFA_REQUIRED",
-        "Bu işlem için MFA doğrulaması gerekli.",
+        400,
+        "INVALID_USER_OR_ROLE",
+        "Geçersiz kullanıcı veya rol.",
       );
       return;
     }
-    const { mfaCode, mfaMethod } = parsedMfa.data;
-
-    // Kaba kuvvet kilidi: BetterAuth'un HTTP hız sınırı doğrudan auth.api.*
-    // çağrılarını KAPSAMAZ — deneme sayacı burada tutulur (15 dk / 5 hatalı kod)
-    const mfaFailKey = `og:mfa-fail:${req.user!.id}`;
-    const failCount = Number((await redis.get(mfaFailKey)) ?? 0);
-    if (failCount >= 5) {
+    const { role } = parsedRole.data;
+    // ObjectId.equals ile karşılaştır: ham string eşitliği kanonik olmayan
+    // hex (ör. büyük harf) girdisinde kendi rolünü değiştirme korumasını atlatır
+    if (targetId.equals(req.user.id)) {
       sendApiError(
         res,
-        429,
-        "MFA_LOCKED",
-        "Çok fazla hatalı kod denemesi. 15 dakika sonra tekrar deneyin.",
+        400,
+        "SELF_ROLE_CHANGE",
+        "Kendi rolünüzü değiştiremezsiniz.",
       );
       return;
     }
 
-    try {
-      const headers = fromNodeHeaders(req.headers);
-      if (mfaMethod === "totp") {
-        await auth.api.verifyTOTP({ body: { code: mfaCode }, headers });
-      } else {
-        await auth.api.verifyTwoFactorOTP({ body: { code: mfaCode }, headers });
+    // MFA etkin adminler için rol atama, TOTP veya OTP ile ek doğrulama gerektirir
+    let mfaVerified = false;
+    if (req.user.twoFactorEnabled) {
+      const parsedMfa = mfaSchema.safeParse(req.body);
+      if (!parsedMfa.success) {
+        sendApiError(
+          res,
+          403,
+          "MFA_REQUIRED",
+          "Bu işlem için MFA doğrulaması gerekli.",
+        );
+        return;
       }
-      mfaVerified = true;
-      await redis.del(mfaFailKey);
-    } catch {
-      const fails = await redis.incr(mfaFailKey);
-      if (fails === 1) {
-        await redis.expire(mfaFailKey, 900);
+      const { mfaCode, mfaMethod } = parsedMfa.data;
+
+      // Kaba kuvvet kilidi: BetterAuth'un HTTP hız sınırı doğrudan auth.api.*
+      // çağrılarını KAPSAMAZ — deneme sayacı burada tutulur (15 dk / 5 hatalı kod)
+      const mfaFailKey = `og:mfa-fail:${req.user.id}`;
+      const failCount = Number((await redis.get(mfaFailKey)) ?? 0);
+      if (failCount >= 5) {
+        sendApiError(
+          res,
+          429,
+          "MFA_LOCKED",
+          "Çok fazla hatalı kod denemesi. 15 dakika sonra tekrar deneyin.",
+        );
+        return;
       }
-      sendApiError(
-        res,
-        403,
-        "MFA_INVALID",
-        "Doğrulama kodu geçersiz veya süresi dolmuş.",
-      );
+
+      try {
+        const headers = fromNodeHeaders(req.headers);
+        if (mfaMethod === "totp") {
+          await auth.api.verifyTOTP({ body: { code: mfaCode }, headers });
+        } else {
+          await auth.api.verifyTwoFactorOTP({
+            body: { code: mfaCode },
+            headers,
+          });
+        }
+        mfaVerified = true;
+        await redis.del(mfaFailKey);
+      } catch {
+        const fails = await redis.incr(mfaFailKey);
+        if (fails === 1) {
+          await redis.expire(mfaFailKey, 900);
+        }
+        sendApiError(
+          res,
+          403,
+          "MFA_INVALID",
+          "Doğrulama kodu geçersiz veya süresi dolmuş.",
+        );
+        return;
+      }
+    }
+
+    const result = await userCollection().findOneAndUpdate(
+      { _id: targetId },
+      { $set: { role } },
+    );
+    if (!result) {
+      sendApiError(res, 404, "USER_NOT_FOUND", "Kullanıcı bulunamadı.");
       return;
     }
-  }
-
-  const result = await db
-    .collection("user")
-    .findOneAndUpdate({ _id: targetId }, { $set: { role } });
-  if (!result) {
-    sendApiError(res, 404, "USER_NOT_FOUND", "Kullanıcı bulunamadı.");
-    return;
-  }
-  await logAudit(req.user!, "role-assigned", idParam, {
-    previousRole: result.role ?? "member",
-    newRole: role,
-    mfaVerified,
-  });
-  res.json({ ok: true });
-});
+    await logAudit(req.user, "role-assigned", idParam, {
+      previousRole: result.role ?? "member",
+      newRole: role,
+      mfaVerified,
+    });
+    res.json({ ok: true });
+  }),
+);
 
 const createSubscriptionSchema = z
   .object({
@@ -258,9 +259,9 @@ const createSubscriptionSchema = z
 adminRouter.post(
   "/subscriptions",
   requireRole("admin", "staff"),
-  async (req, res) => {
+  authed(async (req, res) => {
     const parsed = createSubscriptionSchema.safeParse(req.body ?? {});
-    const targetId = parsed.success ? parseObjectId(parsed.data.userId) : null;
+    const targetId = parsed.success ? toObjectId(parsed.data.userId) : null;
     if (!parsed.success || !targetId) {
       sendApiError(
         res,
@@ -270,7 +271,7 @@ adminRouter.post(
       );
       return;
     }
-    const target = await db.collection("user").findOne({ _id: targetId });
+    const target = await userCollection().findOne({ _id: targetId });
     if (!target) {
       sendApiError(res, 404, "USER_NOT_FOUND", "Kullanıcı bulunamadı.");
       return;
@@ -280,9 +281,9 @@ adminRouter.post(
         userId: targetId,
         months: parsed.data.months,
         note: parsed.data.note || null,
-        createdBy: req.user!.id,
+        createdBy: req.user.id,
       });
-      await logAudit(req.user!, "subscription-created", parsed.data.userId, {
+      await logAudit(req.user, "subscription-created", parsed.data.userId, {
         months: parsed.data.months,
         startsAt: created.startsAt.toISOString(),
         endsAt: created.endsAt.toISOString(),
@@ -306,14 +307,14 @@ adminRouter.post(
       }
       throw error;
     }
-  },
+  }),
 );
 
 adminRouter.get(
   "/users/:id/subscriptions",
   requireRole("admin", "staff"),
   async (req, res) => {
-    const targetId = parseObjectId(String(req.params.id ?? ""));
+    const targetId = toObjectId(String(req.params.id ?? ""));
     if (!targetId) {
       sendApiError(res, 400, "INVALID_USER", "Geçersiz kullanıcı.");
       return;
@@ -335,7 +336,7 @@ adminRouter.get(
 
 // Kurulum sihirbazı: salon ayarları (yalnızca admin)
 adminRouter.get("/settings", requireRole("admin"), async (_req, res) => {
-  const doc = await db.collection("settings").findOne({ _id: "gym" as never });
+  const doc = await findGymSettings();
   const settings: GymSettings = {
     gymName: doc?.gymName ?? "",
     location: doc?.location ?? null,
@@ -354,76 +355,72 @@ const sharingSchema = z.object({
   qrBlockHours: z.number().int().min(1).max(168),
 });
 
-adminRouter.put("/settings", requireRole("admin"), async (req, res) => {
-  const { gymName, location, capacity, autoExitHours } = req.body ?? {};
-  if (typeof gymName !== "string" || !gymName.trim()) {
-    sendApiError(res, 400, "GYM_NAME_REQUIRED", "Salon adı zorunludur.");
-    return;
-  }
-  let loc: GymSettings["location"] = null;
-  if (location != null) {
-    const lat = Number(location.lat);
-    const lng = Number(location.lng);
-    const radiusM = Number(location.radiusM);
-    if (
-      Number.isNaN(lat) ||
-      Number.isNaN(lng) ||
-      Number.isNaN(radiusM) ||
-      radiusM <= 0
-    ) {
-      sendApiError(res, 400, "INVALID_LOCATION", "Geçersiz konum bilgisi.");
-      return;
-    }
-    loc = { lat, lng, radiusM };
-  }
-  const cap = capacity == null ? null : Number(capacity);
-  if (cap !== null && (Number.isNaN(cap) || cap <= 0)) {
-    sendApiError(res, 400, "INVALID_CAPACITY", "Geçersiz kapasite.");
-    return;
-  }
-  const autoExit = autoExitHours == null ? 4 : Number(autoExitHours);
-  if (!Number.isInteger(autoExit) || autoExit < 1 || autoExit > 48) {
-    sendApiError(
-      res,
-      400,
-      "INVALID_AUTO_EXIT",
-      "Geçersiz otomatik çıkış süresi.",
-    );
-    return;
-  }
-
+// Kurulum sihirbazı sayısal alanları form girdisi olarak (string) de gönderebilir;
+// coerce eski elle yazılmış Number() dönüşümüyle aynı davranışı korur.
+const gymSettingsSchema = z.object({
+  gymName: z.string().trim().min(1),
+  location: z
+    .object({
+      lat: z.coerce.number().finite(),
+      lng: z.coerce.number().finite(),
+      radiusM: z.coerce.number().finite().positive(),
+    })
+    .nullish(),
+  capacity: z.coerce.number().finite().positive().nullish(),
+  autoExitHours: z.coerce.number().int().min(1).max(48).nullish(),
   // Faz 6: paylaşım tespiti ayarları yalnızca istek gövdesinde mevcutsa
   // güncellenir — mevcut ayarlanmış değerleri sessizce ezmemesi kritiktir
-  const setDoc: Record<string, unknown> = {
-    gymName: gymName.trim(),
-    location: loc,
-    capacity: cap,
-    autoExitHours: autoExit,
-  };
-  if (req.body?.sharing !== undefined) {
-    const parsedSharing = sharingSchema.safeParse(req.body.sharing);
-    if (!parsedSharing.success) {
-      sendApiError(
-        res,
-        400,
-        "INVALID_SHARING_SETTINGS",
-        "Geçersiz paylaşım tespiti ayarları.",
-      );
+  sharing: sharingSchema.optional(),
+});
+
+// İstemciler mesajı değil code'u yorumlar; her alan kendi kararlı kodunu korur
+const SETTINGS_FIELD_ERRORS: Record<string, [ApiErrorCode, string]> = {
+  gymName: ["GYM_NAME_REQUIRED", "Salon adı zorunludur."],
+  location: ["INVALID_LOCATION", "Geçersiz konum bilgisi."],
+  capacity: ["INVALID_CAPACITY", "Geçersiz kapasite."],
+  autoExitHours: ["INVALID_AUTO_EXIT", "Geçersiz otomatik çıkış süresi."],
+  sharing: ["INVALID_SHARING_SETTINGS", "Geçersiz paylaşım tespiti ayarları."],
+};
+
+adminRouter.put(
+  "/settings",
+  requireRole("admin"),
+  authed(async (req, res) => {
+    const parsed = gymSettingsSchema.safeParse(req.body ?? {});
+    if (!parsed.success) {
+      const field = String(parsed.error.issues[0]?.path[0] ?? "");
+      const [code, message] = SETTINGS_FIELD_ERRORS[field] ?? [
+        "GYM_NAME_REQUIRED",
+        "Salon adı zorunludur.",
+      ];
+      sendApiError(res, 400, code, message);
       return;
     }
-    setDoc.sharing = parsedSharing.data;
-  }
+    const { gymName, location, capacity, autoExitHours, sharing } = parsed.data;
 
-  await db
-    .collection("settings")
-    .updateOne({ _id: "gym" as never }, { $set: setDoc }, { upsert: true });
-  await logAudit(req.user!, "settings-updated", undefined, {
-    gymName: gymName.trim(),
-    autoExitHours: autoExit,
-    ...(setDoc.sharing !== undefined ? { sharing: setDoc.sharing } : {}),
-  });
-  res.json({ ok: true });
-});
+    const setDoc: Partial<Omit<GymSettingsDocument, "_id">> = {
+      gymName,
+      location: location ?? null,
+      capacity: capacity ?? null,
+      autoExitHours: autoExitHours ?? 4,
+    };
+    if (sharing !== undefined) {
+      setDoc.sharing = sharing;
+    }
+
+    await gymSettingsCollection().updateOne(
+      { _id: GYM_SETTINGS_ID },
+      { $set: setDoc },
+      { upsert: true },
+    );
+    await logAudit(req.user, "settings-updated", undefined, {
+      gymName,
+      autoExitHours: setDoc.autoExitHours,
+      ...(sharing !== undefined ? { sharing } : {}),
+    });
+    res.json({ ok: true });
+  }),
+);
 
 // Genel bakış paneli KPI'ları (personel + admin)
 adminRouter.get("/stats", requireRole("admin", "staff"), async (_req, res) => {
@@ -519,8 +516,8 @@ adminRouter.get(
 adminRouter.post(
   "/deletion-requests/:id/approve",
   requireRole("admin"),
-  async (req, res) => {
-    const requestId = parseObjectId(String(req.params.id ?? ""));
+  authed(async (req, res) => {
+    const requestId = toObjectId(String(req.params.id ?? ""));
     if (!requestId) {
       sendApiError(
         res,
@@ -533,17 +530,18 @@ adminRouter.post(
     // TOCTOU koruması: talebi pending→approved atomik olarak sahiplen. İki
     // admin aynı anda onaylarsa yalnızca biri eşleşir; diğeri 409 alır
     // (mükerrer denetim kaydı ve işlem tekrarı önlenir).
-    const claim = await db.collection("deletion_requests").updateOne(
+    const claimed = await db.collection("deletion_requests").findOneAndUpdate(
       { _id: requestId, status: "pending" },
       {
         $set: {
           status: "approved",
           resolvedAt: new Date(),
-          resolvedBy: req.user!.id,
+          resolvedBy: req.user.id,
         },
       },
+      { returnDocument: "after" },
     );
-    if (claim.matchedCount === 0) {
+    if (!claimed) {
       const existing = await db
         .collection("deletion_requests")
         .findOne({ _id: requestId }, { projection: { _id: 1 } });
@@ -557,11 +555,7 @@ adminRouter.post(
       );
       return;
     }
-    // Sahiplenme başarılı; hedef kullanıcı kimliğini oku (kayıt kesin var)
-    const request = await db
-      .collection("deletion_requests")
-      .findOne({ _id: requestId });
-    const targetId = request!.userId as ObjectId;
+    const targetId = claimed.userId as ObjectId;
     const targetIdStr = targetId.toString();
 
     // Kullanıcının tüm oturumları (Redis + Mongo) iptal edilir; uygulama
@@ -590,7 +584,7 @@ adminRouter.post(
       return;
     }
 
-    await db.collection("user").deleteOne({ _id: targetId });
+    await userCollection().deleteOne({ _id: targetId });
     await db.collection("account").deleteMany({ userId: targetId });
     await db.collection("subscriptions").deleteMany({ userId: targetId });
     await db.collection("twoFactor").deleteMany({ userId: targetId });
@@ -620,17 +614,17 @@ adminRouter.post(
     // kaldırır; tek hesap kaldıysa onu E.164'e taşıyıp çatışma kaydını siler.
     await reconcilePhoneConflictsAfterUserChange(targetIdStr);
 
-    await logAudit(req.user!, "kvkk-deletion-approved", targetIdStr);
+    await logAudit(req.user, "kvkk-deletion-approved", targetIdStr);
     res.json({ ok: true });
-  },
+  }),
 );
 
 // KVKK: silme talebini reddeder
 adminRouter.post(
   "/deletion-requests/:id/reject",
   requireRole("admin"),
-  async (req, res) => {
-    const requestId = parseObjectId(String(req.params.id ?? ""));
+  authed(async (req, res) => {
+    const requestId = toObjectId(String(req.params.id ?? ""));
     if (!requestId) {
       sendApiError(
         res,
@@ -667,15 +661,15 @@ adminRouter.post(
         $set: {
           status: "rejected",
           resolvedAt: new Date(),
-          resolvedBy: req.user!.id,
+          resolvedBy: req.user.id,
         },
       },
     );
     await logAudit(
-      req.user!,
+      req.user,
       "kvkk-deletion-rejected",
       (request.userId as ObjectId).toString(),
     );
     res.json({ ok: true });
-  },
+  }),
 );

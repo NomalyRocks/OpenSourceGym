@@ -6,6 +6,7 @@ import type { MobileTranslationKey } from "./resources";
 const codeMessages = {
   AUTH_REQUIRED: "Oturum gerekli.",
   FORBIDDEN: "Bu işlem için yetkiniz yok.",
+  INTERNAL_ERROR: "Beklenmeyen bir hata oluştu. Lütfen tekrar deneyin.",
   PASSWORD_CHANGE_REQUIRED: "Devam etmeden önce şifrenizi değiştirmelisiniz.",
   PAYLOAD_TOO_LARGE: "Fotoğraf en fazla 10 MB olabilir.",
   PROFILE_PHOTO_MISSING: "Fotoğraf verisi gönderilmedi.",

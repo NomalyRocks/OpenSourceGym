@@ -4,7 +4,7 @@ import { mongodbAdapter } from "better-auth/adapters/mongodb";
 import { emailOTP, twoFactor } from "better-auth/plugins";
 import { expo } from "@better-auth/expo";
 import { MongoServerError } from "mongodb";
-import { db } from "./db.js";
+import { db, userCollection } from "./db.js";
 import { redis } from "./redis.js";
 import { sendMail } from "./mailer.js";
 import { env } from "./env.js";
@@ -115,7 +115,7 @@ const databaseAdapter: typeof baseDatabaseAdapter = (options) => {
 
 async function assertPhoneAvailable(phoneE164: string): Promise<void> {
   const [existingUser, activeConflict] = await Promise.all([
-    db.collection("user").findOne({ phoneE164 }, { projection: { _id: 1 } }),
+    userCollection().findOne({ phoneE164 }, { projection: { _id: 1 } }),
     hasActivePhoneConflict(phoneE164),
   ]);
   if (existingUser || activeConflict) throw duplicatePhoneError();
@@ -137,7 +137,9 @@ export const auth = betterAuth({
     get: (key) => redis.get(key),
     set: async (key, value, ttl) => {
       if (ttl) {
-        await redis.set(key, value, { EX: ttl });
+        await redis.set(key, value, {
+          expiration: { type: "EX", value: ttl },
+        });
       } else {
         await redis.set(key, value);
       }
