@@ -22,8 +22,10 @@
     "nodemailer": "^9.0.3",
     "redis": "^6.1.0",
     "sharp": "^0.35.3",
+    "swagger-ui-express": "^5.0.1",
     "ws": "^8.18.0",
-    "zod": "^4.4.3"
+    "zod": "^4.4.3",
+    "zod-openapi": "^6.0.0"
   },
   "devDependencies": {
     "@types/express": "^5.0.0",

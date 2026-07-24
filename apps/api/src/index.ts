@@ -17,6 +17,7 @@ import { backfillLegacyUserPhones } from "./phoneBackfill.js";
 import { repairLegacySubscriptionOverlaps } from "./subscriptions.js";
 import { assertProductionProfilePhotoConfig } from "./profilePhoto.js";
 import { sendApiError } from "./apiError.js";
+import { openApiRouter } from "./openapi/router.js";
 
 const app = express();
 
@@ -25,6 +26,7 @@ app.all("/api/auth/{*splat}", toNodeHandler(auth));
 
 app.use(express.json());
 
+app.use("/api", openApiRouter);
 app.use("/api/admin/devices", devicesRouter);
 app.use("/api/admin", adminRouter);
 app.use("/api/me", meRouter);
@@ -38,6 +40,15 @@ app.get("/health", (_req, res) => {
   res.json(body);
 });
 
+function bodyParserErrorType(error: unknown): string | null {
+  return typeof error === "object" && error !== null && "type" in error
+    ? String(error.type)
+    : null;
+}
+
+// Terminal hata handler'ı: yanıtlar her koşulda {code, message} sözleşmesine
+// uymalı. Aksi halde Express'in varsayılan handler'ı HTML döndürür ve
+// production dışında yığın izini (stack trace) istemciye sızdırır.
 app.use(
   (
     error: unknown,
@@ -45,11 +56,9 @@ app.use(
     res: express.Response,
     next: express.NextFunction,
   ) => {
+    const parserErrorType = bodyParserErrorType(error);
     if (
-      typeof error === "object" &&
-      error !== null &&
-      "type" in error &&
-      error.type === "entity.too.large" &&
+      parserErrorType === "entity.too.large" &&
       req.originalUrl.startsWith("/api/me/profile-photo")
     ) {
       sendApiError(
@@ -60,7 +69,24 @@ app.use(
       );
       return;
     }
-    next(error);
+
+    console.error(`istek hatası: ${req.method} ${req.originalUrl}`, error);
+
+    // Yanıt akışı başladıysa gövde değiştirilemez; bağlantıyı Express kapatsın
+    if (res.headersSent) {
+      next(error);
+      return;
+    }
+    if (parserErrorType === "entity.parse.failed") {
+      sendApiError(res, 400, "INVALID_REQUEST", "Geçersiz istek gövdesi.");
+      return;
+    }
+    sendApiError(
+      res,
+      500,
+      "INTERNAL_ERROR",
+      "Beklenmeyen bir hata oluştu. Lütfen tekrar deneyin.",
+    );
   },
 );
 
