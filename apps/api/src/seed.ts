@@ -1,5 +1,5 @@
 import { auth } from "./auth.js";
-import { db } from "./db.js";
+import { userCollection } from "./db.js";
 import {
   INITIAL_ADMIN_EMAIL,
   INITIAL_ADMIN_PASSWORD,
@@ -15,7 +15,7 @@ export { INITIAL_ADMIN_EMAIL, INITIAL_ADMIN_PASSWORD } from "./initialAdmin.js";
  * değiştirilmeden hiçbir admin ucu çalışmaz (US-2).
  */
 export async function seedInitialAdmin(): Promise<void> {
-  const users = db.collection("user");
+  const users = userCollection();
   const existingAdmin = await users.findOne({ role: "admin" });
   if (existingAdmin) return;
 

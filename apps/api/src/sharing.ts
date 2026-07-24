@@ -1,6 +1,11 @@
 import { ObjectId } from "mongodb";
 import type { SharingConfig, SharingSignalKind } from "@opengym/shared";
-import { db } from "./db.js";
+import {
+  db,
+  findGymSettings,
+  sessionCollection,
+  userCollection,
+} from "./db.js";
 import { redis } from "./redis.js";
 import { logAudit } from "./audit.js";
 import { revokeUserSessions } from "./sessions.js";
@@ -23,10 +28,8 @@ export const QR_LOC_KEY = (userId: string): string => `og:qr-loc:${userId}`;
 // settings._id: "gym" tekil belgesindeki opsiyonel "sharing" alt nesnesi,
 // varsayılanların üzerine sığ (shallow) olarak birleştirilir
 export async function getSharingConfig(): Promise<SharingConfig> {
-  const doc = await db.collection("settings").findOne({ _id: "gym" as never });
-  const overrides =
-    (doc as { sharing?: Partial<SharingConfig> } | null)?.sharing ?? {};
-  return { ...SHARING_DEFAULTS, ...overrides };
+  const doc = await findGymSettings();
+  return { ...SHARING_DEFAULTS, ...(doc?.sharing ?? {}) };
 }
 
 export async function isQrBlocked(userId: string): Promise<boolean> {
@@ -77,8 +80,8 @@ export async function recordSharingSignal(
     });
     if (signalCount >= cfg.signalThreshold) {
       const acquired = await redis.set(QR_BLOCK_KEY(actor.id), "1", {
-        NX: true,
-        EX: cfg.qrBlockHours * 3600,
+        condition: "NX",
+        expiration: { type: "EX", value: cfg.qrBlockHours * 3600 },
       });
       // Yalnızca engel bu çağrıyla İLK KEZ kurulduysa (NX başarılıysa)
       // oturumlar iptal edilir ve olay denetim kaydına yazılır — aksi halde
@@ -106,16 +109,15 @@ export async function enforceSessionPolicy(session: {
 }): Promise<void> {
   try {
     const cfg = await getSharingConfig();
-    const userDoc = await db
-      .collection("user")
-      .findOne({ _id: new ObjectId(session.userId) });
+    const userDoc = await userCollection().findOne({
+      _id: new ObjectId(session.userId),
+    });
     if (!userDoc) return;
-    const role = (userDoc.role as string | undefined) ?? "member";
+    const role = userDoc.role ?? "member";
     const cap =
       role === "member" ? cfg.memberMaxSessions : cfg.staffMaxSessions;
 
-    const sessions = await db
-      .collection("session")
+    const sessions = await sessionCollection()
       .find({ userId: new ObjectId(session.userId) })
       .sort({ createdAt: -1 })
       .toArray();
@@ -127,15 +129,18 @@ export async function enforceSessionPolicy(session: {
     // işaretlerdi (üye cap'i 2 için sabit 3 uygundu, personel için değildi)
     const distinctFingerprints = new Set(
       sessions
-        .map((s) => s.deviceFingerprint as unknown)
+        .map((s) => s.deviceFingerprint)
         .filter((fp): fp is string => typeof fp === "string" && fp.length > 0),
     );
     if (distinctFingerprints.size > cap) {
       const churnKey = `og:fp-churn:${session.userId}`;
-      const acquired = await redis.set(churnKey, "1", { NX: true, EX: 3600 });
+      const acquired = await redis.set(churnKey, "1", {
+        condition: "NX",
+        expiration: { type: "EX", value: 3600 },
+      });
       if (acquired === "OK") {
         await recordSharingSignal(
-          { id: session.userId, email: String(userDoc.email ?? "") },
+          { id: session.userId, email: userDoc.email },
           "fingerprint-churn",
           { distinctFingerprints: distinctFingerprints.size },
         );
@@ -148,12 +153,11 @@ export async function enforceSessionPolicy(session: {
       const excess = sessions.slice(cap);
       const excessIds = excess.map((s) => s._id);
       for (const doc of excess) {
-        const token = String(doc.token ?? "");
-        if (token) {
-          await redis.del(token).catch(console.error);
+        if (doc.token) {
+          await redis.del(doc.token).catch(console.error);
         }
       }
-      await db.collection("session").deleteMany({ _id: { $in: excessIds } });
+      await sessionCollection().deleteMany({ _id: { $in: excessIds } });
 
       // "active-sessions-<userId>" listesi hayatta kalan oturumlarla YENİDEN
       // YAZILIR, silinmez: BetterAuth'un kendi oturum yönetimi (listSessions,
@@ -167,7 +171,7 @@ export async function enforceSessionPolicy(session: {
       const survivors = sessions
         .slice(0, cap)
         .map((doc) => ({
-          token: String(doc.token ?? ""),
+          token: doc.token ?? "",
           expiresAt:
             doc.expiresAt instanceof Date ? doc.expiresAt.getTime() : 0,
         }))
@@ -178,7 +182,9 @@ export async function enforceSessionPolicy(session: {
         const lastSurvivor = survivors[survivors.length - 1]!;
         const ttlSeconds = Math.floor((lastSurvivor.expiresAt - now) / 1000);
         await redis
-          .set(listKey, JSON.stringify(survivors), { EX: ttlSeconds })
+          .set(listKey, JSON.stringify(survivors), {
+            expiration: { type: "EX", value: ttlSeconds },
+          })
           .catch(console.error);
       } else {
         await redis.del(listKey).catch(console.error);

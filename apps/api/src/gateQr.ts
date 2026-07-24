@@ -18,9 +18,7 @@ export function gateQrContent(deviceId: string): string {
   return `${GATE_QR_PREFIX}.${deviceId}.${sign(deviceId)}`;
 }
 
-export type GateQrVerifyResult =
-  | { ok: true; deviceId: string }
-  | { ok: false };
+export type GateQrVerifyResult = { ok: true; deviceId: string } | { ok: false };
 
 // Üyenin okuttuğu statik turnike QR'ının imzasını doğrular
 export function verifyGateQr(content: string): GateQrVerifyResult {

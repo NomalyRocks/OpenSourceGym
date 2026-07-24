@@ -4,7 +4,7 @@ import type { MySubscription, SubscriptionMonths } from "@opengym/shared";
 import { ObjectId } from "mongodb";
 import type { Db, WithId } from "mongodb";
 import { db } from "./db.js";
-import { redis } from "./redis.js";
+import { acquireLock, redis, releaseLock } from "./redis.js";
 import {
   calculateSubscriptionPeriod,
   planLegacySubscriptionRepairs,
@@ -17,13 +17,6 @@ const USER_LOCK_WAIT_MS = 5_000;
 const REPAIR_LOCK_LEASE_MS = 60_000;
 const REPAIR_LOCK_WAIT_MS = 15 * 60_000;
 const REPAIR_MARKER_ID = "subscription-overlap-repair-v1";
-
-const RELEASE_LOCK_SCRIPT = `
-if redis.call("get", KEYS[1]) == ARGV[1] then
-  return redis.call("del", KEYS[1])
-end
-return 0
-`;
 
 const EXTEND_LOCK_SCRIPT = `
 if redis.call("get", KEYS[1]) == ARGV[1] then
@@ -100,11 +93,7 @@ async function withRedisLock<T>(
   const deadline = Date.now() + waitMs;
 
   while (true) {
-    const acquired = await redis.set(key, token, {
-      condition: "NX",
-      expiration: { type: "PX", value: leaseMs },
-    });
-    if (acquired === "OK") break;
+    if (await acquireLock(key, token, leaseMs)) break;
 
     const remainingMs = deadline - Date.now();
     if (remainingMs <= 0) throw new SubscriptionLockTimeoutError();
@@ -157,15 +146,11 @@ async function withRedisLock<T>(
   } finally {
     renewalController.abort();
     await renewal;
-    // Yalnızca bu isteğin token'ı hâlâ kilitteyse sil. Süresi dolup başka
-    // bir istek kilidi almışsa o isteğin kilidini yanlışlıkla açmayız.
-    await redis
-      .eval(RELEASE_LOCK_SCRIPT, { keys: [key], arguments: [token] })
-      .catch((error: unknown) => {
-        // Redis erişilemezse lease kilidi kendiliğinden temizler; asıl Mongo
-        // işleminin sonucunu bir temizlik hatasıyla gölgelemeyiz.
-        console.error("subscription lock release failed:", error);
-      });
+    await releaseLock(key, token).catch((error: unknown) => {
+      // Redis erişilemezse lease kilidi kendiliğinden temizler; asıl Mongo
+      // işleminin sonucunu bir temizlik hatasıyla gölgelemeyiz.
+      console.error("subscription lock release failed:", error);
+    });
   }
 }
 
