@@ -1,8 +1,33 @@
+# Docker build bağlamını yalnızca image üretimi için gereken dosyalarla sınırlar.
+
+# Bağımlılıklar ve derleme çıktıları
 node_modules
 **/node_modules
 **/dist
 .turbo
 **/.turbo
+
+# Git ve yerel ortam dosyaları
 .git
 .env
 .env.*
+
+# Çalışma zamanında gerekmeyen görseller, raporlar ve prototipler
+login-visual.png
+sast/
+spor-salonu-ye-dashboard/
+sports-salon-dashboard-design/
+
+# Dokümantasyon ve depo ayarları
+docs/
+.github/
+/*.md
+
+# Editör ayarları
+.vscode/
+.idea/
+
+# Sunucu image'larında kullanılmayan mobil uygulama ve testler
+apps/mobile/
+**/*.test.ts
+apps/api/src/integration/
