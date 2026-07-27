@@ -48,7 +48,7 @@ export function requireRole(...roles: Role[]) {
       headers: fromNodeHeaders(req.headers),
     });
     if (!session) {
-      sendApiError(res, 401, "AUTH_REQUIRED", "Oturum gerekli.");
+      sendApiError(res, 401, "AUTH_REQUIRED", "Authentication required.");
       return;
     }
     req.sessionToken = session.session.token;
@@ -58,7 +58,7 @@ export function requireRole(...roles: Role[]) {
       _id: new ObjectId(session.user.id),
     });
     if (!doc) {
-      sendApiError(res, 401, "AUTH_REQUIRED", "Oturum gerekli.");
+      sendApiError(res, 401, "AUTH_REQUIRED", "Authentication required.");
       return;
     }
     const user: SessionUser = {
@@ -74,7 +74,12 @@ export function requireRole(...roles: Role[]) {
       ),
     };
     if (!roles.includes(user.role)) {
-      sendApiError(res, 403, "FORBIDDEN", "Bu işlem için yetkiniz yok.");
+      sendApiError(
+        res,
+        403,
+        "FORBIDDEN",
+        "You are not authorized to perform this action.",
+      );
       return;
     }
     // US-2: zorunlu şifre değişimi yapılmadan yalnızca şifre değiştirme ve
@@ -85,7 +90,7 @@ export function requireRole(...roles: Role[]) {
         res,
         403,
         "PASSWORD_CHANGE_REQUIRED",
-        "Devam etmeden önce şifrenizi değiştirmelisiniz.",
+        "You must change your password before continuing.",
       );
       return;
     }

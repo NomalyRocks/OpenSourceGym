@@ -18,11 +18,11 @@ test("API hatası kararlı code ve geriye dönük message alanlarını döndür�
     },
   } as unknown as Response;
 
-  sendApiError(response, 404, "DEVICE_NOT_FOUND", "Cihaz bulunamadı.");
+  sendApiError(response, 404, "DEVICE_NOT_FOUND", "Device not found.");
 
   assert.equal(status, 404);
   assert.deepEqual(body, {
     code: "DEVICE_NOT_FOUND",
-    message: "Cihaz bulunamadı.",
+    message: "Device not found.",
   });
 });

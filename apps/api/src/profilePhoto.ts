@@ -51,7 +51,7 @@ function getR2Config(): R2Config {
     !publicBaseUrl
   ) {
     throw new ProfilePhotoConfigError(
-      "R2 profil fotoğrafı yapılandırması eksik.",
+      "R2 profile photo configuration is incomplete.",
     );
   }
   let parsedPublicUrl: URL;
@@ -59,12 +59,12 @@ function getR2Config(): R2Config {
     parsedPublicUrl = new URL(publicBaseUrl);
   } catch {
     throw new ProfilePhotoConfigError(
-      "R2_PUBLIC_BASE_URL geçerli bir URL olmalıdır.",
+      "R2_PUBLIC_BASE_URL must be a valid URL.",
     );
   }
   if (!["http:", "https:"].includes(parsedPublicUrl.protocol)) {
     throw new ProfilePhotoConfigError(
-      "R2_PUBLIC_BASE_URL HTTP veya HTTPS kullanmalıdır.",
+      "R2_PUBLIC_BASE_URL must use HTTP or HTTPS.",
     );
   }
   return {
@@ -122,11 +122,11 @@ export async function processProfilePhoto(
     : undefined;
   if (!expectedFormat) {
     throw new ProfilePhotoInputError(
-      "Yalnızca JPEG, PNG veya WebP görseller yüklenebilir.",
+      "Only JPEG, PNG, or WebP images can be uploaded.",
     );
   }
   if (input.length === 0) {
-    throw new ProfilePhotoInputError("Fotoğraf verisi boş olamaz.");
+    throw new ProfilePhotoInputError("Photo data cannot be empty.");
   }
 
   try {
@@ -138,11 +138,11 @@ export async function processProfilePhoto(
     const metadata = await source.metadata();
     if (metadata.format !== expectedFormat) {
       throw new ProfilePhotoInputError(
-        "Dosya içeriği bildirilen görsel formatıyla eşleşmiyor.",
+        "File content does not match the declared image format.",
       );
     }
     if ((metadata.pages ?? 1) > 1) {
-      throw new ProfilePhotoInputError("Hareketli görseller desteklenmiyor.");
+      throw new ProfilePhotoInputError("Animated images are not supported.");
     }
 
     return await source
@@ -157,7 +157,7 @@ export async function processProfilePhoto(
   } catch (error) {
     if (error instanceof ProfilePhotoInputError) throw error;
     throw new ProfilePhotoInputError(
-      "Görsel işlenemedi. Geçerli bir fotoğraf seçin.",
+      "Image could not be processed. Select a valid photo.",
     );
   }
 }
@@ -190,7 +190,7 @@ async function withProfilePhotoLock<T>(
   const token = randomUUID();
   if (!(await acquireLock(key, token, PROFILE_PHOTO_LOCK_TTL_MS))) {
     throw new ProfilePhotoBusyError(
-      "Başka bir profil fotoğrafı işlemi devam ediyor.",
+      "Another profile photo operation is in progress.",
     );
   }
 
@@ -211,7 +211,7 @@ export async function enforceProfilePhotoRateLimit(
   await redis.expire(key, PROFILE_PHOTO_RATE_WINDOW_SECONDS, "NX");
   if (count > PROFILE_PHOTO_UPLOADS_PER_WINDOW) {
     throw new ProfilePhotoRateLimitError(
-      "Çok fazla fotoğraf yükleme denemesi yapıldı. Lütfen daha sonra tekrar deneyin.",
+      "Too many photo upload attempts. Please try again later.",
     );
   }
 }
@@ -232,7 +232,7 @@ export async function storeUserProfilePhoto(
       { _id: objectId },
       { projection: { profilePhotoKey: 1 } },
     );
-    if (!user) throw new Error("Kullanıcı bulunamadı.");
+    if (!user) throw new Error("User not found.");
 
     const existingKey = user.profilePhotoKey ?? null;
     const key = existingKey ?? `profile-photos/${userId}/${randomUUID()}.jpg`;
@@ -244,7 +244,7 @@ export async function storeUserProfilePhoto(
         { _id: objectId },
         { $set: { profilePhotoKey: key, profilePhotoUpdatedAt: updatedAt } },
       );
-      if (result.matchedCount !== 1) throw new Error("Kullanıcı bulunamadı.");
+      if (result.matchedCount !== 1) throw new Error("User not found.");
     } catch (error) {
       if (!existingKey) {
         try {
@@ -278,7 +278,7 @@ export async function removeUserProfilePhoto(userId: string): Promise<void> {
       { _id: objectId },
       { $unset: { profilePhotoKey: "", profilePhotoUpdatedAt: "" } },
     );
-    if (result.matchedCount !== 1) throw new Error("Kullanıcı bulunamadı.");
+    if (result.matchedCount !== 1) throw new Error("User not found.");
   });
 }
 

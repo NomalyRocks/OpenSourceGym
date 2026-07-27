@@ -24,7 +24,7 @@ devicesRouter.post(
   authed(async (req, res) => {
     const parsed = createDeviceSchema.safeParse(req.body);
     if (!parsed.success) {
-      sendApiError(res, 400, "INVALID_DEVICE_NAME", "Geçersiz cihaz adı.");
+      sendApiError(res, 400, "INVALID_DEVICE_NAME", "Invalid device name.");
       return;
     }
     const { name, direction } = parsed.data;
@@ -89,12 +89,12 @@ devicesRouter.delete(
   authed(async (req, res) => {
     const targetId = toObjectId(String(req.params.id ?? ""));
     if (!targetId) {
-      sendApiError(res, 404, "DEVICE_NOT_FOUND", "Cihaz bulunamadı.");
+      sendApiError(res, 404, "DEVICE_NOT_FOUND", "Device not found.");
       return;
     }
     const result = await db.collection("devices").deleteOne({ _id: targetId });
     if (result.deletedCount === 0) {
-      sendApiError(res, 404, "DEVICE_NOT_FOUND", "Cihaz bulunamadı.");
+      sendApiError(res, 404, "DEVICE_NOT_FOUND", "Device not found.");
       return;
     }
     disconnectDevice(targetId.toString());

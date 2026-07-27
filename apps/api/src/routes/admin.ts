@@ -86,7 +86,7 @@ adminRouter.post(
         res,
         400,
         "PASSWORD_TOO_SHORT",
-        "Yeni şifre en az 8 karakter olmalıdır.",
+        "New password must be at least 8 characters long.",
       );
       return;
     }
@@ -101,7 +101,7 @@ adminRouter.post(
         res,
         400,
         "CURRENT_PASSWORD_INVALID",
-        "Mevcut şifre hatalı.",
+        "Current password is incorrect.",
       );
       return;
     }
@@ -122,7 +122,7 @@ adminRouter.get("/users", requireRole("admin", "staff"), async (req, res) => {
       res,
       400,
       "SEARCH_QUERY_TOO_SHORT",
-      "Arama için en az iki karakter girin.",
+      "Enter at least two characters to search.",
     );
     return;
   }
@@ -153,12 +153,7 @@ adminRouter.post(
     const targetId = toObjectId(idParam);
     const parsedRole = roleSchema.safeParse(req.body ?? {});
     if (!targetId || !parsedRole.success) {
-      sendApiError(
-        res,
-        400,
-        "INVALID_USER_OR_ROLE",
-        "Geçersiz kullanıcı veya rol.",
-      );
+      sendApiError(res, 400, "INVALID_USER_OR_ROLE", "Invalid user or role.");
       return;
     }
     const { role } = parsedRole.data;
@@ -169,7 +164,7 @@ adminRouter.post(
         res,
         400,
         "SELF_ROLE_CHANGE",
-        "Kendi rolünüzü değiştiremezsiniz.",
+        "You cannot change your own role.",
       );
       return;
     }
@@ -183,7 +178,7 @@ adminRouter.post(
           res,
           403,
           "MFA_REQUIRED",
-          "Bu işlem için MFA doğrulaması gerekli.",
+          "MFA verification is required for this action.",
         );
         return;
       }
@@ -198,7 +193,7 @@ adminRouter.post(
           res,
           429,
           "MFA_LOCKED",
-          "Çok fazla hatalı kod denemesi. 15 dakika sonra tekrar deneyin.",
+          "Too many invalid code attempts. Try again in 15 minutes.",
         );
         return;
       }
@@ -224,7 +219,7 @@ adminRouter.post(
           res,
           403,
           "MFA_INVALID",
-          "Doğrulama kodu geçersiz veya süresi dolmuş.",
+          "The verification code is invalid or has expired.",
         );
         return;
       }
@@ -235,7 +230,7 @@ adminRouter.post(
       { $set: { role } },
     );
     if (!result) {
-      sendApiError(res, 404, "USER_NOT_FOUND", "Kullanıcı bulunamadı.");
+      sendApiError(res, 404, "USER_NOT_FOUND", "User not found.");
       return;
     }
     await logAudit(req.user, "role-assigned", idParam, {
@@ -267,13 +262,13 @@ adminRouter.post(
         res,
         400,
         "INVALID_SUBSCRIPTION",
-        "Geçerli kullanıcı ve abonelik paketi girin.",
+        "Enter a valid user and subscription plan.",
       );
       return;
     }
     const target = await userCollection().findOne({ _id: targetId });
     if (!target) {
-      sendApiError(res, 404, "USER_NOT_FOUND", "Kullanıcı bulunamadı.");
+      sendApiError(res, 404, "USER_NOT_FOUND", "User not found.");
       return;
     }
     try {
@@ -301,7 +296,7 @@ adminRouter.post(
           res,
           503,
           "SUBSCRIPTION_BUSY",
-          "Abonelik işlemi sürüyor. Lütfen tekrar deneyin.",
+          "A subscription operation is in progress. Please try again.",
         );
         return;
       }
@@ -316,7 +311,7 @@ adminRouter.get(
   async (req, res) => {
     const targetId = toObjectId(String(req.params.id ?? ""));
     if (!targetId) {
-      sendApiError(res, 400, "INVALID_USER", "Geçersiz kullanıcı.");
+      sendApiError(res, 400, "INVALID_USER", "Invalid user.");
       return;
     }
     const docs = await listUserSubscriptions(targetId);
@@ -375,11 +370,11 @@ const gymSettingsSchema = z.object({
 
 // İstemciler mesajı değil code'u yorumlar; her alan kendi kararlı kodunu korur
 const SETTINGS_FIELD_ERRORS: Record<string, [ApiErrorCode, string]> = {
-  gymName: ["GYM_NAME_REQUIRED", "Salon adı zorunludur."],
-  location: ["INVALID_LOCATION", "Geçersiz konum bilgisi."],
-  capacity: ["INVALID_CAPACITY", "Geçersiz kapasite."],
-  autoExitHours: ["INVALID_AUTO_EXIT", "Geçersiz otomatik çıkış süresi."],
-  sharing: ["INVALID_SHARING_SETTINGS", "Geçersiz paylaşım tespiti ayarları."],
+  gymName: ["GYM_NAME_REQUIRED", "Gym name is required."],
+  location: ["INVALID_LOCATION", "Invalid location information."],
+  capacity: ["INVALID_CAPACITY", "Invalid capacity."],
+  autoExitHours: ["INVALID_AUTO_EXIT", "Invalid automatic exit duration."],
+  sharing: ["INVALID_SHARING_SETTINGS", "Invalid sharing detection settings."],
 };
 
 adminRouter.put(
@@ -391,7 +386,7 @@ adminRouter.put(
       const field = String(parsed.error.issues[0]?.path[0] ?? "");
       const [code, message] = SETTINGS_FIELD_ERRORS[field] ?? [
         "GYM_NAME_REQUIRED",
-        "Salon adı zorunludur.",
+        "Gym name is required.",
       ];
       sendApiError(res, 400, code, message);
       return;
@@ -523,7 +518,7 @@ adminRouter.post(
         res,
         404,
         "DELETION_REQUEST_NOT_FOUND",
-        "Silme talebi bulunamadı.",
+        "Deletion request not found.",
       );
       return;
     }
@@ -550,8 +545,8 @@ adminRouter.post(
         existing ? 409 : 404,
         existing ? "DELETION_REQUEST_RESOLVED" : "DELETION_REQUEST_NOT_FOUND",
         existing
-          ? "Silme talebi zaten sonuçlandırılmış."
-          : "Silme talebi bulunamadı.",
+          ? "Deletion request has already been resolved."
+          : "Deletion request not found.",
       );
       return;
     }
@@ -579,7 +574,7 @@ adminRouter.post(
         res,
         503,
         "DELETION_CLEANUP_FAILED",
-        "Profil fotoğrafı depolama alanından silinemedi. Lütfen tekrar deneyin.",
+        "Profile photo could not be deleted from storage. Please try again.",
       );
       return;
     }
@@ -630,7 +625,7 @@ adminRouter.post(
         res,
         404,
         "DELETION_REQUEST_NOT_FOUND",
-        "Silme talebi bulunamadı.",
+        "Deletion request not found.",
       );
       return;
     }
@@ -642,7 +637,7 @@ adminRouter.post(
         res,
         404,
         "DELETION_REQUEST_NOT_FOUND",
-        "Silme talebi bulunamadı.",
+        "Deletion request not found.",
       );
       return;
     }
@@ -651,7 +646,7 @@ adminRouter.post(
         res,
         409,
         "DELETION_REQUEST_RESOLVED",
-        "Silme talebi zaten sonuçlandırılmış.",
+        "Deletion request has already been resolved.",
       );
       return;
     }
