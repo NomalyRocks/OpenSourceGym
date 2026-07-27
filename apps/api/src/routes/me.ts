@@ -10,7 +10,7 @@ import type {
   OccupancyResponse,
   ProfilePhotoResponse,
 } from "@opengym/shared";
-import { db, findGymSettings } from "../db.js";
+import { db, findGymSettings, isDuplicateKeyError } from "../db.js";
 import { sendApiError } from "../apiError.js";
 import { acquireLock, redis, releaseLock } from "../redis.js";
 import { authed, requireRole, type AuthedRequest } from "../middleware.js";
@@ -461,11 +461,15 @@ meRouter.post(
         res,
         403,
         "DELETION_MEMBER_ONLY",
-        "Yalnızca üye hesapları silme talebi oluşturabilir.",
+        "Only member accounts can create a deletion request.",
       );
       return;
     }
     const userId = new ObjectId(req.user.id);
+    // Tekilliği garanti eden şey bu kontrol değil, deletion_requests üzerindeki
+    // partial unique index'tir: "önce oku sonra yaz" atomik olmadığından
+    // eşzamanlı iki istek aynı üyeye iki bekleyen talep açabilirdi. Buradaki
+    // ön kontrol yalnızca yaygın durumda daha ucuz bir yol.
     const existingPending = await db
       .collection("deletion_requests")
       .findOne({ userId, status: "pending" });
@@ -474,19 +478,32 @@ meRouter.post(
         res,
         409,
         "DELETION_ALREADY_PENDING",
-        "Zaten bekleyen bir silme talebiniz var.",
+        "You already have a pending deletion request.",
       );
       return;
     }
-    await db.collection("deletion_requests").insertOne({
-      userId,
-      email: req.user.email,
-      name: req.user.name,
-      requestedAt: new Date(),
-      status: "pending",
-      resolvedAt: null,
-      resolvedBy: null,
-    });
+    try {
+      await db.collection("deletion_requests").insertOne({
+        userId,
+        email: req.user.email,
+        name: req.user.name,
+        requestedAt: new Date(),
+        status: "pending",
+        resolvedAt: null,
+        resolvedBy: null,
+      });
+    } catch (err) {
+      if (isDuplicateKeyError(err)) {
+        sendApiError(
+          res,
+          409,
+          "DELETION_ALREADY_PENDING",
+          "You already have a pending deletion request.",
+        );
+        return;
+      }
+      throw err;
+    }
     await logAudit(req.user, "kvkk-deletion-requested");
     res.json({ ok: true });
   }),

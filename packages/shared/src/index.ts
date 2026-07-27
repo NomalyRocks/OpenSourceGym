@@ -4,6 +4,28 @@ export interface HealthResponse {
   timestamp: string;
 }
 
+/** Tek bir alt bileşenin readiness sonucu. */
+export interface ReadinessCheck {
+  status: "up" | "down";
+  /** Yalnızca "down" durumunda doldurulur. */
+  error?: string;
+}
+
+/**
+ * /health/ready yanıtı. Liveness'ten (/health) ayrıdır: burada bağımlılıklar
+ * gerçekten yoklanır, dolayısıyla süreç ayakta olsa da "down" dönebilir.
+ */
+export interface ReadinessResponse {
+  status: "ok" | "degraded";
+  service: string;
+  timestamp: string;
+  checks: {
+    mongo: ReadinessCheck;
+    redis: ReadinessCheck;
+    entryEventConsumer: ReadinessCheck;
+  };
+}
+
 export type Role = "admin" | "staff" | "member";
 
 export interface PublicUser {
