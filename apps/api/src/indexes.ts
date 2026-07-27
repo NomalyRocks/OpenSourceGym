@@ -78,21 +78,38 @@ export async function ensureIndexes(database: Db = db): Promise<void> {
   await ensureIndex(database, "session", { userId: 1 });
 
   // Audit listesinin en yeni kayıtları önce getiren sıralaması için.
+  // _id sıralama anahtarının parçası: imleçli sayfalama eşit zaman damgalarını
+  // _id ile kırar, indeks de aynı anahtarı taşımalı.
   await ensureIndex(database, "audit_logs", { at: -1, _id: -1 });
   // Hesap silinirken kullanıcıya ait audit kayıtlarını anonimleştirmek için.
   await ensureIndex(database, "audit_logs", { actorId: 1 });
+  // Eylem filtresi + zaman sıralaması birlikte kullanıldığında.
+  await ensureIndex(database, "audit_logs", { action: 1, at: -1, _id: -1 });
 
   // Geçiş olayları listesinin en yeni kayıtları önce getiren sıralaması için.
   await ensureIndex(database, "entry_events", { at: -1, _id: -1 });
-  // Hesap silinirken kullanıcıya ait geçiş olaylarını bulmak için.
+  // Hesap silinirken kullanıcıya ait geçiş olaylarını bulmak için; ayrıca üye
+  // filtresiyle sayfalanan liste sorgusunu da karşılar.
   await ensureIndex(database, "entry_events", {
     userId: 1,
+    at: -1,
+    _id: -1,
+  });
+  // Cihaz filtresi + zaman sıralaması birlikte kullanıldığında.
+  await ensureIndex(database, "entry_events", {
+    deviceId: 1,
     at: -1,
     _id: -1,
   });
 
   // Silme talepleri listesinin en yeni kayıtları önce getiren sıralaması için.
   await ensureIndex(database, "deletion_requests", {
+    requestedAt: -1,
+    _id: -1,
+  });
+  // Durum filtresi + zaman sıralaması birlikte kullanıldığında.
+  await ensureIndex(database, "deletion_requests", {
+    status: 1,
     requestedAt: -1,
     _id: -1,
   });

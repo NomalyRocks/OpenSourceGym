@@ -3,6 +3,15 @@ import { z } from "zod";
 const withId = <T extends z.ZodType>(schema: T, id: string): T =>
   schema.meta({ id }) as T;
 
+export const pageSchema = <T extends z.ZodType>(itemSchema: T) =>
+  z.object({
+    items: z.array(itemSchema),
+    nextCursor: z.string().nullable().meta({
+      description:
+        "Sonraki sayfa için cursor sorgu parametresine verilir; son sayfada null olur",
+    }),
+  });
+
 export const roleSchema = withId(z.enum(["admin", "staff", "member"]), "Role");
 
 export const objectIdSchema = z

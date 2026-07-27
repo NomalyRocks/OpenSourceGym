@@ -1,13 +1,15 @@
-import { Router } from "express";
+import { Router, type Response } from "express";
 import { ObjectId } from "mongodb";
 import { fromNodeHeaders } from "better-auth/node";
 import { z } from "zod";
 import type {
   AdminStats,
   ApiErrorCode,
+  AuditLogEntry,
   DeletionRequest,
   EntryEvent,
   GymSettings,
+  Page,
   PublicUser,
 } from "@opengym/shared";
 import { auth } from "../auth.js";
@@ -38,6 +40,12 @@ import {
   SubscriptionLockTimeoutError,
 } from "../subscriptions.js";
 import { tryNormalizePhoneToE164 } from "../phone.js";
+import {
+  dateRangeFilter,
+  findPage,
+  InvalidCursorError,
+  pageQuerySchema,
+} from "../pagination.js";
 import {
   buildUserSearchFilter,
   parseUserSearchQuery,
@@ -436,73 +444,167 @@ adminRouter.get("/stats", requireRole("admin", "staff"), async (_req, res) => {
   res.json(body);
 });
 
-// Audit log görüntüleme (yalnızca admin)
-adminRouter.get("/audit", requireRole("admin"), async (_req, res) => {
-  const docs = await db
-    .collection("audit_logs")
-    .find({})
-    .sort({ at: -1 })
-    .limit(100)
-    .toArray();
-  res.json(
-    docs.map((d) => ({
+/**
+ * findPage'in bozuk imleç hatasını 400'e çevirir, diğer hataları terminal hata
+ * handler'ına bırakır. Express 5 async route'larda reddedilen promise'i kendisi
+ * yakalar, bu yüzden yeniden fırlatmak güvenlidir.
+ */
+function toInvalidCursorResponse(res: Response) {
+  return (err: unknown): null => {
+    if (err instanceof InvalidCursorError) {
+      sendApiError(res, 400, "INVALID_REQUEST", "Invalid pagination cursor.");
+      return null;
+    }
+    throw err;
+  };
+}
+
+const auditQuerySchema = pageQuerySchema.extend({
+  action: z.string().min(1).max(64).optional(),
+  from: z.coerce.date().optional(),
+  to: z.coerce.date().optional(),
+});
+
+// Audit log görüntüleme (yalnızca admin) — imleçli sayfalama + eylem/tarih filtresi
+adminRouter.get("/audit", requireRole("admin"), async (req, res) => {
+  const query = auditQuerySchema.safeParse(req.query);
+  if (!query.success) {
+    sendApiError(res, 400, "INVALID_REQUEST", "Invalid list query parameters.");
+    return;
+  }
+  const { cursor, limit, action, from, to } = query.data;
+
+  const filters: Record<string, unknown>[] = [];
+  if (action) filters.push({ action });
+  const range = dateRangeFilter("at", from, to);
+  if (Object.keys(range).length > 0) filters.push(range);
+
+  const page = await findPage(db.collection("audit_logs"), {
+    timeField: "at",
+    filter: filters.length > 0 ? { $and: filters } : {},
+    cursor,
+    limit,
+  }).catch(toInvalidCursorResponse(res));
+  if (!page) return;
+
+  const body: Page<AuditLogEntry> = {
+    items: page.docs.map((d) => ({
       id: d._id.toString(),
       actorId: d.actorId,
       actorEmail: d.actorEmail,
       action: d.action,
       targetId: d.targetId ?? undefined,
       details: d.details ?? undefined,
-      at: d.at.toISOString(),
+      at: (d.at as Date).toISOString(),
     })),
-  );
+    nextCursor: page.nextCursor,
+  };
+  res.json(body);
+});
+
+const entryEventQuerySchema = pageQuerySchema.extend({
+  deviceId: z.string().min(1).max(64).optional(),
+  userId: z.string().min(1).max(64).optional(),
+  // Sorgu parametreleri her zaman string gelir; z.coerce.boolean() "false"ı da
+  // true'ya çevirdiği için açık enum kullanıyoruz.
+  allowed: z.enum(["true", "false"]).optional(),
+  from: z.coerce.date().optional(),
+  to: z.coerce.date().optional(),
 });
 
 // Faz 4: turnike geçiş olayları (izin/red) — personel + admin
+// İmleçli sayfalama + cihaz/üye/sonuç/tarih filtreleri
 adminRouter.get(
   "/entry-events",
   requireRole("admin", "staff"),
-  async (_req, res) => {
-    const docs = await db
-      .collection("entry_events")
-      .find({})
-      .sort({ at: -1 })
-      .limit(100)
-      .toArray();
-    const body: EntryEvent[] = docs.map((d) => ({
-      id: d._id.toString(),
-      deviceId: d.deviceId,
-      deviceName: d.deviceName,
-      userId: d.userId ?? null,
-      memberName: d.memberName ?? null,
-      allowed: d.allowed,
-      reason: d.reason ?? null,
-      at: d.at.toISOString(),
-    }));
+  async (req, res) => {
+    const query = entryEventQuerySchema.safeParse(req.query);
+    if (!query.success) {
+      sendApiError(
+        res,
+        400,
+        "INVALID_REQUEST",
+        "Invalid list query parameters.",
+      );
+      return;
+    }
+    const { cursor, limit, deviceId, userId, allowed, from, to } = query.data;
+
+    const filters: Record<string, unknown>[] = [];
+    if (deviceId) filters.push({ deviceId });
+    if (userId) filters.push({ userId });
+    if (allowed) filters.push({ allowed: allowed === "true" });
+    const range = dateRangeFilter("at", from, to);
+    if (Object.keys(range).length > 0) filters.push(range);
+
+    const page = await findPage(db.collection("entry_events"), {
+      timeField: "at",
+      filter: filters.length > 0 ? { $and: filters } : {},
+      cursor,
+      limit,
+    }).catch(toInvalidCursorResponse(res));
+    if (!page) return;
+
+    const body: Page<EntryEvent> = {
+      items: page.docs.map((d) => ({
+        id: d._id.toString(),
+        deviceId: d.deviceId,
+        deviceName: d.deviceName,
+        userId: d.userId ?? null,
+        memberName: d.memberName ?? null,
+        allowed: d.allowed,
+        reason: d.reason ?? null,
+        at: (d.at as Date).toISOString(),
+      })),
+      nextCursor: page.nextCursor,
+    };
     res.json(body);
   },
 );
 
-// Faz 5 — KVKK: bekleyen hesap silme talepleri listesi (yalnızca admin)
+const deletionRequestQuerySchema = pageQuerySchema.extend({
+  status: z.enum(["pending", "approved", "rejected"]).optional(),
+});
+
+// Faz 5 — KVKK: hesap silme talepleri listesi (yalnızca admin)
+// İmleçli sayfalama + durum filtresi
 adminRouter.get(
   "/deletion-requests",
   requireRole("admin"),
-  async (_req, res) => {
-    const docs = await db
-      .collection("deletion_requests")
-      .find({})
-      .sort({ requestedAt: -1 })
-      .limit(100)
-      .toArray();
-    const body: DeletionRequest[] = docs.map((d) => ({
-      id: d._id.toString(),
-      userId: (d.userId as ObjectId).toString(),
-      email: d.email ?? "",
-      name: d.name ?? "",
-      requestedAt: d.requestedAt.toISOString(),
-      status: d.status,
-      resolvedAt: d.resolvedAt ? new Date(d.resolvedAt).toISOString() : null,
-      resolvedBy: d.resolvedBy ?? null,
-    }));
+  async (req, res) => {
+    const query = deletionRequestQuerySchema.safeParse(req.query);
+    if (!query.success) {
+      sendApiError(
+        res,
+        400,
+        "INVALID_REQUEST",
+        "Invalid list query parameters.",
+      );
+      return;
+    }
+    const { cursor, limit, status } = query.data;
+
+    const page = await findPage(db.collection("deletion_requests"), {
+      timeField: "requestedAt",
+      filter: status ? { status } : {},
+      cursor,
+      limit,
+    }).catch(toInvalidCursorResponse(res));
+    if (!page) return;
+
+    const body: Page<DeletionRequest> = {
+      items: page.docs.map((d) => ({
+        id: d._id.toString(),
+        userId: (d.userId as ObjectId).toString(),
+        email: d.email ?? "",
+        name: d.name ?? "",
+        requestedAt: (d.requestedAt as Date).toISOString(),
+        status: d.status,
+        resolvedAt: d.resolvedAt ? new Date(d.resolvedAt).toISOString() : null,
+        resolvedBy: d.resolvedBy ?? null,
+      })),
+      nextCursor: page.nextCursor,
+    };
     res.json(body);
   },
 );

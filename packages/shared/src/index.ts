@@ -26,6 +26,17 @@ export interface ReadinessResponse {
   };
 }
 
+/**
+ * İmleç (keyset) tabanlı sayfalama zarfı. Offset yerine imleç kullanılır:
+ * listeler zamana göre azalan sıradadır ve sürekli yeni kayıt eklenir, offset
+ * ile sayfa atlarken kayıt tekrarlanır veya atlanırdı.
+ */
+export interface Page<T> {
+  items: T[];
+  /** Sonraki sayfa için `cursor` sorgu parametresine verilir; son sayfada null. */
+  nextCursor: string | null;
+}
+
 export type Role = "admin" | "staff" | "member";
 
 export interface PublicUser {
