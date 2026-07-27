@@ -7,7 +7,7 @@ import { sendApiError } from "../apiError.js";
 import { logAudit } from "../audit.js";
 import { authed, requireRole } from "../middleware.js";
 import { disconnectDevice, isDeviceOnline } from "../gateway.js";
-import { computeUptime24h } from "../deviceStatus.js";
+import { computeUptimes24h } from "../deviceStatus.js";
 import { gateQrContent } from "../gateQr.js";
 
 export const devicesRouter: Router = Router();
@@ -63,22 +63,24 @@ devicesRouter.get("/", requireRole("admin", "staff"), async (_req, res) => {
     .find({})
     .sort({ createdAt: -1 })
     .toArray();
-  const body: Device[] = await Promise.all(
-    docs.map(async (d) => {
-      const id = d._id.toString();
-      const online = isDeviceOnline(id);
-      return {
-        id,
-        name: d.name,
-        direction: (d.direction as DeviceDirection | undefined) ?? "in",
-        online,
-        lastSeenAt: d.lastSeenAt ? new Date(d.lastSeenAt).toISOString() : null,
-        createdAt: d.createdAt.toISOString(),
-        uptime24h: await computeUptime24h(id, online),
-        qrContent: gateQrContent(id),
-      };
-    }),
-  );
+  const devices = docs.map((d) => {
+    const deviceId = d._id.toString();
+    return { deviceId, nowOnline: isDeviceOnline(deviceId) };
+  });
+  const uptimes = await computeUptimes24h(devices);
+  const body: Device[] = docs.map((d, index) => {
+    const { deviceId: id, nowOnline: online } = devices[index]!;
+    return {
+      id,
+      name: d.name,
+      direction: (d.direction as DeviceDirection | undefined) ?? "in",
+      online,
+      lastSeenAt: d.lastSeenAt ? new Date(d.lastSeenAt).toISOString() : null,
+      createdAt: d.createdAt.toISOString(),
+      uptime24h: uptimes.get(id)!,
+      qrContent: gateQrContent(id),
+    };
+  });
   res.json(body);
 });
 

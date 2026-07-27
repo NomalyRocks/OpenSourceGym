@@ -9,6 +9,26 @@ interface DeviceStatusLogDoc {
   at: Date;
 }
 
+interface DeviceUptimeInput {
+  deviceId: string;
+  nowOnline: boolean;
+}
+
+interface GroupedInWindowLogs {
+  _id: string;
+  logs: DeviceStatusLogDoc[];
+}
+
+interface GroupedBeforeLog {
+  _id: string;
+  log: DeviceStatusLogDoc;
+}
+
+interface UptimeAggregationResult {
+  inWindow: GroupedInWindowLogs[];
+  before: GroupedBeforeLog[];
+}
+
 // Cihaz bağlantı durumu geçmişi (KPI-4: son 24 saat çevrimiçi kalma yüzdesi).
 // Fire-and-forget: API/Gateway akışını bloklamaz, hata konsola düşer.
 export function logDeviceStatus(deviceId: string, online: boolean): void {
@@ -41,25 +61,13 @@ export function sweepStaleOnlineStatus(): void {
   });
 }
 
-// Son 24 saatte cihazın çevrimiçi kaldığı süre yüzdesi (0-100, 1 ondalık basamak)
-export async function computeUptime24h(
-  deviceId: string,
+function calculateUptime24h(
+  inWindow: DeviceStatusLogDoc[],
+  before: DeviceStatusLogDoc | undefined,
   nowOnline: boolean,
-): Promise<number> {
-  const now = Date.now();
-  const windowStart = new Date(now - WINDOW_MS);
-  const collection = db.collection<DeviceStatusLogDoc>(COLLECTION);
-
-  const inWindow = await collection
-    .find({ deviceId, at: { $gte: windowStart } })
-    .sort({ at: 1 })
-    .toArray();
-  const before = await collection
-    .find({ deviceId, at: { $lt: windowStart } })
-    .sort({ at: -1 })
-    .limit(1)
-    .next();
-
+  now: number,
+  windowStart: Date,
+): number {
   if (inWindow.length === 0) {
     if (!before) {
       // Hiç kayıt yok: cihazın şu anki durumu pencere boyunca sabit kabul edilir
@@ -91,4 +99,95 @@ export async function computeUptime24h(
 
   const pct = (onlineMs / WINDOW_MS) * 100;
   return Math.round(pct * 10) / 10;
+}
+
+// Son 24 saatte cihazların çevrimiçi kaldığı süre yüzdesi (0-100, 1 ondalık basamak)
+export async function computeUptimes24h(
+  devices: readonly DeviceUptimeInput[],
+): Promise<Map<string, number>> {
+  const currentStatusByDevice = new Map(
+    devices.map(({ deviceId, nowOnline }) => [deviceId, nowOnline]),
+  );
+  if (currentStatusByDevice.size === 0) {
+    return new Map();
+  }
+
+  const now = Date.now();
+  const windowStart = new Date(now - WINDOW_MS);
+  const collection = db.collection<DeviceStatusLogDoc>(COLLECTION);
+  const [grouped] = await collection
+    .aggregate<UptimeAggregationResult>([
+      {
+        $match: { deviceId: { $in: [...currentStatusByDevice.keys()] } },
+      },
+      {
+        $facet: {
+          inWindow: [
+            { $match: { at: { $gte: windowStart } } },
+            { $sort: { deviceId: 1, at: 1 } },
+            {
+              $group: {
+                _id: "$deviceId",
+                logs: {
+                  $push: {
+                    deviceId: "$deviceId",
+                    online: "$online",
+                    at: "$at",
+                  },
+                },
+              },
+            },
+          ],
+          before: [
+            { $match: { at: { $lt: windowStart } } },
+            { $sort: { deviceId: 1, at: -1 } },
+            {
+              $group: {
+                _id: "$deviceId",
+                log: {
+                  $first: {
+                    deviceId: "$deviceId",
+                    online: "$online",
+                    at: "$at",
+                  },
+                },
+              },
+            },
+          ],
+        },
+      },
+    ])
+    .toArray();
+
+  const inWindowByDevice = new Map(
+    grouped?.inWindow.map(({ _id, logs }) => [_id, logs]),
+  );
+  const beforeByDevice = new Map(
+    grouped?.before.map(({ _id, log }) => [_id, log]),
+  );
+  const uptimes = new Map<string, number>();
+
+  for (const [deviceId, nowOnline] of currentStatusByDevice) {
+    uptimes.set(
+      deviceId,
+      calculateUptime24h(
+        inWindowByDevice.get(deviceId) ?? [],
+        beforeByDevice.get(deviceId),
+        nowOnline,
+        now,
+        windowStart,
+      ),
+    );
+  }
+
+  return uptimes;
+}
+
+// Tek cihaz kullanan çağrılar toplu sorgu ve hesaplama mantığını paylaşır.
+export async function computeUptime24h(
+  deviceId: string,
+  nowOnline: boolean,
+): Promise<number> {
+  const uptimes = await computeUptimes24h([{ deviceId, nowOnline }]);
+  return uptimes.get(deviceId)!;
 }
