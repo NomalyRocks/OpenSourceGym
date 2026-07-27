@@ -349,6 +349,8 @@ const en = {
     "The deletion request has already been resolved.",
   "Hesap verileri temizlenemedi. Lütfen tekrar deneyin.":
     "Account data could not be cleaned up. Please try again.",
+  "Daha fazla yükle": "Load more",
+  Tümü: "All",
 } as const;
 
 const tr = Object.fromEntries(Object.keys(en).map((key) => [key, key]));

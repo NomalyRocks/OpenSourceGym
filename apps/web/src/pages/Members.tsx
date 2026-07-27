@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type {
   CreateSubscriptionRequest,
@@ -7,7 +7,7 @@ import type {
   Subscription,
   SubscriptionMonths,
 } from "@opengym/shared";
-import { ApiError, api, authApi } from "../lib/api";
+import { ApiError, api, authApi, isAbortError } from "../lib/api";
 import { useProfile } from "../lib/profile";
 import { dateLocale } from "../i18n/format";
 import { errorMessage } from "../i18n/errors";
@@ -68,18 +68,37 @@ function subscriptionStatus(subscription: Subscription): {
 function SubscriptionPanel({ member }: { member: PublicUser }) {
   const { t, i18n } = useTranslation();
   const [subs, setSubs] = useState<Subscription[] | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [msg, setMsg] = useState<{ kind: string; text: string } | null>(null);
   const [months, setMonths] = useState<SubscriptionMonths>(1);
 
-  async function load() {
-    setSubs(
-      await api<Subscription[]>(`/api/admin/users/${member.id}/subscriptions`),
-    );
+  function load(signal?: AbortSignal) {
+    return api<Subscription[]>(`/api/admin/users/${member.id}/subscriptions`, {
+      signal,
+    });
   }
 
-  if (subs === null) {
-    void load();
-  }
+  // Yükleme render fazında değil burada yapılır: render sırasında istek atmak
+  // StrictMode'da çift istek ve unmount sonrası setState üretiyordu.
+  useEffect(() => {
+    const controller = new AbortController();
+    setSubs(null);
+    setLoading(true);
+    setLoadError(null);
+
+    load(controller.signal)
+      .then(setSubs)
+      .catch((err) => {
+        if (isAbortError(err)) return;
+        setLoadError(errorMessage(err, t, "Yüklenemedi."));
+      })
+      .finally(() => setLoading(false));
+
+    // Üye değişince veya bileşen sökülünce uçuşan istek iptal edilir; geç
+    // dönen yanıt yeni üyenin listesini ezemez.
+    return () => controller.abort();
+  }, [member.id]);
 
   async function grant() {
     setMsg(null);
@@ -94,7 +113,7 @@ function SubscriptionPanel({ member }: { member: PublicUser }) {
         body: request,
       });
       setMsg({ kind: "success", text: t("Abonelik tanımlandı.") });
-      await load();
+      setSubs(await load());
     } catch (err) {
       setMsg({
         kind: "error",
@@ -114,6 +133,7 @@ function SubscriptionPanel({ member }: { member: PublicUser }) {
         </h2>
       </div>
       {msg && <div className={`msg ${msg.kind}`}>{msg.text}</div>}
+      {loadError && <div className="msg error">{loadError}</div>}
       <div className="row" style={{ marginBottom: 18 }}>
         <div className="field">
           <label htmlFor="months">{t("Paket")}</label>
@@ -143,30 +163,36 @@ function SubscriptionPanel({ member }: { member: PublicUser }) {
           </tr>
         </thead>
         <tbody>
-          {(subs ?? []).map((subscription) => {
-            const status = subscriptionStatus(subscription);
-            return (
-              <tr key={subscription.id}>
-                <td>
-                  {new Date(subscription.startsAt).toLocaleDateString(
-                    dateLocale(i18n.resolvedLanguage),
-                  )}
-                </td>
-                <td>
-                  {new Date(subscription.endsAt).toLocaleDateString(
-                    dateLocale(i18n.resolvedLanguage),
-                  )}
-                </td>
-                <td>{subscription.note ?? "—"}</td>
-                <td>
-                  <span className={`badge ${status.className}`}>
-                    {t(status.label)}
-                  </span>
-                </td>
-              </tr>
-            );
-          })}
-          {subs?.length === 0 && (
+          {loading && (
+            <tr>
+              <td colSpan={4}>{t("Yükleniyor…")}</td>
+            </tr>
+          )}
+          {!loading &&
+            (subs ?? []).map((subscription) => {
+              const status = subscriptionStatus(subscription);
+              return (
+                <tr key={subscription.id}>
+                  <td>
+                    {new Date(subscription.startsAt).toLocaleDateString(
+                      dateLocale(i18n.resolvedLanguage),
+                    )}
+                  </td>
+                  <td>
+                    {new Date(subscription.endsAt).toLocaleDateString(
+                      dateLocale(i18n.resolvedLanguage),
+                    )}
+                  </td>
+                  <td>{subscription.note ?? "—"}</td>
+                  <td>
+                    <span className={`badge ${status.className}`}>
+                      {t(status.label)}
+                    </span>
+                  </td>
+                </tr>
+              );
+            })}
+          {!loading && subs?.length === 0 && (
             <tr>
               <td colSpan={4}>{t("Abonelik kaydı yok.")}</td>
             </tr>

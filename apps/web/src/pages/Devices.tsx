@@ -7,7 +7,8 @@ import type {
   DeviceDirection,
   GymSettings,
 } from "@opengym/shared";
-import { api } from "../lib/api";
+import { api, isAbortError } from "../lib/api";
+import { usePollingQuery } from "../hooks/usePollingQuery";
 import { errorMessage } from "../i18n/errors";
 import { dateLocale } from "../i18n/format";
 
@@ -78,20 +79,17 @@ export function Devices() {
       .catch(() => undefined);
   }, []);
 
-  async function load() {
+  async function load(signal?: AbortSignal) {
     try {
-      setDevices(await api<Device[]>("/api/admin/devices"));
+      setDevices(await api<Device[]>("/api/admin/devices", { signal }));
       setError(null);
     } catch (err) {
+      if (isAbortError(err)) return;
       setError(errorMessage(err, t, "Yüklenemedi."));
     }
   }
 
-  useEffect(() => {
-    void load();
-    const timer = setInterval(() => void load(), 10000);
-    return () => clearInterval(timer);
-  }, []);
+  usePollingQuery(load, 10000);
 
   async function create(e: React.FormEvent) {
     e.preventDefault();

@@ -1,12 +1,14 @@
-import { useEffect, useState } from "react";
+import { useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type {
   AdminStats,
   EntryEvent,
   OccupancyResponse,
+  Page,
   PublicUser,
 } from "@opengym/shared";
-import { api } from "../lib/api";
+import { api, isAbortError } from "../lib/api";
+import { usePollingQuery } from "../hooks/usePollingQuery";
 import { errorMessage } from "../i18n/errors";
 import { dateLocale } from "../i18n/format";
 
@@ -50,28 +52,27 @@ export function Overview() {
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<PublicUser[] | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const searchAbort = useRef<AbortController | null>(null);
 
-  async function load() {
+  async function load(signal: AbortSignal) {
     try {
       const [s, occ, ev] = await Promise.all([
-        api<AdminStats>("/api/admin/stats"),
-        api<OccupancyResponse>("/api/me/occupancy"),
-        api<EntryEvent[]>("/api/admin/entry-events"),
+        api<AdminStats>("/api/admin/stats", { signal }),
+        api<OccupancyResponse>("/api/me/occupancy", { signal }),
+        // Genel bakış yalnızca son birkaç geçişi gösterir; sunucudan da az iste.
+        api<Page<EntryEvent>>("/api/admin/entry-events?limit=6", { signal }),
       ]);
       setStats(s);
       setOccupancy(occ);
-      setEntries(ev.slice(0, 6));
+      setEntries(ev.items);
       setError(null);
     } catch (err) {
+      if (isAbortError(err)) return;
       setError(errorMessage(err, t, "Yüklenemedi."));
     }
   }
 
-  useEffect(() => {
-    void load();
-    const timer = setInterval(() => void load(), 15000);
-    return () => clearInterval(timer);
-  }, []);
+  usePollingQuery(load, 15000);
 
   async function search(e: React.FormEvent) {
     e.preventDefault();
@@ -80,11 +81,18 @@ export function Overview() {
       setResults(null);
       return;
     }
+    // Önceki arama iptal edilir: aksi halde geç dönen eski yanıt yeni sonucu ezer.
+    searchAbort.current?.abort();
+    const controller = new AbortController();
+    searchAbort.current = controller;
     try {
       setResults(
-        await api<PublicUser[]>(`/api/admin/users?q=${encodeURIComponent(q)}`),
+        await api<PublicUser[]>(`/api/admin/users?q=${encodeURIComponent(q)}`, {
+          signal: controller.signal,
+        }),
       );
     } catch (err) {
+      if (isAbortError(err)) return;
       setResults(null);
       setError(errorMessage(err, t, "Arama başarısız."));
     }

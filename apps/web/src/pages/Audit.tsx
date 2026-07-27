@@ -1,7 +1,7 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-import type { AuditLogEntry } from "@opengym/shared";
-import { api } from "../lib/api";
+import type { AuditLogEntry, Page } from "@opengym/shared";
+import { api, isAbortError } from "../lib/api";
 import { errorMessage } from "../i18n/errors";
 import { dateLocale } from "../i18n/format";
 import type { WebTranslationKey } from "../i18n/resources";
@@ -26,17 +26,65 @@ const actionLabels: Partial<Record<string, WebTranslationKey>> = {
 export function Audit() {
   const { t, i18n } = useTranslation();
   const [entries, setEntries] = useState<AuditLogEntry[]>([]);
+  const [nextCursor, setNextCursor] = useState<string | null>(null);
+  const [action, setAction] = useState("");
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  /**
+   * `cursor` verilmezse ilk sayfa (liste sıfırlanır), verilirse sonraki sayfa
+   * eklenir. Filtre değişince imleç geçersizdir, bu yüzden baştan yüklenir.
+   */
+  const load = useCallback(
+    async (cursor: string | null, signal?: AbortSignal) => {
+      setLoading(true);
+      const params = new URLSearchParams();
+      if (cursor) params.set("cursor", cursor);
+      if (action) params.set("action", action);
+      try {
+        const page = await api<Page<AuditLogEntry>>(
+          `/api/admin/audit?${params.toString()}`,
+          { signal },
+        );
+        setEntries((prev) => (cursor ? [...prev, ...page.items] : page.items));
+        setNextCursor(page.nextCursor);
+        setError(null);
+      } catch (err) {
+        if (isAbortError(err)) return;
+        setError(errorMessage(err, t, "Yüklenemedi."));
+      } finally {
+        setLoading(false);
+      }
+    },
+    [action, t],
+  );
+
   useEffect(() => {
-    api<AuditLogEntry[]>("/api/admin/audit")
-      .then(setEntries)
-      .catch((err) => setError(errorMessage(err, t, "Yüklenemedi.")));
-  }, []);
+    const controller = new AbortController();
+    void load(null, controller.signal);
+    return () => controller.abort();
+  }, [load]);
 
   return (
     <div className="stagger">
       <h1>{t("İşlem kaydı")}</h1>
+      <div className="row" style={{ marginBottom: 16 }}>
+        <div className="field">
+          <label htmlFor="audit-action">{t("İşlem")}</label>
+          <select
+            id="audit-action"
+            value={action}
+            onChange={(e) => setAction(e.target.value)}
+          >
+            <option value="">{t("Tümü")}</option>
+            {Object.entries(actionLabels).map(([value, label]) => (
+              <option key={value} value={value}>
+                {label ? t(label) : value}
+              </option>
+            ))}
+          </select>
+        </div>
+      </div>
       {error && <div className="msg error">{error}</div>}
       <div className="panel">
         <table>
@@ -64,13 +112,27 @@ export function Audit() {
                 </tr>
               );
             })}
-            {entries.length === 0 && !error && (
+            {entries.length === 0 && !error && !loading && (
               <tr>
                 <td colSpan={4}>{t("Kayıt yok.")}</td>
               </tr>
             )}
+            {loading && (
+              <tr>
+                <td colSpan={4}>{t("Yükleniyor…")}</td>
+              </tr>
+            )}
           </tbody>
         </table>
+        {nextCursor && (
+          <button
+            onClick={() => void load(nextCursor)}
+            disabled={loading}
+            style={{ marginTop: 16 }}
+          >
+            {t("Daha fazla yükle")}
+          </button>
+        )}
       </div>
     </div>
   );
