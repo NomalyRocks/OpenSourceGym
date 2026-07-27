@@ -24,7 +24,7 @@ import { LanguageSwitcher } from "../i18n/LanguageSwitcher";
 import { errorMessage } from "../i18n/errors";
 import { dateLocale } from "../i18n/format";
 import { colors, radius, spacing, type } from "../theme";
-import { Button, Skeleton, StatusMessage } from "../ui";
+import { Button, ErrorMsg, Skeleton, StatusMessage } from "../ui";
 
 const AVATAR_SIZE = 88;
 
@@ -43,6 +43,8 @@ export function Profile({ fallbackName }: { fallbackName: string }) {
   const [photoLoadFailed, setPhotoLoadFailed] = useState(false);
   const [deletionError, setDeletionError] = useState<string | null>(null);
   const [deletionBusy, setDeletionBusy] = useState(false);
+  const [signOutError, setSignOutError] = useState<string | null>(null);
+  const [signOutBusy, setSignOutBusy] = useState(false);
 
   const load = useCallback(async () => {
     const [profileResult, deletionResult] = await Promise.allSettled([
@@ -214,6 +216,22 @@ export function Profile({ fallbackName }: { fallbackName: string }) {
     }
   }
 
+  // Çıkış da ağ isteğidir: sessizce başarısız olursa üye hâlâ oturumda olduğunu
+  // fark etmez. Hata görünür olmalı ve buton yeniden denenebilir kalmalı.
+  async function signOut() {
+    setSignOutError(null);
+    setSignOutBusy(true);
+    try {
+      await authClient.signOut();
+    } catch (error) {
+      setSignOutError(
+        errorMessage(error, t, "Çıkış yapılamadı. Tekrar deneyin."),
+      );
+    } finally {
+      setSignOutBusy(false);
+    }
+  }
+
   const profileName = profile?.name ?? fallbackName;
   const initials = profileName
     .split(/\s+/)
@@ -342,11 +360,13 @@ export function Profile({ fallbackName }: { fallbackName: string }) {
 
       <View style={profileStyles.section}>
         <Text style={profileStyles.sectionTitle}>{t("Oturum")}</Text>
+        <ErrorMsg text={signOutError} />
         <View style={{ marginTop: spacing.sm }}>
           <Button
             title={t("Çıkış yap")}
             variant="secondary"
-            onPress={() => void authClient.signOut()}
+            busy={signOutBusy}
+            onPress={() => void signOut()}
           />
         </View>
       </View>
