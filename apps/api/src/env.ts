@@ -44,7 +44,15 @@ const envSchema = z.object({
   SMTP_FROM: z.string().default("OpenGym <noreply@opengym.local>"),
 });
 
-const parsed = envSchema.safeParse(process.env);
+// Boş string "tanımsız" demektir. docker compose'daki `${VAR:-}` yazımı
+// değişkeni BOŞ DEĞERLE gönderir, hiç göndermemiş olmaz; bunu ayıklamazsak
+// isteğe bağlı bir URL alanı (ör. R2_PUBLIC_BASE_URL) boş geldiğinde şema
+// hata verir ve R2 kullanmayan her kurulum açılışta crash-loop'a girer.
+const presentEnv = Object.fromEntries(
+  Object.entries(process.env).filter(([, value]) => value !== ""),
+);
+
+const parsed = envSchema.safeParse(presentEnv);
 
 if (!parsed.success) {
   // Yapılandırma hatası çalışma anına ertelenmemeli: hangi değişkenin neden
