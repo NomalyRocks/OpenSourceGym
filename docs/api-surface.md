@@ -27,7 +27,10 @@ Source of truth: checked source under `apps/api/src` and shared types under `pac
 Application errors use `ApiErrorResponse` (`packages/shared/src/index.ts:146`):
 
 ```ts
-{ code: ApiErrorCode; message: string }
+{
+  code: ApiErrorCode;
+  message: string;
+}
 ```
 
 `sendApiError()` writes that body with the supplied status (`apps/api/src/apiError.ts:5`). The terminal Express error handler also emits:

@@ -99,9 +99,8 @@ export function Profile({ fallbackName }: { fallbackName: string }) {
     try {
       // Native modülü yalnızca fotoğraf işlenirken yükle. Böylece modülü henüz
       // içermeyen eski development client'lar uygulama açılışında çökmez.
-      const { ImageManipulator, SaveFormat } = await import(
-        "expo-image-manipulator"
-      );
+      const { ImageManipulator, SaveFormat } =
+        await import("expo-image-manipulator");
       const context = ImageManipulator.manipulate(selected.assets[0].uri);
       context.resize({ width: 1024 });
       const rendered = await context.renderAsync();

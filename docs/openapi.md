@@ -6,10 +6,10 @@ no separate docs server and no extra port.
 
 ## Where it runs
 
-| What            | URL                                   |
-| --------------- | ------------------------------------- |
-| Swagger UI      | `http://localhost:3000/api/docs`      |
-| Raw JSON spec   | `http://localhost:3000/api/openapi.json` |
+| What          | URL                                      |
+| ------------- | ---------------------------------------- |
+| Swagger UI    | `http://localhost:3000/api/docs`         |
+| Raw JSON spec | `http://localhost:3000/api/openapi.json` |
 
 Port `3000` is the API's own port (`PORT`, see `apps/api/src/env.ts`). Start it
 the usual way — `pnpm dev` at the repo root, or `pnpm --filter @opengym/api dev`
@@ -49,13 +49,13 @@ public deployment.
 
 Operations are tagged by area:
 
-| Tag       | Covers                                     |
-| --------- | ------------------------------------------ |
-| `admin`   | Staff and admin operations                 |
-| `me`      | The signed-in user's own operations        |
-| `devices` | Turnstile device management                |
-| `system`  | Health and the docs endpoints              |
-| `auth`    | BetterAuth-owned identity endpoints        |
+| Tag       | Covers                              |
+| --------- | ----------------------------------- |
+| `admin`   | Staff and admin operations          |
+| `me`      | The signed-in user's own operations |
+| `devices` | Turnstile device management         |
+| `system`  | Health and the docs endpoints       |
+| `auth`    | BetterAuth-owned identity endpoints |
 
 Each operation's description ends with its required role (`Gerekli rol: …`),
 mirroring the `requireRole(...)` call on the route. Protected operations also
@@ -84,11 +84,11 @@ generated from the running code.
 
 `apps/api/src/openapi/`:
 
-| File         | Role                                                             |
-| ------------ | ---------------------------------------------------------------- |
-| `schemas.ts` | zod schemas for every request and response shape                  |
-| `spec.ts`    | assembles the document via `zod-openapi`'s `createDocument()`     |
-| `router.ts`  | serves the JSON and mounts Swagger UI, behind the exposure gate   |
+| File         | Role                                                            |
+| ------------ | --------------------------------------------------------------- |
+| `schemas.ts` | zod schemas for every request and response shape                |
+| `spec.ts`    | assembles the document via `zod-openapi`'s `createDocument()`   |
+| `router.ts`  | serves the JSON and mounts Swagger UI, behind the exposure gate |
 
 The document is built once at module load and served from memory. Nothing is
 generated at build time and no file is written to disk, so there is no
@@ -124,7 +124,9 @@ import { openApiRouter } from "./src/openapi/router.js";
 const app = express();
 app.use("/api", openApiRouter);
 app.listen(3999, async () => {
-  const doc = await (await fetch("http://localhost:3999/api/openapi.json")).json();
+  const doc = await (
+    await fetch("http://localhost:3999/api/openapi.json")
+  ).json();
   console.log(Object.keys(doc.paths).length, "paths");
 });
 ```
