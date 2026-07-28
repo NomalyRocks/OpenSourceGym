@@ -15,3 +15,12 @@ agents/sim/devices.json
 # Obsidian mimari hafıza wiki'si (companion knowledge base, ürün koduna dahil değil)
 docs/wiki/
 docs/.obsidian/
+
+# Güvenlik taraması çıktısı. Repo herkese açık: bulgu raporunu yayımlamak,
+# düzeltilmemiş bir zafiyeti saldırgana hazır halde sunmak demektir.
+sast/
+
+# Yerel çalışma artıkları — ürün kaynağı değil
+login-visual.png
+spor-salonu-ye-dashboard/
+sports-salon-dashboard-design/
