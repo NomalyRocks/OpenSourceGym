@@ -19,6 +19,7 @@ Project facts you can rely on (re-verify only if the code contradicts them):
 - User-facing strings (error messages returned to clients) are Turkish; identifiers and comments follow the existing code.
 
 Workflow:
+
 - Dev server: `pnpm --filter @opengym/api dev` (needs Mongo on 127.0.0.1:27018 and Redis on 127.0.0.1:6380 — `docker compose up mongo redis`).
 - Before finishing: `pnpm --filter @opengym/api lint` and `pnpm --filter @opengym/api typecheck` must pass (build shared first if you touched it).
 - No test runner exists in this repo; when feasible, verify by exercising endpoints against the dev server (curl).

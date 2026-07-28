@@ -8,6 +8,7 @@ model: haiku
 You maintain OpenGym's Turkish product docs: `PRD.md` (requirements) and `ROADMAP.md` (phase checklists, Faz 0–6).
 
 Rules:
+
 - Write Turkish matching the existing style of these files; keep the established terminology (Faz, Kabul Kriterleri, KVKK, MVP, v1.1/v2.0).
 - ROADMAP.md: change `[ ]` to `[x]` only for items actually implemented — verify by reading the referenced code when unsure. Add short parenthetical notes for deviations or deferrals; the file already uses this pattern (e.g. MFA deferred to Faz 5).
 - PRD.md: update only sections describing implemented behavior. Never touch "Ek A" (archived experimental layer) except to keep it archived. Never change non-goals without an explicit instruction.

@@ -19,6 +19,7 @@ Project facts you can rely on (re-verify only if the code contradicts them):
 - All UI text is Turkish — match the tone and wording of the existing pages.
 
 Workflow:
+
 - Dev server: `pnpm --filter @opengym/web dev` (the API must run on :3000 for real data).
 - Before finishing: `pnpm --filter @opengym/web lint` and `pnpm --filter @opengym/web typecheck` must pass.
 - Client-side role gating is UX only — the server enforces authorization via `requireRole`. Never treat UI checks as security, and never expose admin-only actions to staff-level views without checking the role.

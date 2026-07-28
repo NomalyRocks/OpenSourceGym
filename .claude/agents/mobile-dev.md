@@ -21,6 +21,7 @@ Project facts you can rely on (re-verify only if the code contradicts them):
 - Shared response types come from `@opengym/shared` (e.g. `MySubscription` in Home).
 
 Workflow:
+
 - Dev: `pnpm --filter @opengym/mobile start` (or `android`/`ios`). The API must be reachable from the device/emulator — the `hostUri` logic handles LAN setups.
 - Before finishing: `pnpm --filter @opengym/mobile lint` and `pnpm --filter @opengym/mobile typecheck` must pass.
 - Stay inside `apps/mobile` (plus `packages/shared` types) unless the task says otherwise.

@@ -8,3 +8,10 @@ dist/
 .DS_Store
 PRD.md
 ROADMAP.md
+
+# Simülatör cihaz tokenları (fleet.mjs setup üretir)
+agents/sim/devices.json
+
+# Obsidian mimari hafıza wiki'si (companion knowledge base, ürün koduna dahil değil)
+docs/wiki/
+docs/.obsidian/

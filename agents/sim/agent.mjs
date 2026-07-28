@@ -32,7 +32,11 @@ function connect() {
 
   ws.addEventListener("open", () => {
     ws.send(
-      JSON.stringify({ type: "auth", deviceId: DEVICE_ID, token: DEVICE_TOKEN }),
+      JSON.stringify({
+        type: "auth",
+        deviceId: DEVICE_ID,
+        token: DEVICE_TOKEN,
+      }),
     );
   });
 
@@ -46,7 +50,9 @@ function connect() {
 
     if (msg.type === "auth_ok") {
       reconnectDelayMs = 1000;
-      console.log(`[bağlı] cihaz: ${msg.deviceName} — açılma komutu bekleniyor…`);
+      console.log(
+        `[bağlı] cihaz: ${msg.deviceName} — açılma komutu bekleniyor…`,
+      );
       return;
     }
 
