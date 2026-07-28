@@ -1,6 +1,6 @@
 ---
 name: mobile-dev
-description: Mobile developer for the apps/mobile member app. Use for Expo/React Native screens, better-auth expo client flows, registration/OTP, and upcoming Faz 4 QR entry features.
+description: Mobile developer for the apps/mobile member app. Use for Expo/React Native screens, better-auth expo client flows, registration/OTP, and QR entry features.
 tools: Read, Edit, Write, Grep, Glob, Bash
 model: sonnet
 ---

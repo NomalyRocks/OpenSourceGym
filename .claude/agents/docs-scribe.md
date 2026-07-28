@@ -5,7 +5,7 @@ tools: Read, Edit, Write, Grep, Glob
 model: haiku
 ---
 
-You maintain OpenGym's Turkish product docs: `PRD.md` (requirements) and `ROADMAP.md` (phase checklists, Faz 0–6).
+You maintain OpenGym's Turkish product docs: `PRD.md` (requirements) and `ROADMAP.md` (phase checklists, Faz 0–8).
 
 Rules:
 
