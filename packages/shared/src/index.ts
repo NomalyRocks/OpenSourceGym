@@ -389,12 +389,14 @@ export interface RenewalDueMember {
   lastReminderAt: string | null;
 }
 
-/** Elle hatırlatma gönderme sonucu */
+/**
+ * Elle hatırlatma gönderme sonucu (yalnızca 200 yanıtında).
+ * Gönderilemeyen durumlar normal hata sözleşmesiyle döner:
+ * `REMINDER_RECENTLY_SENT` (429) veya `NO_UPCOMING_RENEWAL` (404).
+ */
 export interface RenewalReminderResult {
   sent: boolean;
-  /** Gönderilmediyse nedeni */
-  reason?: "recently-reminded" | "no-upcoming-renewal";
-  /** Gönderildiyse hatırlatmanın kaydedildiği zaman */
+  /** Hatırlatmanın kaydedildiği zaman */
   sentAt: string | null;
 }
 

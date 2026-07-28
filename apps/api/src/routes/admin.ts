@@ -703,6 +703,10 @@ adminRouter.post(
     await db.collection("account").deleteMany({ userId: targetId });
     await db.collection("subscriptions").deleteMany({ userId: targetId });
     await db.collection("twoFactor").deleteMany({ userId: targetId });
+    // Hatırlatma kayıtları "bu üyeye şu tarihte e-posta gönderildi" bilgisidir
+    // ve abonelikleri silinen üyeye ait olarak kalamaz (unutulma hakkı).
+    // İstatistik değeri yok; anonimleştirmek yerine siliniyorlar.
+    await db.collection("renewal_reminders").deleteMany({ userId: targetId });
     await markOutside(targetIdStr);
     // Geçmiş turnike kayıtları istatistik için tutulur, ancak kişisel veri
     // (KVKK) taşımamalıdır

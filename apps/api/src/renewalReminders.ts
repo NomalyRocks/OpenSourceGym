@@ -5,10 +5,9 @@ import type { Db } from "mongodb";
 import { db, findGymSettings } from "./db.js";
 import { acquireLock, releaseLock } from "./redis.js";
 import {
-  buildReminderMail,
-  recordAndSendReminder,
   remainingDays,
   REMINDER_COOLDOWN_MS,
+  sendRenewalReminder,
 } from "./renewals.js";
 
 export const REMINDER_DEFAULTS: ReminderConfig = {
@@ -139,9 +138,9 @@ export async function runRenewalReminderSweep(
     const email = row.user?.email;
     if (!email) continue;
 
-    // Personel az önce elle hatırlattıysa aynı üyeye saatler içinde ikinci bir
-    // posta gitmemeli. Eşik kaydı yazılmadığı için hatırlatma kaybolmaz:
-    // bekleme süresi dolduğunda bir sonraki süpürme yeniden değerlendirir.
+    // Hızlı eleme: bekleme süresini fiilen uygulayan yer sendRenewalReminder
+    // (kilit altında), burası yalnızca boşuna kilit almayı önler — satırın
+    // son hatırlatma zamanı zaten toplulaştırmadan bedavaya geldi.
     if (
       row.lastReminderAt &&
       now.getTime() - row.lastReminderAt.getTime() < REMINDER_COOLDOWN_MS
@@ -154,28 +153,25 @@ export async function runRenewalReminderSweep(
     const threshold = thresholds.find((value) => days <= value);
     if (threshold === undefined) continue;
 
-    const mail = buildReminderMail({
-      gymName,
-      firstName: row.user?.firstName ?? "",
-      endsAt: row.endsAt,
-      remainingDays: days,
-    });
-
     try {
-      const sentAt = await recordAndSendReminder(
+      const outcome = await sendRenewalReminder(
         {
           userId: row._id,
           subscriptionId: row.subscriptionId,
+          endsAt: row.endsAt,
+          email,
+          firstName: row.user?.firstName ?? "",
+          gymName,
           thresholdDays: threshold,
           automatic: true,
           sentBy: null,
-          sentAt: now,
+          now,
         },
-        { to: email, ...mail },
         database,
       );
-      if (sentAt) report.sent++;
-      else report.alreadySent++;
+      if (outcome.status === "sent") report.sent++;
+      else if (outcome.status === "already-sent") report.alreadySent++;
+      else report.cooledDown++;
     } catch (err) {
       // Tek bir başarısız gönderim süpürmeyi durdurmamalı; kayıt geri alındığı
       // için bir sonraki turda yeniden denenir.
@@ -193,7 +189,8 @@ export async function runRenewalReminderSweep(
 }
 
 export interface RenewalReminderScheduler {
-  stop(): void;
+  /** Zamanlayıcıyı durdurur ve süren turun bitmesini bekler. */
+  stop(): Promise<void>;
   /** Testler ve elle tetikleme için: kilidi alıp tek tur çalıştırır. */
   runOnce(now?: Date): Promise<SweepReport | null>;
 }
@@ -206,6 +203,11 @@ export function startRenewalReminderScheduler(
   database: Db = db,
 ): RenewalReminderScheduler {
   let stopped = false;
+  // Süren tur kapanışta beklenir. Bir hatırlatma kaydı yazılıp SMTP yanıtı
+  // beklenirken süreç kapanırsa kayıt "gönderildi" olarak kalır ve unique
+  // indeks yüzünden o eşik bir daha denenmez — üye sessizce hatırlatmasız
+  // kalırdı. (kill -9 bu boşluğu yine açık bırakır; graceful kapanış kapatır.)
+  let inFlight: Promise<unknown> = Promise.resolve();
 
   async function runOnce(now = new Date()): Promise<SweepReport | null> {
     // Kilit, örnek çoğaltıldığında veya bir tur uzayıp bir sonrakiyle
@@ -226,16 +228,17 @@ export function startRenewalReminderScheduler(
 
   const timer = setInterval(() => {
     if (stopped) return;
-    void runOnce().catch((err: unknown) => {
+    inFlight = runOnce().catch((err: unknown) => {
       console.error("yenileme hatırlatma süpürmesi başarısız:", err);
     });
   }, SWEEP_INTERVAL_MS);
   timer.unref();
 
   return {
-    stop() {
+    async stop() {
       stopped = true;
       clearInterval(timer);
+      await inFlight;
     },
     runOnce,
   };

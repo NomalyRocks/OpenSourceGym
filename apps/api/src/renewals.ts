@@ -1,8 +1,12 @@
+import { randomUUID } from "node:crypto";
 import type { RenewalDueMember } from "@opengym/shared";
 import { ObjectId } from "mongodb";
 import type { Collection, Db, Document, WithId } from "mongodb";
 import { db, isDuplicateKeyError } from "./db.js";
+import { env } from "./env.js";
 import { sendMail } from "./mailer.js";
+import { acquireLock, releaseLock } from "./redis.js";
+import { localDayLabel } from "./reports.js";
 import {
   cursorFilter,
   decodeCursor,
@@ -45,9 +49,22 @@ export function renewalReminderCollection(
   return database.collection<RenewalReminderFields>("renewal_reminders");
 }
 
-/** Bitişe kalan tam gün (bugün bitiyorsa 0). */
-export function remainingDays(endsAt: Date, now: Date): number {
-  return Math.max(0, Math.floor((endsAt.getTime() - now.getTime()) / DAY_MS));
+/**
+ * Bitişe kalan TAKVİM günü sayısı (bugün bitiyorsa 0), salonun saat dilimine
+ * göre.
+ *
+ * Ham 24 saatlik fark kullanılamaz: 28 Temmuz 09:00'da 29 Temmuz 08:00'de
+ * bitecek bir abonelik 23 saat uzaktadır ve tabana yuvarlanınca 0 çıkar —
+ * üyeye "bugün sona eriyor" yazan bir posta giderdi, oysa yarın bitiyor.
+ */
+export function remainingDays(
+  endsAt: Date,
+  now: Date,
+  timeZone = env.reportsTimeZone,
+): number {
+  const today = Date.parse(`${localDayLabel(now, timeZone)}T00:00:00Z`);
+  const end = Date.parse(`${localDayLabel(endsAt, timeZone)}T00:00:00Z`);
+  return Math.max(0, Math.round((end - today) / DAY_MS));
 }
 
 /**
@@ -332,4 +349,90 @@ export async function findLastReminderAt(
     { sort: { sentAt: -1 } },
   );
   return doc?.sentAt ?? null;
+}
+
+/** Bir hatırlatma denemesinin sonucu. */
+export type ReminderOutcome =
+  | { status: "sent"; sentAt: Date }
+  /** Son 24 saatte zaten hatırlatılmış. */
+  | { status: "cooled-down"; lastSentAt: Date }
+  /** Bu abonelik + eşik için otomatik posta zaten gönderilmiş. */
+  | { status: "already-sent" }
+  /** Aynı abonelik için başka bir gönderim tam şu an sürüyor. */
+  | { status: "busy" };
+
+export interface SendReminderInput {
+  userId: ObjectId;
+  subscriptionId: ObjectId;
+  endsAt: Date;
+  email: string;
+  firstName: string;
+  gymName: string;
+  /** Otomatik süpürmede eşik günü; elle gönderimde null. */
+  thresholdDays: number | null;
+  automatic: boolean;
+  sentBy: string | null;
+  now: Date;
+}
+
+const SEND_LOCK_LEASE_MS = 30_000;
+
+/**
+ * Bir aboneliğe hatırlatma göndermenin TEK giriş noktası.
+ *
+ * Bekleme süresi kontrolü ile kaydın yazılması arasındaki boşluk abonelik
+ * başına bir Redis kilidiyle kapatılır. Kilit olmadan iki personelin aynı anda
+ * bastığı düğme (veya elle gönderimle çakışan süpürme turu) kontrolü birlikte
+ * geçer ve üyeye iki posta giderdi; elle gönderilen kayıtlar kısmi unique
+ * indeksin dışında olduğu için veritabanı bunu kendiliğinden engellemez.
+ */
+export async function sendRenewalReminder(
+  input: SendReminderInput,
+  database: Db = db,
+): Promise<ReminderOutcome> {
+  const key = `og:lock:reminder:${input.subscriptionId.toHexString()}`;
+  const token = randomUUID();
+  // Beklemeden vazgeçilir: kilit birindeyse o gönderim zaten bu aboneliği
+  // ele almış demektir, sıraya girmenin faydası yok.
+  if (!(await acquireLock(key, token, SEND_LOCK_LEASE_MS))) {
+    return { status: "busy" };
+  }
+
+  try {
+    const lastSentAt = await findLastReminderAt(input.subscriptionId, database);
+    if (
+      lastSentAt &&
+      input.now.getTime() - lastSentAt.getTime() < REMINDER_COOLDOWN_MS
+    ) {
+      return { status: "cooled-down", lastSentAt };
+    }
+
+    const days = remainingDays(input.endsAt, input.now);
+    const mail = buildReminderMail({
+      gymName: input.gymName,
+      firstName: input.firstName,
+      endsAt: input.endsAt,
+      remainingDays: days,
+    });
+
+    const sentAt = await recordAndSendReminder(
+      {
+        userId: input.userId,
+        subscriptionId: input.subscriptionId,
+        thresholdDays: input.thresholdDays,
+        automatic: input.automatic,
+        sentBy: input.sentBy,
+        sentAt: input.now,
+      },
+      { to: input.email, ...mail },
+      database,
+    );
+    return sentAt ? { status: "sent", sentAt } : { status: "already-sent" };
+  } finally {
+    await releaseLock(key, token).catch((err: unknown) => {
+      // Kilit lease ile kendiliğinden düşer; temizlik hatası asıl sonucu
+      // gölgelememeli.
+      console.error("hatırlatma kilidi bırakılamadı:", err);
+    });
+  }
 }

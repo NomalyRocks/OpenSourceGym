@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type {
   Page,
@@ -25,16 +25,25 @@ export function Renewals() {
   /**
    * `cursor` verilmezse ilk sayfa (liste sıfırlanır), verilirse sonraki sayfa
    * eklenir. Pencere değişince imleç geçersizdir, bu yüzden baştan yüklenir.
+   *
+   * "Daha fazla yükle" isteği de iptal edilebilir olmalı: pencere değişirken
+   * uçuşta olan bir sonraki sayfa yanıtı, artık başka bir sorguya ait yeni
+   * listenin üstüne eklenir ve hem tekrar hem yanlış imleç üretirdi.
    */
+  const inFlight = useRef<AbortController | null>(null);
+
   const load = useCallback(
-    async (cursor: string | null, signal?: AbortSignal) => {
+    async (cursor: string | null) => {
+      inFlight.current?.abort();
+      const controller = new AbortController();
+      inFlight.current = controller;
       setLoading(true);
       const params = new URLSearchParams({ withinDays: String(withinDays) });
       if (cursor) params.set("cursor", cursor);
       try {
         const page = await api<Page<RenewalDueMember>>(
           `/api/admin/reports/renewals?${params.toString()}`,
-          { signal },
+          { signal: controller.signal },
         );
         setMembers((prev) => (cursor ? [...prev, ...page.items] : page.items));
         setNextCursor(page.nextCursor);
@@ -43,16 +52,16 @@ export function Renewals() {
         if (isAbortError(err)) return;
         setError(errorMessage(err, t, "Yüklenemedi."));
       } finally {
-        setLoading(false);
+        // İptal edilen istek, yerine geçen isteğin yükleme durumunu silmemeli.
+        if (inFlight.current === controller) setLoading(false);
       }
     },
     [withinDays, t],
   );
 
   useEffect(() => {
-    const controller = new AbortController();
-    void load(null, controller.signal);
-    return () => controller.abort();
+    void load(null);
+    return () => inFlight.current?.abort();
   }, [load]);
 
   async function remind(member: RenewalDueMember) {

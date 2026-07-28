@@ -190,8 +190,11 @@ async function shutdown(signal: string): Promise<void> {
       server.closeIdleConnections();
     });
   });
-  // Zamanlayıcı Redis ve Mongo'yu kullanıyor; onlar kapanmadan durdurulmalı.
-  reminderScheduler?.stop();
+  // Zamanlayıcı Redis ve Mongo'yu kullanıyor; süren tur bitmeden onlar
+  // kapanırsa yazılmış ama gönderilmemiş bir hatırlatma kaydı kalabilir.
+  await step("hatırlatma zamanlayıcısı", 10_000, () =>
+    reminderScheduler ? reminderScheduler.stop() : Promise.resolve(),
+  );
   await step("geçiş olayı tüketicisi", 5000, () =>
     entryEventConsumer ? entryEventConsumer.stop() : Promise.resolve(),
   );

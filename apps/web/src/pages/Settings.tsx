@@ -5,7 +5,7 @@ import type {
   ReminderConfig,
   SharingConfig,
 } from "@opengym/shared";
-import { api } from "../lib/api";
+import { api, isAbortError } from "../lib/api";
 import { errorMessage } from "../i18n/errors";
 
 const defaultSharing: SharingConfig = {
@@ -53,21 +53,34 @@ export function Settings() {
   const [loaded, setLoaded] = useState(false);
 
   useEffect(() => {
-    void api<GymSettings>("/api/admin/settings").then((s) => {
-      setGymName(s.gymName);
-      if (s.location) {
-        setLat(String(s.location.lat));
-        setLng(String(s.location.lng));
-        setRadiusM(String(s.location.radiusM));
+    const controller = new AbortController();
+    // Hata yolu şart: yükleme başarısız olursa `loaded` false kalır ve Kaydet
+    // düğmesi kalıcı olarak devre dışı kalırdı — kullanıcı nedenini
+    // göremeden formun çalışmadığını sanardı.
+    void (async () => {
+      try {
+        const s = await api<GymSettings>("/api/admin/settings", {
+          signal: controller.signal,
+        });
+        setGymName(s.gymName);
+        if (s.location) {
+          setLat(String(s.location.lat));
+          setLng(String(s.location.lng));
+          setRadiusM(String(s.location.radiusM));
+        }
+        if (s.capacity != null) setCapacity(String(s.capacity));
+        setAutoExitHours(String(s.autoExitHours));
+        setSharing(s.sharing);
+        setReminders(s.reminders);
+        setDaysBeforeText(s.reminders.daysBefore.join(", "));
+        setLoaded(true);
+      } catch (err) {
+        if (isAbortError(err)) return;
+        setMsg({ kind: "error", text: errorMessage(err, t, "Yüklenemedi.") });
       }
-      if (s.capacity != null) setCapacity(String(s.capacity));
-      setAutoExitHours(String(s.autoExitHours));
-      setSharing(s.sharing);
-      setReminders(s.reminders);
-      setDaysBeforeText(s.reminders.daysBefore.join(", "));
-      setLoaded(true);
-    });
-  }, []);
+    })();
+    return () => controller.abort();
+  }, [t]);
 
   async function save(e: React.FormEvent) {
     e.preventDefault();
@@ -87,10 +100,10 @@ export function Settings() {
           sharing,
           reminders: {
             enabled: reminders.enabled,
-            daysBefore: parseDaysBefore(
-              daysBeforeText,
-              defaultReminders.daysBefore,
-            ),
+            // Geri düşüş sabit varsayılan DEĞİL, sunucudan gelen mevcut
+            // eşiklerdir: alanı temizleyip başka bir ayarı kaydeden yönetici,
+            // salonun [30, 14] eşiklerini sessizce [7, 1] yapmamalı.
+            daysBefore: parseDaysBefore(daysBeforeText, reminders.daysBefore),
           },
         },
       });

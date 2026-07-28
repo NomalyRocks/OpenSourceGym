@@ -22,14 +22,11 @@ import {
   MAX_REPORT_RANGE_DAYS,
 } from "../reports.js";
 import {
-  buildReminderMail,
-  findLastReminderAt,
   findRenewalTarget,
   listRenewalsDue,
-  REMINDER_COOLDOWN_MS,
   MAX_RENEWAL_WINDOW_DAYS,
-  recordAndSendReminder,
   remainingDays,
+  sendRenewalReminder,
 } from "../renewals.js";
 
 export const reportsRouter: Router = Router();
@@ -168,55 +165,46 @@ reportsRouter.post(
       return;
     }
 
-    // Aynı aboneliğe arka arkaya posta gitmesi üyeyi rahatsız eder; otomatik
-    // süpürmenin az önce gönderdiği hatırlatma da bu kontrole takılır.
-    const lastReminderAt = await findLastReminderAt(target.subscriptionId);
-    if (
-      lastReminderAt &&
-      now.getTime() - lastReminderAt.getTime() < REMINDER_COOLDOWN_MS
-    ) {
-      const body: RenewalReminderResult = {
-        sent: false,
-        reason: "recently-reminded",
-        sentAt: lastReminderAt.toISOString(),
-      };
-      res.status(429).json(body);
-      return;
-    }
-
     const settings = await findGymSettings();
-    const days = remainingDays(target.endsAt, now);
-    const mail = buildReminderMail({
-      gymName: settings?.gymName?.trim() || "OpenGym",
-      firstName: target.firstName,
+    // Bekleme süresi kontrolü gönderimle aynı kilidin altında yapılır; burada
+    // ayrıca kontrol etmek yarışı kapatmaz, yalnızca tekrarlardı.
+    const outcome = await sendRenewalReminder({
+      userId: target.userId,
+      subscriptionId: target.subscriptionId,
       endsAt: target.endsAt,
-      remainingDays: days,
+      email: target.email,
+      firstName: target.firstName,
+      gymName: settings?.gymName?.trim() || "OpenGym",
+      thresholdDays: null,
+      automatic: false,
+      sentBy: req.user.email,
+      now,
     });
 
-    await recordAndSendReminder(
-      {
-        userId: target.userId,
-        subscriptionId: target.subscriptionId,
-        thresholdDays: null,
-        automatic: false,
-        sentBy: req.user.email,
-        sentAt: now,
-      },
-      { to: target.email, ...mail },
-    );
+    // "busy" ve "already-sent" de istemci için aynı anlama gelir: şu an posta
+    // gönderilmedi çünkü bu abonelik az önce ele alındı.
+    if (outcome.status !== "sent") {
+      sendApiError(
+        res,
+        429,
+        "REMINDER_RECENTLY_SENT",
+        "This member was reminded recently. Try again later.",
+      );
+      return;
+    }
 
     await logAudit(
       req.user,
       "renewal-reminder-sent",
       target.userId.toString(),
       {
-        remainingDays: days,
+        remainingDays: remainingDays(target.endsAt, now),
       },
     );
 
     const body: RenewalReminderResult = {
       sent: true,
-      sentAt: now.toISOString(),
+      sentAt: outcome.sentAt.toISOString(),
     };
     res.json(body);
   }),

@@ -140,7 +140,10 @@ export function Reports() {
         if (isAbortError(err)) return;
         setError(errorMessage(err, t, "Yüklenemedi."));
       } finally {
-        setLoading(false);
+        // İptal edilen isteğin finally'si yerine geçen isteğin yükleme
+        // durumunu silmemeli; aksi halde hızlı aralık değişiminde arayüz
+        // istek sürerken "bitti" görünür.
+        if (!signal.aborted) setLoading(false);
       }
     },
     [applied, t],

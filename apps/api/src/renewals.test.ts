@@ -3,33 +3,44 @@ import assert from "node:assert/strict";
 import { remainingDays, buildReminderMail } from "./renewals.js";
 
 describe("remainingDays", () => {
+  // Istanbul UTC+3: bu an yerel olarak 1 Mart 15:00.
   const now = new Date("2026-03-01T12:00:00.000Z");
   const DAY = 86400000;
+  const TZ = "Europe/Istanbul";
 
   it("3 gün sonra sona eriyor", () => {
     assert.strictEqual(
-      remainingDays(new Date(now.getTime() + 3 * DAY), now),
+      remainingDays(new Date(now.getTime() + 3 * DAY), now, TZ),
       3,
     );
   });
 
   it("3 gün + 5 saat sonra sona eriyor", () => {
     assert.strictEqual(
-      remainingDays(new Date(now.getTime() + 3 * DAY + 5 * 3600000), now),
+      remainingDays(new Date(now.getTime() + 3 * DAY + 5 * 3600000), now, TZ),
       3,
     );
   });
 
-  it("bugün biten abonelik 0 gün gösterir", () => {
+  it("takvim gününü sayar: 20 saat sonrası yarındır, bugün değil", () => {
+    // Ham 24 saatlik fark tabana yuvarlanınca 0 verirdi ve üyeye "bugün sona
+    // eriyor" yazan yanlış bir posta giderdi.
     assert.strictEqual(
-      remainingDays(new Date(now.getTime() + 20 * 3600000), now),
+      remainingDays(new Date(now.getTime() + 20 * 3600000), now, TZ),
+      1,
+    );
+  });
+
+  it("aynı takvim gününde biten abonelik 0 gösterir", () => {
+    assert.strictEqual(
+      remainingDays(new Date(now.getTime() + 5 * 3600000), now, TZ),
       0,
     );
   });
 
   it("geçmiş bitiş negatif değil 0 döner", () => {
     assert.strictEqual(
-      remainingDays(new Date(now.getTime() - 3600000), now),
+      remainingDays(new Date(now.getTime() - 3 * DAY), now, TZ),
       0,
     );
   });
