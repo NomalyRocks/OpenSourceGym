@@ -105,6 +105,8 @@ export interface GymSettings {
   autoExitHours: number;
   /** Hesap paylaşımı tespiti ayarları — Faz 6 */
   sharing: SharingConfig;
+  /** Otomatik yenileme hatırlatmaları — Faz E */
+  reminders: ReminderConfig;
 }
 
 export interface AuditLogEntry {
@@ -170,6 +172,10 @@ export type ApiErrorCode =
   | "INVALID_CAPACITY"
   | "INVALID_AUTO_EXIT"
   | "INVALID_SHARING_SETTINGS"
+  | "INVALID_REMINDER_SETTINGS"
+  | "INVALID_REPORT_RANGE"
+  | "REMINDER_RECENTLY_SENT"
+  | "NO_UPCOMING_RENEWAL"
   | "DELETION_REQUEST_NOT_FOUND"
   | "DELETION_REQUEST_RESOLVED"
   | "DELETION_CLEANUP_FAILED"
@@ -178,7 +184,7 @@ export type ApiErrorCode =
 
 export interface ApiErrorResponse {
   code: ApiErrorCode;
-  /** İnsan ve loglar için Türkçe geriye dönük mesaj; UI kararları code ile verilir. */
+  /** Loglar ve API istemcileri için İngilizce mesaj; UI kararları code ile verilir. */
   message: string;
 }
 
@@ -302,3 +308,95 @@ export interface SharingConfig {
   /** Otomatik QR engelinin süresi (saat) */
   qrBlockHours: number;
 }
+
+// ---- Faz E: Raporlama, yenileme hatırlatmaları, dışa aktarma ----
+
+/** Otomatik yenileme hatırlatması ayarları (salon ayarlarında düzenlenebilir) */
+export interface ReminderConfig {
+  /**
+   * Kapalıyken hiçbir otomatik e-posta gönderilmez. Varsayılan kapalıdır:
+   * sürüm yükselten bir kurulum, haberi olmadan üyelerine posta atmamalı.
+   */
+  enabled: boolean;
+  /**
+   * Aboneliğin bitmesine bu kadar gün kala hatırlatma gönderilir. Her eşik
+   * abonelik başına bir kez tetiklenir.
+   */
+  daysBefore: number[];
+}
+
+/** Rapor sorgusunun kapsadığı aralık (sunucunun uyguladığı hâliyle) */
+export interface ReportRange {
+  from: string;
+  to: string;
+}
+
+/** Tarih aralıklı yönetim raporu özeti */
+export interface ReportSummary {
+  range: ReportRange;
+  /** Günlük kova sınırlarının hesaplandığı IANA saat dilimi */
+  timeZone: string;
+  /** Şu an aktif aboneliği olan benzersiz üye sayısı (aralıktan bağımsız) */
+  activeMembers: number;
+  /** Aralıkta kaydolan üye sayısı */
+  newMembers: number;
+  /** Aralıkta oluşturulan abonelik sayısı */
+  newSubscriptions: number;
+  /**
+   * Aralıkta aboneliği biten ve aralık sonuna kadar yenilemeyen üye sayısı
+   * (en geç aboneliği bu aralıkta sona erenler).
+   */
+  lapsedMembers: number;
+  /** Aboneliği önümüzdeki 7 gün içinde bitecek üye sayısı (aralıktan bağımsız) */
+  renewalsDue: number;
+  entries: {
+    total: number;
+    allowed: number;
+    denied: number;
+    /** Aralıkta en az bir kez geçiş yapan benzersiz üye sayısı */
+    uniqueMembers: number;
+  };
+}
+
+/** Giriş trendinin tek günlük kovası */
+export interface EntryTrendPoint {
+  /** Kovanın salon saat dilimindeki günü (YYYY-MM-DD) */
+  date: string;
+  total: number;
+  allowed: number;
+  denied: number;
+}
+
+/** Günlük giriş trendi (grafik verisi) */
+export interface EntryTrend {
+  range: ReportRange;
+  timeZone: string;
+  points: EntryTrendPoint[];
+}
+
+/** Aboneliği yakında bitecek üye (yenileme listesi satırı) */
+export interface RenewalDueMember {
+  userId: string;
+  firstName: string;
+  lastName: string;
+  email: string;
+  phone: string;
+  /** Üyenin en geç aboneliğinin bitiş tarihi */
+  endsAt: string;
+  /** Bitişe kalan tam gün sayısı (bugün bitiyorsa 0) */
+  remainingDays: number;
+  /** Bu abonelik için en son gönderilen hatırlatma; hiç gönderilmediyse null */
+  lastReminderAt: string | null;
+}
+
+/** Elle hatırlatma gönderme sonucu */
+export interface RenewalReminderResult {
+  sent: boolean;
+  /** Gönderilmediyse nedeni */
+  reason?: "recently-reminded" | "no-upcoming-renewal";
+  /** Gönderildiyse hatırlatmanın kaydedildiği zaman */
+  sentAt: string | null;
+}
+
+/** CSV dışa aktarma veri kümeleri */
+export type ExportDataset = "members" | "subscriptions" | "entries";

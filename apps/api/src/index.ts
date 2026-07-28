@@ -15,6 +15,11 @@ import { ensureIndexes } from "./indexes.js";
 import { adminRouter } from "./routes/admin.js";
 import { meRouter } from "./routes/me.js";
 import { devicesRouter } from "./routes/devices.js";
+import { reportsRouter } from "./routes/reports.js";
+import {
+  startRenewalReminderScheduler,
+  type RenewalReminderScheduler,
+} from "./renewalReminders.js";
 import { attachDeviceGateway } from "./gateway.js";
 import {
   startEntryEventConsumer,
@@ -35,6 +40,9 @@ app.use(express.json());
 
 app.use("/api", openApiRouter);
 app.use("/api/admin/devices", devicesRouter);
+// adminRouter'dan ÖNCE: adminRouter geniş yollar tanımlıyor, daha özel olan
+// önek önce eşleşmeli.
+app.use("/api/admin/reports", reportsRouter);
 app.use("/api/admin", adminRouter);
 app.use("/api/me", meRouter);
 
@@ -137,6 +145,7 @@ app.use(
 const server = createServer(app);
 
 let entryEventConsumer: EntryEventConsumer | null = null;
+let reminderScheduler: RenewalReminderScheduler | null = null;
 
 async function main() {
   assertProductionProfilePhotoConfig();
@@ -148,6 +157,7 @@ async function main() {
   await seedInitialAdmin();
   attachDeviceGateway(server);
   entryEventConsumer = await startEntryEventConsumer();
+  reminderScheduler = startRenewalReminderScheduler();
   server.listen(env.port, () => {
     console.log(`opengym-api listening on :${env.port}`);
   });
@@ -180,6 +190,8 @@ async function shutdown(signal: string): Promise<void> {
       server.closeIdleConnections();
     });
   });
+  // Zamanlayıcı Redis ve Mongo'yu kullanıyor; onlar kapanmadan durdurulmalı.
+  reminderScheduler?.stop();
   await step("geçiş olayı tüketicisi", 5000, () =>
     entryEventConsumer ? entryEventConsumer.stop() : Promise.resolve(),
   );

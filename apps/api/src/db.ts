@@ -1,6 +1,11 @@
 import { MongoClient, MongoServerError, ObjectId } from "mongodb";
 import type { Collection, Db, WithId } from "mongodb";
-import type { GymSettings, Role, SharingConfig } from "@opengym/shared";
+import type {
+  GymSettings,
+  ReminderConfig,
+  Role,
+  SharingConfig,
+} from "@opengym/shared";
 import { env } from "./env.js";
 
 export const mongoClient = new MongoClient(env.mongodbUri);
@@ -74,6 +79,7 @@ export interface GymSettingsDocument {
   capacity?: number | null;
   autoExitHours?: number;
   sharing?: Partial<SharingConfig>;
+  reminders?: Partial<ReminderConfig>;
 }
 
 export function gymSettingsCollection(

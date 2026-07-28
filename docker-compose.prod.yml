@@ -54,6 +54,8 @@ services:
       BETTER_AUTH_URL: https://${DOMAIN}
       TRUSTED_ORIGINS: https://${DOMAIN}
       ENABLE_API_DOCS: ${ENABLE_API_DOCS:-false}
+      # Rapor günlerinin salonun yerel gününe göre kesilmesi için.
+      REPORTS_TIME_ZONE: ${REPORTS_TIME_ZONE:-Europe/Istanbul}
       # R2 production'da ZORUNLUDUR: API açılışta yapılandırmayı doğrular
       # (assertProductionProfilePhotoConfig) ve eksikse başlamaz. Burada da
       # zorunlu tutuyoruz ki hata compose seviyesinde anlaşılır olsun.

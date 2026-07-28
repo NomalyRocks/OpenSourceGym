@@ -59,16 +59,36 @@ export function decodeCursor(raw: string): PageCursor | null {
 }
 
 /**
+ * Sayfalama yönü. Listelerin çoğu "en yeni önce" ister (`desc`); yaklaşan
+ * yenilemeler gibi geleceğe bakan listeler "en yakın önce" ister (`asc`).
+ */
+export type PageDirection = "asc" | "desc";
+
+/** Sıralama anahtarı: zaman alanı + _id (eşit damgaları kırmak için). */
+export function sortSpec(
+  timeField: string,
+  direction: PageDirection = "desc",
+): Document {
+  const order = direction === "asc" ? 1 : -1;
+  return { [timeField]: order, _id: order };
+}
+
+/**
  * Sıralama anahtarına göre imleçten SONRAKİ kayıtları seçen filtre.
- * Sıralama `{ [timeField]: -1, _id: -1 }` olduğundan eşit zaman damgalarında
+ * Sıralama `{ [timeField]: yön, _id: yön }` olduğundan eşit zaman damgalarında
  * _id ile kırılır; aksi halde aynı milisaniyeye düşen kayıtlar sayfalar
  * arasında tekrarlanır veya atlanırdı.
  */
-export function cursorFilter(timeField: string, cursor: PageCursor): Document {
+export function cursorFilter(
+  timeField: string,
+  cursor: PageCursor,
+  direction: PageDirection = "desc",
+): Document {
+  const beyond = direction === "asc" ? "$gt" : "$lt";
   return {
     $or: [
-      { [timeField]: { $lt: cursor.at } },
-      { [timeField]: cursor.at, _id: { $lt: cursor.id } },
+      { [timeField]: { [beyond]: cursor.at } },
+      { [timeField]: cursor.at, _id: { [beyond]: cursor.id } },
     ],
   };
 }
@@ -80,6 +100,8 @@ export interface FindPageParams {
   filter?: Document;
   cursor?: string | undefined;
   limit: number;
+  /** Varsayılan "desc" (en yeni önce). */
+  direction?: PageDirection;
 }
 
 export interface PageResult {
@@ -96,6 +118,7 @@ export async function findPage(
   params: FindPageParams,
 ): Promise<PageResult> {
   const { timeField, limit } = params;
+  const direction = params.direction ?? "desc";
   const filter = params.filter ?? {};
 
   const cursor = params.cursor ? decodeCursor(params.cursor) : null;
@@ -104,17 +127,30 @@ export async function findPage(
   }
 
   const query: Document = cursor
-    ? { $and: [filter, cursorFilter(timeField, cursor)] }
+    ? { $and: [filter, cursorFilter(timeField, cursor, direction)] }
     : filter;
 
   // limit + 1 okunur: fazladan kayıt gelirse sonraki sayfa var demektir.
   // Ayrı bir countDocuments çağrısı hem pahalı hem de yarışa açık olurdu.
   const docs = await collection
     .find(query)
-    .sort({ [timeField]: -1, _id: -1 })
+    .sort(sortSpec(timeField, direction))
     .limit(limit + 1)
     .toArray();
 
+  return toPage(docs, timeField, limit);
+}
+
+/**
+ * `limit + 1` okunmuş bir belge dizisini sayfaya böler ve sonraki imleci üretir.
+ * Aggregation kullanan uçlar `findPage`i kullanamaz ama aynı imleç sözleşmesini
+ * paylaşmalıdır; ortak nokta burasıdır.
+ */
+export function toPage(
+  docs: WithId<Document>[],
+  timeField: string,
+  limit: number,
+): PageResult {
   const hasMore = docs.length > limit;
   const page = hasMore ? docs.slice(0, limit) : docs;
   const last = page.at(-1);

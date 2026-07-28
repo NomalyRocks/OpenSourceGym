@@ -137,6 +137,32 @@ export async function ensureIndexes(database: Db = db): Promise<void> {
 
   // Cihaz listesinin en yeni kayıtları önce getiren sıralaması için.
   await ensureIndex(database, "devices", { createdAt: -1 });
+
+  // Faz E — raporlama: aralık sayımları ve CSV dışa aktarma createdAt'e göre
+  // filtreleyip sıralar.
+  await ensureIndex(database, "subscriptions", { createdAt: 1 });
+  await ensureIndex(database, "user", { role: 1, createdAt: 1 });
+
+  // Faz E — hatırlatma tekilliği. Otomatik süpürme aynı abonelik + aynı eşik
+  // için ikinci kez posta göndermemeli; bunu fiilen sağlayan bu indekstir,
+  // "önce oku sonra yaz" kontrolü değil. Kısmi olması şart: personelin elle
+  // gönderdiği hatırlatmalar (automatic: false) tekrarlanabilir olmalı.
+  await ensureIndex(
+    database,
+    "renewal_reminders",
+    { subscriptionId: 1, thresholdDays: 1 },
+    {
+      name: "renewal_reminders_threshold_unique",
+      unique: true,
+      partialFilterExpression: { automatic: true },
+    },
+  );
+  // Bir aboneliğin en son hatırlatmasını okumak için (elle gönderim bekleme
+  // süresi ve liste sütunu).
+  await ensureIndex(database, "renewal_reminders", {
+    subscriptionId: 1,
+    sentAt: -1,
+  });
 }
 
 /**

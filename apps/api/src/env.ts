@@ -15,6 +15,22 @@ const originList = z
 
 const port = z.coerce.number().int().min(1).max(65535);
 
+// Raporlardaki "gün" salonun yerel günüdür, UTC günü değil: sabah 01:00'deki
+// bir geçiş dünkü kovaya düşerse günlük sayılar salon sahibinin gördüğü
+// gerçekle uyuşmaz. Geçersiz bir bölge adı Intl'de RangeError fırlatır; bunu
+// açılışta yakalayıp anlaşılır hata veriyoruz.
+const timeZone = z.string().refine(
+  (value) => {
+    try {
+      new Intl.DateTimeFormat("en-US", { timeZone: value });
+      return true;
+    } catch {
+      return false;
+    }
+  },
+  { message: "geçerli bir IANA saat dilimi olmalı (ör. Europe/Istanbul)" },
+);
+
 // Production'da zayıf varsayılanlar kabul edilmez: BETTER_AUTH_SECRET
 // verilmemişse süreç açılışta düşmeli, sessizce dev anahtarına inmemeli.
 const betterAuthSecret = isProduction
@@ -42,6 +58,8 @@ const envSchema = z.object({
   SMTP_USER: z.string().optional(),
   SMTP_PASS: z.string().optional(),
   SMTP_FROM: z.string().default("OpenGym <noreply@opengym.local>"),
+  // prefault: varsayılan da refine'dan geçmeli (bkz. TRUSTED_ORIGINS notu).
+  REPORTS_TIME_ZONE: timeZone.prefault("Europe/Istanbul"),
 });
 
 // Boş string "tanımsız" demektir. docker compose'daki `${VAR:-}` yazımı
@@ -75,6 +93,7 @@ export const env = {
   betterAuthSecret: raw.BETTER_AUTH_SECRET,
   betterAuthUrl: raw.BETTER_AUTH_URL,
   trustedOrigins: raw.TRUSTED_ORIGINS,
+  reportsTimeZone: raw.REPORTS_TIME_ZONE,
   r2: {
     accountId: raw.R2_ACCOUNT_ID,
     accessKeyId: raw.R2_ACCESS_KEY_ID,

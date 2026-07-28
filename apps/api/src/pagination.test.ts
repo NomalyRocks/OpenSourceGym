@@ -8,6 +8,8 @@ import {
   cursorFilter,
   dateRangeFilter,
   pageQuerySchema,
+  sortSpec,
+  toPage,
   DEFAULT_PAGE_LIMIT,
   MAX_PAGE_LIMIT,
 } from "./pagination.js";
@@ -86,6 +88,49 @@ test("cursorFilter, açık doğru $or yapısını döner", () => {
   assert.deepEqual(filter, {
     $or: [{ testField: { $lt: at } }, { testField: at, _id: { $lt: id } }],
   });
+});
+
+test("cursorFilter, artan yönde $gt kullanır", () => {
+  const at = new Date();
+  const id = new ObjectId();
+  // Yenileme listesi "en yakın bitiş önce" sıralanır; imleçten SONRAKİ kayıt
+  // artan yönde daha BÜYÜK olandır. $lt kalsaydı ikinci sayfa hep boş dönerdi.
+  const filter = cursorFilter("endsAt", { at, id }, "asc");
+  assert.deepEqual(filter, {
+    $or: [{ endsAt: { $gt: at } }, { endsAt: at, _id: { $gt: id } }],
+  });
+});
+
+test("sortSpec, yöne göre her iki anahtarı da çevirir", () => {
+  assert.deepEqual(sortSpec("at"), { at: -1, _id: -1 });
+  assert.deepEqual(sortSpec("endsAt", "asc"), { endsAt: 1, _id: 1 });
+});
+
+test("toPage, limit kadar kayıt gelirse sonraki imleci üretmez", () => {
+  const docs = [
+    { _id: new ObjectId(), at: new Date(2) },
+    { _id: new ObjectId(), at: new Date(1) },
+  ];
+  const page = toPage(docs, "at", 2);
+  assert.equal(page.docs.length, 2);
+  assert.equal(page.nextCursor, null);
+});
+
+test("toPage, fazladan kayıt geldiğinde son görünen kayıttan imleç üretir", () => {
+  const last = { _id: new ObjectId(), at: new Date(2) };
+  const docs = [
+    { _id: new ObjectId(), at: new Date(3) },
+    last,
+    // limit + 1'inci kayıt yalnızca "devamı var" sinyalidir, sayfaya girmez.
+    { _id: new ObjectId(), at: new Date(1) },
+  ];
+  const page = toPage(docs, "at", 2);
+  assert.equal(page.docs.length, 2);
+  assert.ok(page.nextCursor);
+  const decoded = decodeCursor(page.nextCursor);
+  assert.ok(decoded != null);
+  assert.equal(decoded.at.getTime(), last.at.getTime());
+  assert.equal(decoded.id.toHexString(), last._id.toHexString());
 });
 
 test("dateRangeFilter, hem from hem to tanımsızsa {} döner", () => {

@@ -34,6 +34,8 @@ import {
   deleteUserProfilePhotoForAccountDeletion,
 } from "../profilePhoto.js";
 import { SHARING_DEFAULTS } from "../sharing.js";
+import { countActiveMembers, countRenewalsDue } from "../reports.js";
+import { REMINDER_DEFAULTS } from "../renewalReminders.js";
 import {
   createSequentialSubscription,
   listUserSubscriptions,
@@ -346,8 +348,16 @@ adminRouter.get("/settings", requireRole("admin"), async (_req, res) => {
     capacity: doc?.capacity ?? null,
     autoExitHours: doc?.autoExitHours ?? 4,
     sharing: { ...SHARING_DEFAULTS, ...(doc?.sharing ?? {}) },
+    reminders: { ...REMINDER_DEFAULTS, ...(doc?.reminders ?? {}) },
   };
   res.json(settings);
+});
+
+const reminderSchema = z.object({
+  enabled: z.boolean(),
+  // Eşikler benzersizleştirilip sıralanmaz burada; süpürme zaten en dar eşiği
+  // seçiyor. Üst sınır 90: yenileme penceresinin ötesine hatırlatma anlamsız.
+  daysBefore: z.array(z.number().int().min(0).max(90)).min(1).max(5),
 });
 
 const sharingSchema = z.object({
@@ -374,6 +384,8 @@ const gymSettingsSchema = z.object({
   // Faz 6: paylaşım tespiti ayarları yalnızca istek gövdesinde mevcutsa
   // güncellenir — mevcut ayarlanmış değerleri sessizce ezmemesi kritiktir
   sharing: sharingSchema.optional(),
+  // sharing ile aynı gerekçe: gövdede yoksa mevcut ayar korunur.
+  reminders: reminderSchema.optional(),
 });
 
 // İstemciler mesajı değil code'u yorumlar; her alan kendi kararlı kodunu korur
@@ -383,6 +395,10 @@ const SETTINGS_FIELD_ERRORS: Record<string, [ApiErrorCode, string]> = {
   capacity: ["INVALID_CAPACITY", "Invalid capacity."],
   autoExitHours: ["INVALID_AUTO_EXIT", "Invalid automatic exit duration."],
   sharing: ["INVALID_SHARING_SETTINGS", "Invalid sharing detection settings."],
+  reminders: [
+    "INVALID_REMINDER_SETTINGS",
+    "Invalid renewal reminder settings.",
+  ],
 };
 
 adminRouter.put(
@@ -399,7 +415,8 @@ adminRouter.put(
       sendApiError(res, 400, code, message);
       return;
     }
-    const { gymName, location, capacity, autoExitHours, sharing } = parsed.data;
+    const { gymName, location, capacity, autoExitHours, sharing, reminders } =
+      parsed.data;
 
     const setDoc: Partial<Omit<GymSettingsDocument, "_id">> = {
       gymName,
@@ -409,6 +426,9 @@ adminRouter.put(
     };
     if (sharing !== undefined) {
       setDoc.sharing = sharing;
+    }
+    if (reminders !== undefined) {
+      setDoc.reminders = reminders;
     }
 
     await gymSettingsCollection().updateOne(
@@ -420,27 +440,25 @@ adminRouter.put(
       gymName,
       autoExitHours: setDoc.autoExitHours,
       ...(sharing !== undefined ? { sharing } : {}),
+      // Hatırlatmaların açılıp kapanması üyelere posta gitmesini belirler;
+      // denetim kaydında görünmesi şart.
+      ...(reminders !== undefined ? { reminders } : {}),
     });
     res.json({ ok: true });
   }),
 );
 
 // Genel bakış paneli KPI'ları (personel + admin)
+// Sayımlar rapor modülüyle aynı yardımcıları kullanır: Genel Bakış'taki
+// "Yenileme Bekleyen" ile Raporlar sayfasındaki sayı ayrışırsa hangisinin
+// doğru olduğu anlaşılmaz.
 adminRouter.get("/stats", requireRole("admin", "staff"), async (_req, res) => {
   const now = new Date();
-  const in7d = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
-  const subs = db.collection("subscriptions");
   const [activeMembers, renewalsDue] = await Promise.all([
-    subs.distinct("userId", { startsAt: { $lte: now }, endsAt: { $gte: now } }),
-    subs.distinct("userId", {
-      startsAt: { $lte: now },
-      endsAt: { $gte: now, $lte: in7d },
-    }),
+    countActiveMembers(db, now),
+    countRenewalsDue(db, now),
   ]);
-  const body: AdminStats = {
-    activeMembers: activeMembers.length,
-    renewalsDue: renewalsDue.length,
-  };
+  const body: AdminStats = { activeMembers, renewalsDue };
   res.json(body);
 });
 
