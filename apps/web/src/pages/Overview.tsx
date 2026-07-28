@@ -1,4 +1,5 @@
 import { useRef, useState } from "react";
+import { Link } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import type {
   AdminStats,
@@ -22,15 +23,18 @@ function KpiCard({
   delta,
   color,
   blurred,
+  to,
 }: {
   label: string;
   value: string;
   delta?: string;
   color?: string;
   blurred?: boolean;
+  /** Verilirse kart tıklanabilir olur ve bu sayfaya götürür. */
+  to?: string;
 }) {
-  return (
-    <div className="kpi-card">
+  const body = (
+    <>
       <div className="kpi-label">{label}</div>
       <div
         className={blurred ? "kpi-value kpi-blur" : "kpi-value"}
@@ -39,8 +43,19 @@ function KpiCard({
         {value}
       </div>
       {delta && <div className="kpi-delta">{delta}</div>}
-    </div>
+    </>
   );
+
+  // Sayının kendisi bir aksiyona götürmüyorsa personel için işe yaramaz:
+  // "yenileme bekleyen 12" ancak o 12 kişiye ulaşılabiliyorsa değerli.
+  if (to) {
+    return (
+      <Link className="kpi-card kpi-card-link" to={to}>
+        {body}
+      </Link>
+    );
+  }
+  return <div className="kpi-card">{body}</div>;
 }
 
 export function Overview() {
@@ -144,6 +159,7 @@ export function Overview() {
           value={stats ? String(stats.renewalsDue) : "—"}
           delta={t("7 gün içinde")}
           color="var(--warn)"
+          to="/renewals"
         />
       </div>
 

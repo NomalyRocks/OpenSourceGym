@@ -16,6 +16,8 @@ import { Settings } from "./pages/Settings";
 import { Audit } from "./pages/Audit";
 import { Devices } from "./pages/Devices";
 import { Entries } from "./pages/Entries";
+import { Renewals } from "./pages/Renewals";
+import { Reports } from "./pages/Reports";
 import { Security } from "./pages/Security";
 import { Kvkk } from "./pages/Kvkk";
 import { LanguageSwitcher } from "./i18n/LanguageSwitcher";
@@ -54,6 +56,8 @@ function Shell({ children }: { children: React.ReactNode }) {
             <NavLink to="/overview">{t("Genel Bakış")}</NavLink>
             <NavLink to="/members">{t("Üyeler")}</NavLink>
             <NavLink to="/entries">{t("Geçişler")}</NavLink>
+            <NavLink to="/renewals">{t("Yenilemeler")}</NavLink>
+            <NavLink to="/reports">{t("Raporlar")}</NavLink>
             <NavLink to="/security">{t("Güvenlik")}</NavLink>
             {profile?.role === "admin" && (
               <NavLink to="/devices">{t("Cihazlar")}</NavLink>
@@ -126,6 +130,8 @@ function Gate() {
           <Route path="/overview" element={<Overview />} />
           <Route path="/members" element={<Members />} />
           <Route path="/entries" element={<Entries />} />
+          <Route path="/renewals" element={<Renewals />} />
+          <Route path="/reports" element={<Reports />} />
           <Route path="/security" element={<Security />} />
           {profile.role === "admin" && (
             <Route path="/devices" element={<Devices />} />

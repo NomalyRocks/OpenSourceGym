@@ -21,6 +21,8 @@ const actionLabels: Partial<Record<string, WebTranslationKey>> = {
   "settings-updated": "Ayarlar güncellendi",
   "kvkk-deletion-approved": "Silme talebi onaylandı",
   "kvkk-deletion-rejected": "Silme talebi reddedildi",
+  "renewal-reminder-sent": "Yenileme hatırlatması gönderildi",
+  "data-exported": "Veri dışa aktarıldı",
 };
 
 export function Audit() {

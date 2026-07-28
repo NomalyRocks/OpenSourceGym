@@ -53,6 +53,11 @@ const codeMessages: Record<ApiErrorCode, WebTranslationKey> = {
   INVALID_CAPACITY: "Geçersiz kapasite.",
   INVALID_AUTO_EXIT: "Geçersiz otomatik çıkış süresi.",
   INVALID_SHARING_SETTINGS: "Geçersiz paylaşım tespiti ayarları.",
+  INVALID_REMINDER_SETTINGS: "Geçersiz hatırlatma ayarları.",
+  INVALID_REPORT_RANGE:
+    "Aralık geçersiz. Başlangıç bitişten sonra olamaz ve aralık 366 günü aşamaz.",
+  REMINDER_RECENTLY_SENT: "Bu üyeye son 24 saat içinde hatırlatma gönderildi.",
+  NO_UPCOMING_RENEWAL: "Bu üyenin yaklaşan bir yenilemesi yok.",
   DELETION_REQUEST_NOT_FOUND: "Silme talebi bulunamadı.",
   DELETION_REQUEST_RESOLVED: "Silme talebi zaten sonuçlandırılmış.",
   DELETION_CLEANUP_FAILED:
