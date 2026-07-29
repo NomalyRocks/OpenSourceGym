@@ -10,6 +10,7 @@ import { api, isAbortError } from "../lib/api";
 import { usePollingQuery } from "../hooks/usePollingQuery";
 import { errorMessage } from "../i18n/errors";
 import { dateLocale } from "../i18n/format";
+import { dayEndIso, dayStartIso } from "../lib/dateRange";
 import type { WebTranslationKey } from "../i18n/resources";
 
 const reasonLabels: Record<GateRejectCode, WebTranslationKey> = {
@@ -48,8 +49,13 @@ export function Entries() {
     const params = new URLSearchParams();
     if (cursor) params.set("cursor", cursor);
     if (allowed) params.set("allowed", allowed);
-    if (from) params.set("from", new Date(from).toISOString());
-    if (to) params.set("to", new Date(to).toISOString());
+    // Uçlar ayrı ayrı çözülür: kullanıcı yalnızca başlangıcı veya yalnızca
+    // bitişi seçebilir. Bitiş günün sonuna sabitlenir; gün başına gönderilseydi
+    // sunucudaki `$lte` seçilen son günü tamamen dışarıda bırakırdı.
+    const fromIso = dayStartIso(from);
+    const toIso = dayEndIso(to);
+    if (fromIso) params.set("from", fromIso);
+    if (toIso) params.set("to", toIso);
     return params.toString();
   }
 

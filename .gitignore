@@ -4,6 +4,7 @@ dist/
 .env
 .env.*
 !.env.example
+!.env.production.example
 *.log
 .DS_Store
 PRD.md

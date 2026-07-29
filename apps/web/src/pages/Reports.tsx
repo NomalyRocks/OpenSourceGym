@@ -4,34 +4,10 @@ import type { EntryTrend, ReportSummary } from "@opengym/shared";
 import { api, isAbortError } from "../lib/api";
 import { errorMessage } from "../i18n/errors";
 import { dateLocale } from "../i18n/format";
+import { dateInputValue, rangeBounds } from "../lib/dateRange";
 import { useProfile } from "../lib/profile";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
-
-/** `<input type="date">` biçimi (YYYY-MM-DD), tarayıcının yerel gününe göre. */
-function dateInputValue(at: Date): string {
-  const offset = at.getTimezoneOffset() * 60 * 1000;
-  return new Date(at.getTime() - offset).toISOString().slice(0, 10);
-}
-
-/**
- * Gün seçimini zaman damgasına çevirir. Başlangıç günün başına, bitiş günün
- * SONUNA sabitlenir: bitiş 00:00 gönderilseydi seçilen son gün rapordan
- * tamamen düşerdi.
- *
- * Geçersiz girdide null döner. Tarih girdisi kullanıcı tarafından
- * temizlenebilir ("") ve o durumda `new Date(...).toISOString()` RangeError
- * fırlatırdı — biri render sırasında (dışa aktarma bağlantısı), biri de
- * yükleme sırasında; ikisi de sayfayı komple düşürürdü.
- */
-function rangeBounds(from: string, to: string): Record<string, string> | null {
-  const start = new Date(`${from}T00:00:00`);
-  const end = new Date(`${to}T23:59:59.999`);
-  if (!Number.isFinite(start.getTime()) || !Number.isFinite(end.getTime())) {
-    return null;
-  }
-  return { from: start.toISOString(), to: end.toISOString() };
-}
 
 function KpiCard({
   label,

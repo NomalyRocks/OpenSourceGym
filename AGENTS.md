@@ -32,7 +32,7 @@ pnpm --filter @opengym/mobile start   # Expo dev server (also: android / ios)
 docker compose up                     # infra: mongo + redis (API runs on host via pnpm dev)
 ```
 
-- API needs Mongo and Redis running. In development, Docker provides only Mongo and Redis; the API always runs on the host. Env: copy `.env.example` to `.env`; with SMTP unset, OTP emails print to the api console.
+- API needs Mongo and Redis running. In development, Docker provides only Mongo and Redis; the API always runs on the host. Env: copy `.env.example` to `.env`; with SMTP unset, OTP emails print to the api console. Production uses a separate `.env.production.example` (see `docker-compose.prod.yml`) — never merge the two profiles into one file, because both `docker compose` and Node's `--env-file` take the last value of a duplicated key.
 - `@opengym/shared` is consumed from its compiled `dist/`. Turbo's `^build` handles ordering, but after editing shared types run `pnpm --filter @opengym/shared build` so app typechecks see the change.
 - API tests use Node's built-in test runner through `tsx`. CI (`.github/workflows/ci.yml`) runs lint → typecheck → test → build on Node 22.
 

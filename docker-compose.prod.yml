@@ -5,7 +5,7 @@
 # dışarıya yalnızca ters vekili açar.
 #
 # Kullanım:
-#   cp .env.example .env   ve production bölümünü doldurun
+#   cp .env.production.example .env   ve boş bırakılan değerleri doldurun
 #   docker compose -f docker-compose.prod.yml up -d --build
 #
 # Panel ve API AYNI alan adından servis edilir. Bu tercih değil zorunluluk:

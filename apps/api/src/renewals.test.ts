@@ -73,6 +73,29 @@ describe("buildReminderMail", () => {
     assert.ok(!todayMail.subject.includes("gün sonra"));
   });
 
+  it("tarih etiketini verilen saat dilimine göre yazar", () => {
+    // Bu an Istanbul'da (UTC+3) 2 Mart, UTC'de hâlâ 1 Mart. Etiket
+    // remainingDays ile aynı bölgeden okunmazsa posta kendi içinde çelişir:
+    // "1 gün kaldı" der ama yanında bir gün öncesinin tarihini gösterir.
+    const endsAt = new Date("2026-03-01T22:00:00.000Z");
+    const istanbul = buildReminderMail({
+      gymName: "Demir Spor",
+      firstName: "Ayse",
+      endsAt,
+      remainingDays: 1,
+      timeZone: "Europe/Istanbul",
+    });
+    const utc = buildReminderMail({
+      gymName: "Demir Spor",
+      firstName: "Ayse",
+      endsAt,
+      remainingDays: 1,
+      timeZone: "UTC",
+    });
+    assert.ok(istanbul.text.includes("2 Mart 2026"));
+    assert.ok(utc.text.includes("1 Mart 2026"));
+  });
+
   it("ad boşsa selamlama tek başına Merhaba olur", () => {
     const anon = buildReminderMail({
       gymName: "Demir Spor",

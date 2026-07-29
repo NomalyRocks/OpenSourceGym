@@ -245,11 +245,17 @@ export interface ReminderMailInput {
   firstName: string;
   endsAt: Date;
   remainingDays: number;
+  /** Tarih etiketinin yazıldığı saat dilimi; varsayılan salonun bölgesi. */
+  timeZone?: string;
 }
 
 /**
  * Hatırlatma e-postasının gövdesi. Üyeye doğrudan gider ve çeviri yapabilecek
  * bir istemci yoktur; bu yüzden metin Türkçedir (API hata mesajlarının aksine).
+ *
+ * Tarih etiketi `remainingDays` ile AYNI saat dilimine yazılmalıdır. Bölge
+ * sabitlenirse, salonu başka bir bölgeye kurulmuş bir işletmede "2 gün kaldı"
+ * ile yanındaki tarih bir gün ayrışır ve posta kendi içinde çelişir.
  */
 export function buildReminderMail(input: ReminderMailInput): {
   subject: string;
@@ -257,7 +263,7 @@ export function buildReminderMail(input: ReminderMailInput): {
 } {
   const endsAtLabel = new Intl.DateTimeFormat("tr-TR", {
     dateStyle: "long",
-    timeZone: "Europe/Istanbul",
+    timeZone: input.timeZone ?? env.reportsTimeZone,
   }).format(input.endsAt);
   const greeting = input.firstName ? `Merhaba ${input.firstName},` : "Merhaba,";
   const when =
