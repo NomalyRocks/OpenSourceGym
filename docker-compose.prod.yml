@@ -1,0 +1,164 @@
+# OpenGym production dağıtımı — tek salon, tek sunucu.
+#
+# Geliştirme compose'u (docker-compose.yml) yalnızca Mongo ve Redis çalıştırır;
+# API host'ta koşar. Bu dosya ise tüm yığını konteynerde ayağa kaldırır ve
+# dışarıya yalnızca ters vekili açar.
+#
+# Kullanım:
+#   cp .env.production.example .env   ve boş bırakılan değerleri doldurun
+#   docker compose -f docker-compose.prod.yml up -d --build
+#
+# Panel ve API AYNI alan adından servis edilir. Bu tercih değil zorunluluk:
+# panel API'ye göreli yollarla (/api/...) ve çerez tabanlı oturumla gider,
+# ayrı alan adları çerezleri üçüncü taraf yapıp oturumu kırardı.
+
+services:
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    environment:
+      # Sertifika bu alan adına alınır; DNS bu sunucuya işaret etmelidir.
+      DOMAIN: ${DOMAIN:?DOMAIN tanimlanmali}
+      ACME_EMAIL: ${ACME_EMAIL:?ACME_EMAIL tanimlanmali}
+    depends_on:
+      api:
+        condition: service_healthy
+      web:
+        condition: service_started
+
+  api:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    restart: unless-stopped
+    # Node PID 1 olarak zombi süreçleri toplamaz; init ayrıca sinyallerin
+    # düzgün iletilmesini garanti eder (graceful shutdown buna bağlı).
+    init: true
+    # SIGTERM sonrası uçuşan istekler ve geçiş olayı tüketicisi kapanana kadar
+    # zaman tanınır; uygulamanın kendi zaman aşımı 15 sn.
+    stop_grace_period: 30s
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      MONGODB_URI: mongodb://${MONGO_USER:?MONGO_USER tanimlanmali}:${MONGO_PASSWORD:?MONGO_PASSWORD tanimlanmali}@mongo:27017/opengym?authSource=admin
+      REDIS_URL: redis://:${REDIS_PASSWORD:?REDIS_PASSWORD tanimlanmali}@redis:6379
+      BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:?BETTER_AUTH_SECRET tanimlanmali}
+      BETTER_AUTH_URL: https://${DOMAIN}
+      TRUSTED_ORIGINS: https://${DOMAIN}
+      ENABLE_API_DOCS: ${ENABLE_API_DOCS:-false}
+      # Rapor günlerinin salonun yerel gününe göre kesilmesi için.
+      REPORTS_TIME_ZONE: ${REPORTS_TIME_ZONE:-Europe/Istanbul}
+      # R2 production'da ZORUNLUDUR: API açılışta yapılandırmayı doğrular
+      # (assertProductionProfilePhotoConfig) ve eksikse başlamaz. Burada da
+      # zorunlu tutuyoruz ki hata compose seviyesinde anlaşılır olsun.
+      R2_ACCOUNT_ID: ${R2_ACCOUNT_ID:?R2_ACCOUNT_ID tanimlanmali}
+      R2_ACCESS_KEY_ID: ${R2_ACCESS_KEY_ID:?R2_ACCESS_KEY_ID tanimlanmali}
+      R2_SECRET_ACCESS_KEY: ${R2_SECRET_ACCESS_KEY:?R2_SECRET_ACCESS_KEY tanimlanmali}
+      R2_BUCKET_NAME: ${R2_BUCKET_NAME:?R2_BUCKET_NAME tanimlanmali}
+      R2_PUBLIC_BASE_URL: ${R2_PUBLIC_BASE_URL:?R2_PUBLIC_BASE_URL tanimlanmali}
+      # SMTP isteğe bağlıdır ama BOŞ BIRAKILIRSA doğrulama kodları e-posta
+      # yerine konteyner loguna yazılır — gerçek kurulumda üyeler kaydını
+      # tamamlayamaz. Production'da doldurun.
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASS: ${SMTP_PASS:-}
+      SMTP_FROM: ${SMTP_FROM:-OpenGym <noreply@opengym.local>}
+    healthcheck:
+      # Liveness değil readiness yoklanır: süreç ayakta ama Mongo/Redis kopuksa
+      # konteyner sağlıklı sayılmamalı.
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://127.0.0.1:3000/health/ready').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))",
+        ]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      # Açılışta telefon backfill'i ve indeks kurulumu çalışır; bu sürede
+      # başarısız yoklamalar konteyneri unhealthy işaretlemez.
+      start_period: 60s
+    depends_on:
+      mongo:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1/healthz"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  mongo:
+    image: mongo:8
+    restart: unless-stopped
+    # Host'a port AÇILMAZ. Veritabanına yalnızca compose ağı üzerinden erişilir;
+    # kimlik doğrulama yine de açıktır (tek katmana güvenilmez).
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_USER:?MONGO_USER tanimlanmali}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_PASSWORD:?MONGO_PASSWORD tanimlanmali}
+    volumes:
+      - mongo-data:/data/db
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "mongosh",
+          "--quiet",
+          "-u",
+          "${MONGO_USER}",
+          "-p",
+          "${MONGO_PASSWORD}",
+          "--authenticationDatabase",
+          "admin",
+          "--eval",
+          "db.runCommand('ping').ok",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:8-alpine
+    restart: unless-stopped
+    # appendonly: geçiş olayı kuyruğu Redis'te bekler; yeniden başlatmada
+    # kuyruktaki yazılmamış olaylar kaybolmamalı.
+    command:
+      [
+        "redis-server",
+        "--requirepass",
+        "${REDIS_PASSWORD:?REDIS_PASSWORD tanimlanmali}",
+        "--appendonly",
+        "yes",
+      ]
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD}", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+volumes:
+  mongo-data:
+  redis-data:
+  # Let's Encrypt sertifikaları burada durur. Bu volume kaybedilirse
+  # sertifikalar yeniden alınır ve ACME oran sınırlarına takılabilirsiniz.
+  caddy-data:
+  caddy-config:

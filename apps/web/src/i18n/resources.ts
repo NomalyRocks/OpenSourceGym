@@ -349,6 +349,58 @@ const en = {
     "The deletion request has already been resolved.",
   "Hesap verileri temizlenemedi. Lütfen tekrar deneyin.":
     "Account data could not be cleaned up. Please try again.",
+  "Daha fazla yükle": "Load more",
+  Tümü: "All",
+
+  // Faz E — raporlama, yenilemeler, dışa aktarma
+  Raporlar: "Reports",
+  Yenilemeler: "Renewals",
+  "Yenileme hatırlatması gönderildi": "Renewal reminder sent",
+  "Veri dışa aktarıldı": "Data exported",
+  Uygula: "Apply",
+  "Son 7 gün": "Last 7 days",
+  "Son 30 gün": "Last 30 days",
+  "Son 90 gün": "Last 90 days",
+  "Yeni Üye": "New members",
+  "Yeni Abonelik": "New subscriptions",
+  "Kaybedilen Üye": "Lapsed members",
+  "aralıkta kaydolan": "joined in range",
+  "aralıkta eklenen": "added in range",
+  "aralıkta bitip yenilemeyen": "expired without renewal",
+  "Geçiş Sayısı": "Entry count",
+  "{{allowed}} izin · {{denied}} red":
+    "{{allowed}} allowed · {{denied}} denied",
+  "Benzersiz üye": "Unique members",
+  "aralıkta en az bir geçiş": "at least one entry in range",
+  "Günlük Giriş Trendi": "Daily entry trend",
+  "Bu aralıkta geçiş kaydı yok.": "No entries in this range.",
+  "Dışa Aktar": "Export",
+  "Üyeler (CSV)": "Members (CSV)",
+  "Abonelikler (CSV)": "Subscriptions (CSV)",
+  "Geçişler (CSV)": "Entries (CSV)",
+  "Dışa aktarılan dosyalar kişisel veri içerir ve her indirme işlem kaydına yazılır.":
+    "Exported files contain personal data and every download is written to the audit log.",
+  "Aralık geçersiz. Başlangıç bitişten sonra olamaz ve aralık 366 günü aşamaz.":
+    "Invalid range. Start cannot be after end and the range cannot exceed 366 days.",
+  "Geçersiz hatırlatma ayarları.": "Invalid renewal reminder settings.",
+  "Kalan gün": "Days left",
+  "Bitiş tarihi": "Ends on",
+  "Son hatırlatma": "Last reminder",
+  "Hatırlatma gönder": "Send reminder",
+  "Hatırlatma gönderildi.": "Reminder sent.",
+  "Bu üyeye son 24 saat içinde hatırlatma gönderildi.":
+    "This member was already reminded within the last 24 hours.",
+  "Bu üyenin yaklaşan bir yenilemesi yok.":
+    "This member has no upcoming renewal.",
+  "{{days}} gün içinde": "Within {{days}} days",
+  "Yenilemesi yaklaşan üye yok.": "No upcoming renewals.",
+  Hiç: "Never",
+  Bugün: "Today",
+  "Yenileme Hatırlatmaları": "Renewal reminders",
+  "Otomatik hatırlatma e-postalarını gönder": "Send automatic reminder e-mails",
+  "Kaç gün kala (virgülle ayırın)": "Days before expiry (comma separated)",
+  "Hatırlatmalar SMTP üzerinden gönderilir; açmadan önce SMTP ayarlarının yapılandırıldığından emin olun.":
+    "Reminders are sent over SMTP; make sure SMTP is configured before enabling them.",
 } as const;
 
 const tr = Object.fromEntries(Object.keys(en).map((key) => [key, key]));

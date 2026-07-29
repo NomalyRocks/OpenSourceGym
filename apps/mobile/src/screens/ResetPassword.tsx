@@ -2,6 +2,7 @@ import { useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Alert, Pressable, Text, TextInput, View } from "react-native";
 import { authClient } from "../lib/auth";
+import { runAuthAction } from "../lib/authAction";
 import { OtpInput } from "../components/OtpInput";
 import {
   AuthShell,
@@ -57,51 +58,59 @@ export function ResetPassword({
       confirmRef.current?.focus();
       return;
     }
-    setBusy(true);
-    const { error } = await authClient.emailOtp.resetPassword({
-      email,
-      otp,
-      password,
-    });
-    setBusy(false);
-    if (error) {
-      if (error.status === 429) {
-        setError(t("Çok fazla deneme. Lütfen bir dakika bekleyin."));
-      } else if (error.code === "INVALID_OTP") {
-        setError(t("Kod hatalı."));
-      } else if (error.code === "OTP_EXPIRED") {
-        setError(t("Kodun süresi dolmuş."));
-      } else if (error.code === "TOO_MANY_ATTEMPTS") {
-        setError(t("Çok fazla hatalı deneme yapıldı. Yeni kod isteyin."));
-      } else if (error.code === "PASSWORD_TOO_SHORT") {
-        setError(t("Şifre en az 8 karakter olmalı."));
-      } else {
-        setError(t("Şifre sıfırlanamadı. Lütfen tekrar deneyin."));
+    await runAuthAction(setBusy, showUnreachable, async () => {
+      const { error } = await authClient.emailOtp.resetPassword({
+        email,
+        otp,
+        password,
+      });
+      if (error) {
+        if (error.status === 429) {
+          setError(t("Çok fazla deneme. Lütfen bir dakika bekleyin."));
+        } else if (error.code === "INVALID_OTP") {
+          setError(t("Kod hatalı."));
+        } else if (error.code === "OTP_EXPIRED") {
+          setError(t("Kodun süresi dolmuş."));
+        } else if (error.code === "TOO_MANY_ATTEMPTS") {
+          setError(t("Çok fazla hatalı deneme yapıldı. Yeni kod isteyin."));
+        } else if (error.code === "PASSWORD_TOO_SHORT") {
+          setError(t("Şifre en az 8 karakter olmalı."));
+        } else {
+          setError(t("Şifre sıfırlanamadı. Lütfen tekrar deneyin."));
+        }
+        return;
       }
-      return;
-    }
-    Alert.alert(t("Şifreniz güncellendi"), t("Yeni şifrenizle giriş yapın."));
-    onDone();
+      Alert.alert(t("Şifreniz güncellendi"), t("Yeni şifrenizle giriş yapın."));
+      onDone();
+    });
+  }
+
+  function showUnreachable() {
+    setError(
+      t(
+        "Bağlantı kurulamadı. İnternet bağlantınızı kontrol edip tekrar deneyin.",
+      ),
+    );
   }
 
   async function resend() {
     setError(null);
     setInfo(null);
-    setResending(true);
-    const { error } = await authClient.emailOtp.requestPasswordReset({
-      email,
+    await runAuthAction(setResending, showUnreachable, async () => {
+      const { error } = await authClient.emailOtp.requestPasswordReset({
+        email,
+      });
+      if (error) {
+        setError(
+          error.status === 429
+            ? t("Çok fazla deneme. Lütfen bir dakika bekleyin.")
+            : t("İstek gönderilemedi. Lütfen tekrar deneyin."),
+        );
+        return;
+      }
+      setOtp("");
+      setInfo(t("Yeni kod gönderildi."));
     });
-    setResending(false);
-    if (error) {
-      setError(
-        error.status === 429
-          ? t("Çok fazla deneme. Lütfen bir dakika bekleyin.")
-          : t("İstek gönderilemedi. Lütfen tekrar deneyin."),
-      );
-      return;
-    }
-    setOtp("");
-    setInfo(t("Yeni kod gönderildi."));
   }
 
   return (

@@ -2,6 +2,7 @@ import { useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Pressable, Text, TextInput, View } from "react-native";
 import { authClient } from "../lib/auth";
+import { runAuthAction } from "../lib/authAction";
 import {
   AuthShell,
   Button,
@@ -69,35 +70,44 @@ export function Register({
       );
       return;
     }
-    setBusy(true);
-    const { error } = await authClient.signUp.email({
-      name: `${firstName} ${lastName}`,
-      email,
-      password,
-      // @ts-expect-error ek alanlar sunucu şemasında tanımlı
-      firstName,
-      lastName,
-      phone,
-      kvkkAccepted: kvkk,
-      privacyAccepted: privacy,
-    });
-    setBusy(false);
-    if (error) {
-      if (error.code === "PHONE_ALREADY_EXISTS") {
-        setError(t("Bu telefon numarası ile kayıtlı hesap var."));
-      } else if (error.code === "INVALID_PHONE_NUMBER") {
-        setError(t("Geçerli bir telefon numarası girin."));
-      } else if (
-        error.code === "USER_ALREADY_EXISTS" ||
-        error.code === "USER_ALREADY_EXISTS_USE_ANOTHER_EMAIL"
-      ) {
-        setError(t("Bu e-posta ile kayıtlı hesap var."));
-      } else {
-        setError(t("Kayıt başarısız."));
-      }
-      return;
-    }
-    onRegistered(email, password);
+    await runAuthAction(
+      setBusy,
+      () =>
+        setError(
+          t(
+            "Bağlantı kurulamadı. İnternet bağlantınızı kontrol edip tekrar deneyin.",
+          ),
+        ),
+      async () => {
+        const { error } = await authClient.signUp.email({
+          name: `${firstName} ${lastName}`,
+          email,
+          password,
+          // @ts-expect-error ek alanlar sunucu şemasında tanımlı
+          firstName,
+          lastName,
+          phone,
+          kvkkAccepted: kvkk,
+          privacyAccepted: privacy,
+        });
+        if (error) {
+          if (error.code === "PHONE_ALREADY_EXISTS") {
+            setError(t("Bu telefon numarası ile kayıtlı hesap var."));
+          } else if (error.code === "INVALID_PHONE_NUMBER") {
+            setError(t("Geçerli bir telefon numarası girin."));
+          } else if (
+            error.code === "USER_ALREADY_EXISTS" ||
+            error.code === "USER_ALREADY_EXISTS_USE_ANOTHER_EMAIL"
+          ) {
+            setError(t("Bu e-posta ile kayıtlı hesap var."));
+          } else {
+            setError(t("Kayıt başarısız."));
+          }
+          return;
+        }
+        onRegistered(email, password);
+      },
+    );
   }
 
   return (

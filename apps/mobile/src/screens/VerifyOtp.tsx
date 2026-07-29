@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Pressable, Text, View } from "react-native";
 import { authClient } from "../lib/auth";
+import { runAuthAction } from "../lib/authAction";
 import { getDeviceFingerprint } from "../lib/fingerprint";
 import { EnvelopeGlyph } from "../components/icons";
 import { OtpInput } from "../components/OtpInput";
@@ -37,50 +38,57 @@ export function VerifyOtp({
   }, []);
 
   async function submit() {
-    setBusy(true);
     setError(null);
-    const { error } = await authClient.emailOtp.verifyEmail({ email, otp });
-    if (error) {
-      setBusy(false);
-      setError(t("Kod hatalı veya süresi dolmuş."));
-      return;
-    }
-    // Doğrulama sonrası otomatik giriş — kayıt akışı kesintisiz tamamlanır
-    const fp = await getDeviceFingerprint();
-    const signIn = await authClient.signIn.email({
-      email,
-      password,
-      fetchOptions: fp
-        ? { headers: { "X-Device-Fingerprint": fp } }
-        : undefined,
+    await runAuthAction(setBusy, showUnreachable, async () => {
+      const { error } = await authClient.emailOtp.verifyEmail({ email, otp });
+      if (error) {
+        setError(t("Kod hatalı veya süresi dolmuş."));
+        return;
+      }
+      // Doğrulama sonrası otomatik giriş — kayıt akışı kesintisiz tamamlanır
+      const fp = await getDeviceFingerprint();
+      const signIn = await authClient.signIn.email({
+        email,
+        password,
+        fetchOptions: fp
+          ? { headers: { "X-Device-Fingerprint": fp } }
+          : undefined,
+      });
+      if (signIn.error) {
+        setError(
+          t("Doğrulama tamam; giriş başarısız. Giriş ekranından deneyin."),
+        );
+        return;
+      }
+      onVerified();
     });
-    setBusy(false);
-    if (signIn.error) {
-      setError(
-        t("Doğrulama tamam; giriş başarısız. Giriş ekranından deneyin."),
-      );
-      return;
-    }
-    onVerified();
+  }
+
+  function showUnreachable() {
+    setError(
+      t(
+        "Bağlantı kurulamadı. İnternet bağlantınızı kontrol edip tekrar deneyin.",
+      ),
+    );
   }
 
   async function resend() {
     if (secondsLeft > 0) return;
     setInfo(null);
     setError(null);
-    setResending(true);
-    const { error } = await authClient.emailOtp.sendVerificationOtp({
-      email,
-      type: "email-verification",
+    await runAuthAction(setResending, showUnreachable, async () => {
+      const { error } = await authClient.emailOtp.sendVerificationOtp({
+        email,
+        type: "email-verification",
+      });
+      if (error) {
+        setError(t("Kod gönderilemedi. Lütfen bir dakika bekleyin."));
+      } else {
+        setOtp("");
+        setInfo(t("Yeni kod gönderildi."));
+        setSecondsLeft(RESEND_COOLDOWN_SECONDS);
+      }
     });
-    setResending(false);
-    if (error) {
-      setError(t("Kod gönderilemedi. Lütfen bir dakika bekleyin."));
-    } else {
-      setOtp("");
-      setInfo(t("Yeni kod gönderildi."));
-      setSecondsLeft(RESEND_COOLDOWN_SECONDS);
-    }
   }
 
   return (

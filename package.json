@@ -12,7 +12,9 @@
     "lint": "turbo run lint",
     "test": "turbo run test",
     "typecheck": "turbo run typecheck",
-    "format": "prettier --write ."
+    "format": "prettier --write .",
+    "sim": "node agents/sim/fleet.mjs",
+    "sim:setup": "node agents/sim/fleet.mjs setup"
   },
   "devDependencies": {
     "@eslint/js": "^9.30.0",

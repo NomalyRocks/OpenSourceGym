@@ -8,13 +8,19 @@ export class ApiError extends Error {
   }
 }
 
+/** İptal edilen isteği normal hatadan ayırmak için. */
+export function isAbortError(error: unknown): boolean {
+  return error instanceof DOMException && error.name === "AbortError";
+}
+
 export async function api<T>(
   path: string,
-  options: { method?: string; body?: unknown } = {},
+  options: { method?: string; body?: unknown; signal?: AbortSignal } = {},
 ): Promise<T> {
   const res = await fetch(path, {
     method: options.method ?? "GET",
     credentials: "include",
+    signal: options.signal,
     headers:
       options.body !== undefined
         ? { "Content-Type": "application/json" }

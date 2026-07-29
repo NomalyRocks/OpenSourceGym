@@ -1,13 +1,15 @@
-import { Router } from "express";
+import { Router, type Response } from "express";
 import { ObjectId } from "mongodb";
 import { fromNodeHeaders } from "better-auth/node";
 import { z } from "zod";
 import type {
   AdminStats,
   ApiErrorCode,
+  AuditLogEntry,
   DeletionRequest,
   EntryEvent,
   GymSettings,
+  Page,
   PublicUser,
 } from "@opengym/shared";
 import { auth } from "../auth.js";
@@ -32,12 +34,20 @@ import {
   deleteUserProfilePhotoForAccountDeletion,
 } from "../profilePhoto.js";
 import { SHARING_DEFAULTS } from "../sharing.js";
+import { countActiveMembers, countRenewalsDue } from "../reports.js";
+import { REMINDER_DEFAULTS } from "../renewalReminders.js";
 import {
   createSequentialSubscription,
   listUserSubscriptions,
   SubscriptionLockTimeoutError,
 } from "../subscriptions.js";
 import { tryNormalizePhoneToE164 } from "../phone.js";
+import {
+  dateRangeFilter,
+  findPage,
+  InvalidCursorError,
+  pageQuerySchema,
+} from "../pagination.js";
 import {
   buildUserSearchFilter,
   parseUserSearchQuery,
@@ -86,7 +96,7 @@ adminRouter.post(
         res,
         400,
         "PASSWORD_TOO_SHORT",
-        "Yeni şifre en az 8 karakter olmalıdır.",
+        "New password must be at least 8 characters long.",
       );
       return;
     }
@@ -101,7 +111,7 @@ adminRouter.post(
         res,
         400,
         "CURRENT_PASSWORD_INVALID",
-        "Mevcut şifre hatalı.",
+        "Current password is incorrect.",
       );
       return;
     }
@@ -122,7 +132,7 @@ adminRouter.get("/users", requireRole("admin", "staff"), async (req, res) => {
       res,
       400,
       "SEARCH_QUERY_TOO_SHORT",
-      "Arama için en az iki karakter girin.",
+      "Enter at least two characters to search.",
     );
     return;
   }
@@ -153,12 +163,7 @@ adminRouter.post(
     const targetId = toObjectId(idParam);
     const parsedRole = roleSchema.safeParse(req.body ?? {});
     if (!targetId || !parsedRole.success) {
-      sendApiError(
-        res,
-        400,
-        "INVALID_USER_OR_ROLE",
-        "Geçersiz kullanıcı veya rol.",
-      );
+      sendApiError(res, 400, "INVALID_USER_OR_ROLE", "Invalid user or role.");
       return;
     }
     const { role } = parsedRole.data;
@@ -169,7 +174,7 @@ adminRouter.post(
         res,
         400,
         "SELF_ROLE_CHANGE",
-        "Kendi rolünüzü değiştiremezsiniz.",
+        "You cannot change your own role.",
       );
       return;
     }
@@ -183,7 +188,7 @@ adminRouter.post(
           res,
           403,
           "MFA_REQUIRED",
-          "Bu işlem için MFA doğrulaması gerekli.",
+          "MFA verification is required for this action.",
         );
         return;
       }
@@ -198,7 +203,7 @@ adminRouter.post(
           res,
           429,
           "MFA_LOCKED",
-          "Çok fazla hatalı kod denemesi. 15 dakika sonra tekrar deneyin.",
+          "Too many invalid code attempts. Try again in 15 minutes.",
         );
         return;
       }
@@ -224,7 +229,7 @@ adminRouter.post(
           res,
           403,
           "MFA_INVALID",
-          "Doğrulama kodu geçersiz veya süresi dolmuş.",
+          "The verification code is invalid or has expired.",
         );
         return;
       }
@@ -235,7 +240,7 @@ adminRouter.post(
       { $set: { role } },
     );
     if (!result) {
-      sendApiError(res, 404, "USER_NOT_FOUND", "Kullanıcı bulunamadı.");
+      sendApiError(res, 404, "USER_NOT_FOUND", "User not found.");
       return;
     }
     await logAudit(req.user, "role-assigned", idParam, {
@@ -267,13 +272,13 @@ adminRouter.post(
         res,
         400,
         "INVALID_SUBSCRIPTION",
-        "Geçerli kullanıcı ve abonelik paketi girin.",
+        "Enter a valid user and subscription plan.",
       );
       return;
     }
     const target = await userCollection().findOne({ _id: targetId });
     if (!target) {
-      sendApiError(res, 404, "USER_NOT_FOUND", "Kullanıcı bulunamadı.");
+      sendApiError(res, 404, "USER_NOT_FOUND", "User not found.");
       return;
     }
     try {
@@ -301,7 +306,7 @@ adminRouter.post(
           res,
           503,
           "SUBSCRIPTION_BUSY",
-          "Abonelik işlemi sürüyor. Lütfen tekrar deneyin.",
+          "A subscription operation is in progress. Please try again.",
         );
         return;
       }
@@ -316,7 +321,7 @@ adminRouter.get(
   async (req, res) => {
     const targetId = toObjectId(String(req.params.id ?? ""));
     if (!targetId) {
-      sendApiError(res, 400, "INVALID_USER", "Geçersiz kullanıcı.");
+      sendApiError(res, 400, "INVALID_USER", "Invalid user.");
       return;
     }
     const docs = await listUserSubscriptions(targetId);
@@ -343,8 +348,16 @@ adminRouter.get("/settings", requireRole("admin"), async (_req, res) => {
     capacity: doc?.capacity ?? null,
     autoExitHours: doc?.autoExitHours ?? 4,
     sharing: { ...SHARING_DEFAULTS, ...(doc?.sharing ?? {}) },
+    reminders: { ...REMINDER_DEFAULTS, ...(doc?.reminders ?? {}) },
   };
   res.json(settings);
+});
+
+const reminderSchema = z.object({
+  enabled: z.boolean(),
+  // Eşikler benzersizleştirilip sıralanmaz burada; süpürme zaten en dar eşiği
+  // seçiyor. Üst sınır 90: yenileme penceresinin ötesine hatırlatma anlamsız.
+  daysBefore: z.array(z.number().int().min(0).max(90)).min(1).max(5),
 });
 
 const sharingSchema = z.object({
@@ -371,15 +384,21 @@ const gymSettingsSchema = z.object({
   // Faz 6: paylaşım tespiti ayarları yalnızca istek gövdesinde mevcutsa
   // güncellenir — mevcut ayarlanmış değerleri sessizce ezmemesi kritiktir
   sharing: sharingSchema.optional(),
+  // sharing ile aynı gerekçe: gövdede yoksa mevcut ayar korunur.
+  reminders: reminderSchema.optional(),
 });
 
 // İstemciler mesajı değil code'u yorumlar; her alan kendi kararlı kodunu korur
 const SETTINGS_FIELD_ERRORS: Record<string, [ApiErrorCode, string]> = {
-  gymName: ["GYM_NAME_REQUIRED", "Salon adı zorunludur."],
-  location: ["INVALID_LOCATION", "Geçersiz konum bilgisi."],
-  capacity: ["INVALID_CAPACITY", "Geçersiz kapasite."],
-  autoExitHours: ["INVALID_AUTO_EXIT", "Geçersiz otomatik çıkış süresi."],
-  sharing: ["INVALID_SHARING_SETTINGS", "Geçersiz paylaşım tespiti ayarları."],
+  gymName: ["GYM_NAME_REQUIRED", "Gym name is required."],
+  location: ["INVALID_LOCATION", "Invalid location information."],
+  capacity: ["INVALID_CAPACITY", "Invalid capacity."],
+  autoExitHours: ["INVALID_AUTO_EXIT", "Invalid automatic exit duration."],
+  sharing: ["INVALID_SHARING_SETTINGS", "Invalid sharing detection settings."],
+  reminders: [
+    "INVALID_REMINDER_SETTINGS",
+    "Invalid renewal reminder settings.",
+  ],
 };
 
 adminRouter.put(
@@ -391,12 +410,13 @@ adminRouter.put(
       const field = String(parsed.error.issues[0]?.path[0] ?? "");
       const [code, message] = SETTINGS_FIELD_ERRORS[field] ?? [
         "GYM_NAME_REQUIRED",
-        "Salon adı zorunludur.",
+        "Gym name is required.",
       ];
       sendApiError(res, 400, code, message);
       return;
     }
-    const { gymName, location, capacity, autoExitHours, sharing } = parsed.data;
+    const { gymName, location, capacity, autoExitHours, sharing, reminders } =
+      parsed.data;
 
     const setDoc: Partial<Omit<GymSettingsDocument, "_id">> = {
       gymName,
@@ -406,6 +426,9 @@ adminRouter.put(
     };
     if (sharing !== undefined) {
       setDoc.sharing = sharing;
+    }
+    if (reminders !== undefined) {
+      setDoc.reminders = reminders;
     }
 
     await gymSettingsCollection().updateOne(
@@ -417,97 +440,189 @@ adminRouter.put(
       gymName,
       autoExitHours: setDoc.autoExitHours,
       ...(sharing !== undefined ? { sharing } : {}),
+      // Hatırlatmaların açılıp kapanması üyelere posta gitmesini belirler;
+      // denetim kaydında görünmesi şart.
+      ...(reminders !== undefined ? { reminders } : {}),
     });
     res.json({ ok: true });
   }),
 );
 
 // Genel bakış paneli KPI'ları (personel + admin)
+// Sayımlar rapor modülüyle aynı yardımcıları kullanır: Genel Bakış'taki
+// "Yenileme Bekleyen" ile Raporlar sayfasındaki sayı ayrışırsa hangisinin
+// doğru olduğu anlaşılmaz.
 adminRouter.get("/stats", requireRole("admin", "staff"), async (_req, res) => {
   const now = new Date();
-  const in7d = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
-  const subs = db.collection("subscriptions");
   const [activeMembers, renewalsDue] = await Promise.all([
-    subs.distinct("userId", { startsAt: { $lte: now }, endsAt: { $gte: now } }),
-    subs.distinct("userId", {
-      startsAt: { $lte: now },
-      endsAt: { $gte: now, $lte: in7d },
-    }),
+    countActiveMembers(db, now),
+    countRenewalsDue(db, now),
   ]);
-  const body: AdminStats = {
-    activeMembers: activeMembers.length,
-    renewalsDue: renewalsDue.length,
-  };
+  const body: AdminStats = { activeMembers, renewalsDue };
   res.json(body);
 });
 
-// Audit log görüntüleme (yalnızca admin)
-adminRouter.get("/audit", requireRole("admin"), async (_req, res) => {
-  const docs = await db
-    .collection("audit_logs")
-    .find({})
-    .sort({ at: -1 })
-    .limit(100)
-    .toArray();
-  res.json(
-    docs.map((d) => ({
+/**
+ * findPage'in bozuk imleç hatasını 400'e çevirir, diğer hataları terminal hata
+ * handler'ına bırakır. Express 5 async route'larda reddedilen promise'i kendisi
+ * yakalar, bu yüzden yeniden fırlatmak güvenlidir.
+ */
+function toInvalidCursorResponse(res: Response) {
+  return (err: unknown): null => {
+    if (err instanceof InvalidCursorError) {
+      sendApiError(res, 400, "INVALID_REQUEST", "Invalid pagination cursor.");
+      return null;
+    }
+    throw err;
+  };
+}
+
+const auditQuerySchema = pageQuerySchema.extend({
+  action: z.string().min(1).max(64).optional(),
+  from: z.coerce.date().optional(),
+  to: z.coerce.date().optional(),
+});
+
+// Audit log görüntüleme (yalnızca admin) — imleçli sayfalama + eylem/tarih filtresi
+adminRouter.get("/audit", requireRole("admin"), async (req, res) => {
+  const query = auditQuerySchema.safeParse(req.query);
+  if (!query.success) {
+    sendApiError(res, 400, "INVALID_REQUEST", "Invalid list query parameters.");
+    return;
+  }
+  const { cursor, limit, action, from, to } = query.data;
+
+  const filters: Record<string, unknown>[] = [];
+  if (action) filters.push({ action });
+  const range = dateRangeFilter("at", from, to);
+  if (Object.keys(range).length > 0) filters.push(range);
+
+  const page = await findPage(db.collection("audit_logs"), {
+    timeField: "at",
+    filter: filters.length > 0 ? { $and: filters } : {},
+    cursor,
+    limit,
+  }).catch(toInvalidCursorResponse(res));
+  if (!page) return;
+
+  const body: Page<AuditLogEntry> = {
+    items: page.docs.map((d) => ({
       id: d._id.toString(),
       actorId: d.actorId,
       actorEmail: d.actorEmail,
       action: d.action,
       targetId: d.targetId ?? undefined,
       details: d.details ?? undefined,
-      at: d.at.toISOString(),
+      at: (d.at as Date).toISOString(),
     })),
-  );
+    nextCursor: page.nextCursor,
+  };
+  res.json(body);
+});
+
+const entryEventQuerySchema = pageQuerySchema.extend({
+  deviceId: z.string().min(1).max(64).optional(),
+  userId: z.string().min(1).max(64).optional(),
+  // Sorgu parametreleri her zaman string gelir; z.coerce.boolean() "false"ı da
+  // true'ya çevirdiği için açık enum kullanıyoruz.
+  allowed: z.enum(["true", "false"]).optional(),
+  from: z.coerce.date().optional(),
+  to: z.coerce.date().optional(),
 });
 
 // Faz 4: turnike geçiş olayları (izin/red) — personel + admin
+// İmleçli sayfalama + cihaz/üye/sonuç/tarih filtreleri
 adminRouter.get(
   "/entry-events",
   requireRole("admin", "staff"),
-  async (_req, res) => {
-    const docs = await db
-      .collection("entry_events")
-      .find({})
-      .sort({ at: -1 })
-      .limit(100)
-      .toArray();
-    const body: EntryEvent[] = docs.map((d) => ({
-      id: d._id.toString(),
-      deviceId: d.deviceId,
-      deviceName: d.deviceName,
-      userId: d.userId ?? null,
-      memberName: d.memberName ?? null,
-      allowed: d.allowed,
-      reason: d.reason ?? null,
-      at: d.at.toISOString(),
-    }));
+  async (req, res) => {
+    const query = entryEventQuerySchema.safeParse(req.query);
+    if (!query.success) {
+      sendApiError(
+        res,
+        400,
+        "INVALID_REQUEST",
+        "Invalid list query parameters.",
+      );
+      return;
+    }
+    const { cursor, limit, deviceId, userId, allowed, from, to } = query.data;
+
+    const filters: Record<string, unknown>[] = [];
+    if (deviceId) filters.push({ deviceId });
+    if (userId) filters.push({ userId });
+    if (allowed) filters.push({ allowed: allowed === "true" });
+    const range = dateRangeFilter("at", from, to);
+    if (Object.keys(range).length > 0) filters.push(range);
+
+    const page = await findPage(db.collection("entry_events"), {
+      timeField: "at",
+      filter: filters.length > 0 ? { $and: filters } : {},
+      cursor,
+      limit,
+    }).catch(toInvalidCursorResponse(res));
+    if (!page) return;
+
+    const body: Page<EntryEvent> = {
+      items: page.docs.map((d) => ({
+        id: d._id.toString(),
+        deviceId: d.deviceId,
+        deviceName: d.deviceName,
+        userId: d.userId ?? null,
+        memberName: d.memberName ?? null,
+        allowed: d.allowed,
+        reason: d.reason ?? null,
+        at: (d.at as Date).toISOString(),
+      })),
+      nextCursor: page.nextCursor,
+    };
     res.json(body);
   },
 );
 
-// Faz 5 — KVKK: bekleyen hesap silme talepleri listesi (yalnızca admin)
+const deletionRequestQuerySchema = pageQuerySchema.extend({
+  status: z.enum(["pending", "approved", "rejected"]).optional(),
+});
+
+// Faz 5 — KVKK: hesap silme talepleri listesi (yalnızca admin)
+// İmleçli sayfalama + durum filtresi
 adminRouter.get(
   "/deletion-requests",
   requireRole("admin"),
-  async (_req, res) => {
-    const docs = await db
-      .collection("deletion_requests")
-      .find({})
-      .sort({ requestedAt: -1 })
-      .limit(100)
-      .toArray();
-    const body: DeletionRequest[] = docs.map((d) => ({
-      id: d._id.toString(),
-      userId: (d.userId as ObjectId).toString(),
-      email: d.email ?? "",
-      name: d.name ?? "",
-      requestedAt: d.requestedAt.toISOString(),
-      status: d.status,
-      resolvedAt: d.resolvedAt ? new Date(d.resolvedAt).toISOString() : null,
-      resolvedBy: d.resolvedBy ?? null,
-    }));
+  async (req, res) => {
+    const query = deletionRequestQuerySchema.safeParse(req.query);
+    if (!query.success) {
+      sendApiError(
+        res,
+        400,
+        "INVALID_REQUEST",
+        "Invalid list query parameters.",
+      );
+      return;
+    }
+    const { cursor, limit, status } = query.data;
+
+    const page = await findPage(db.collection("deletion_requests"), {
+      timeField: "requestedAt",
+      filter: status ? { status } : {},
+      cursor,
+      limit,
+    }).catch(toInvalidCursorResponse(res));
+    if (!page) return;
+
+    const body: Page<DeletionRequest> = {
+      items: page.docs.map((d) => ({
+        id: d._id.toString(),
+        userId: (d.userId as ObjectId).toString(),
+        email: d.email ?? "",
+        name: d.name ?? "",
+        requestedAt: (d.requestedAt as Date).toISOString(),
+        status: d.status,
+        resolvedAt: d.resolvedAt ? new Date(d.resolvedAt).toISOString() : null,
+        resolvedBy: d.resolvedBy ?? null,
+      })),
+      nextCursor: page.nextCursor,
+    };
     res.json(body);
   },
 );
@@ -523,7 +638,7 @@ adminRouter.post(
         res,
         404,
         "DELETION_REQUEST_NOT_FOUND",
-        "Silme talebi bulunamadı.",
+        "Deletion request not found.",
       );
       return;
     }
@@ -550,8 +665,8 @@ adminRouter.post(
         existing ? 409 : 404,
         existing ? "DELETION_REQUEST_RESOLVED" : "DELETION_REQUEST_NOT_FOUND",
         existing
-          ? "Silme talebi zaten sonuçlandırılmış."
-          : "Silme talebi bulunamadı.",
+          ? "Deletion request has already been resolved."
+          : "Deletion request not found.",
       );
       return;
     }
@@ -579,7 +694,7 @@ adminRouter.post(
         res,
         503,
         "DELETION_CLEANUP_FAILED",
-        "Profil fotoğrafı depolama alanından silinemedi. Lütfen tekrar deneyin.",
+        "Profile photo could not be deleted from storage. Please try again.",
       );
       return;
     }
@@ -588,6 +703,10 @@ adminRouter.post(
     await db.collection("account").deleteMany({ userId: targetId });
     await db.collection("subscriptions").deleteMany({ userId: targetId });
     await db.collection("twoFactor").deleteMany({ userId: targetId });
+    // Hatırlatma kayıtları "bu üyeye şu tarihte e-posta gönderildi" bilgisidir
+    // ve abonelikleri silinen üyeye ait olarak kalamaz (unutulma hakkı).
+    // İstatistik değeri yok; anonimleştirmek yerine siliniyorlar.
+    await db.collection("renewal_reminders").deleteMany({ userId: targetId });
     await markOutside(targetIdStr);
     // Geçmiş turnike kayıtları istatistik için tutulur, ancak kişisel veri
     // (KVKK) taşımamalıdır
@@ -630,7 +749,7 @@ adminRouter.post(
         res,
         404,
         "DELETION_REQUEST_NOT_FOUND",
-        "Silme talebi bulunamadı.",
+        "Deletion request not found.",
       );
       return;
     }
@@ -642,7 +761,7 @@ adminRouter.post(
         res,
         404,
         "DELETION_REQUEST_NOT_FOUND",
-        "Silme talebi bulunamadı.",
+        "Deletion request not found.",
       );
       return;
     }
@@ -651,7 +770,7 @@ adminRouter.post(
         res,
         409,
         "DELETION_REQUEST_RESOLVED",
-        "Silme talebi zaten sonuçlandırılmış.",
+        "Deletion request has already been resolved.",
       );
       return;
     }

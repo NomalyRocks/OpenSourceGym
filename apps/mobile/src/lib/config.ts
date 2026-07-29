@@ -9,6 +9,30 @@ import Constants from "expo-constants";
  */
 const devHost = Constants.expoConfig?.hostUri?.split(":")[0];
 
-export const API_URL =
-  process.env.EXPO_PUBLIC_API_URL ??
-  (devHost ? `http://${devHost}:3000` : "http://localhost:3000");
+function resolveApiUrl(): string {
+  const configuredUrl = process.env.EXPO_PUBLIC_API_URL;
+
+  if (__DEV__) {
+    const developmentUrl =
+      configuredUrl ??
+      (devHost ? `http://${devHost}:3000` : "http://localhost:3000");
+
+    return developmentUrl.replace(/\/+$/, "");
+  }
+
+  if (!configuredUrl) {
+    throw new Error(
+      "Production derlemesinde EXPO_PUBLIC_API_URL tanımlanmalıdır.",
+    );
+  }
+
+  if (!configuredUrl.startsWith("https://")) {
+    throw new Error(
+      "Production derlemesinde EXPO_PUBLIC_API_URL https:// ile başlamalıdır.",
+    );
+  }
+
+  return configuredUrl.replace(/\/+$/, "");
+}
+
+export const API_URL = resolveApiUrl();

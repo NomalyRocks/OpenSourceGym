@@ -43,7 +43,7 @@ function touchLastSeen(deviceId: string): void {
 function registerDevice(id: string, ws: DeviceSocket): void {
   const existing = devices.get(id);
   if (existing && existing !== ws) {
-    existing.close(4000, "yeni bağlantı");
+    existing.close(4000, "new connection");
   }
   devices.set(id, ws);
 }
@@ -64,7 +64,7 @@ export function isDeviceOnline(id: string): boolean {
 export function disconnectDevice(id: string): void {
   const ws = devices.get(id);
   if (ws) {
-    ws.close(4001, "cihaz kaldırıldı");
+    ws.close(4001, "device removed");
     devices.delete(id);
     logDeviceStatus(id, false);
   }
@@ -85,7 +85,7 @@ export function openDevice(id: string, openMs: number): boolean {
 function failAuth(ws: WebSocket): void {
   send(ws, {
     type: "auth_error",
-    message: "Cihaz kimlik doğrulaması başarısız.",
+    message: "Device authentication failed.",
   });
   ws.close();
 }

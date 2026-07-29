@@ -31,6 +31,7 @@ import {
   occupancySchema,
   okSchema,
   otpSuccessSchema,
+  pageSchema,
   profilePhotoResponseSchema,
   publicUserSchema,
   roleRequestSchema,
@@ -89,6 +90,67 @@ const idPathParams = z.object({
 const userSearchQuery = z.object({
   q: z.string().trim().min(2).meta({
     description: "Telefon, e-posta, ad veya soyad; en az 2 karakter",
+  }),
+});
+
+const pageQuerySchema = z.object({
+  cursor: z.string().min(1).optional().meta({
+    description: "Bir önceki sayfadan dönen opak devam imleci",
+  }),
+  limit: z.coerce.number().int().min(1).max(100).default(50).meta({
+    description: "Sayfa başına kayıt sayısı (varsayılan 50; 1-100)",
+  }),
+});
+
+const auditQuerySchema = pageQuerySchema.extend({
+  action: z.string().min(1).max(64).optional().meta({
+    description: "Tam eşleşmeyle filtrelenecek işlem adı (1-64 karakter)",
+  }),
+  from: z.coerce
+    .date()
+    .optional()
+    .meta({
+      description: "Kayıt zamanı için dahil başlangıç tarihi ve saati",
+      override: { type: "string", format: "date-time" },
+    }),
+  to: z.coerce
+    .date()
+    .optional()
+    .meta({
+      description: "Kayıt zamanı için dahil bitiş tarihi ve saati",
+      override: { type: "string", format: "date-time" },
+    }),
+});
+
+const entryEventQuerySchema = pageQuerySchema.extend({
+  deviceId: z.string().min(1).max(64).optional().meta({
+    description: "Filtrelenecek cihaz kimliği (1-64 karakter)",
+  }),
+  userId: z.string().min(1).max(64).optional().meta({
+    description: "Filtrelenecek kullanıcı kimliği (1-64 karakter)",
+  }),
+  allowed: z.enum(["true", "false"]).optional().meta({
+    description: "Geçiş sonucunu izin verilen veya reddedilenlerle sınırlar",
+  }),
+  from: z.coerce
+    .date()
+    .optional()
+    .meta({
+      description: "Geçiş zamanı için dahil başlangıç tarihi ve saati",
+      override: { type: "string", format: "date-time" },
+    }),
+  to: z.coerce
+    .date()
+    .optional()
+    .meta({
+      description: "Geçiş zamanı için dahil bitiş tarihi ve saati",
+      override: { type: "string", format: "date-time" },
+    }),
+});
+
+const deletionRequestQuerySchema = pageQuerySchema.extend({
+  status: z.enum(["pending", "approved", "rejected"]).optional().meta({
+    description: "Talepleri durumuna göre filtreler",
   }),
 });
 
@@ -447,9 +509,16 @@ export const openApiDocument: OpenApiDocument = createDocument({
         tags: ["admin"],
         operationId: "listAuditLogs",
         summary: "Denetim kayıtlarını listele",
-        ...requiredRole("admin", "En yeni 100 hassas işlem kaydını döndürür"),
+        ...requiredRole(
+          "admin",
+          "Hassas işlem kayıtlarını en yeniden eskiye imleçli olarak döndürür",
+        ),
+        requestParams: { query: auditQuerySchema },
         responses: protectedResponses({
-          "200": jsonResponse("Denetim kayıtları", z.array(auditLogSchema)),
+          "200": jsonResponse(
+            "Denetim kayıtları sayfası",
+            pageSchema(auditLogSchema),
+          ),
         }),
       },
     },
@@ -460,10 +529,14 @@ export const openApiDocument: OpenApiDocument = createDocument({
         summary: "Turnike geçişlerini listele",
         ...requiredRole(
           "admin | staff",
-          "En yeni 100 izin ve ret olayını döndürür",
+          "İzin ve ret olaylarını en yeniden eskiye imleçli olarak döndürür",
         ),
+        requestParams: { query: entryEventQuerySchema },
         responses: protectedResponses({
-          "200": jsonResponse("Geçiş olayları", z.array(entryEventSchema)),
+          "200": jsonResponse(
+            "Geçiş olayları sayfası",
+            pageSchema(entryEventSchema),
+          ),
         }),
       },
     },
@@ -472,11 +545,15 @@ export const openApiDocument: OpenApiDocument = createDocument({
         tags: ["admin"],
         operationId: "listDeletionRequests",
         summary: "Hesap silme taleplerini listele",
-        ...requiredRole("admin", "En yeni 100 KVKK silme talebini döndürür"),
+        ...requiredRole(
+          "admin",
+          "KVKK silme taleplerini en yeniden eskiye imleçli olarak döndürür",
+        ),
+        requestParams: { query: deletionRequestQuerySchema },
         responses: protectedResponses({
           "200": jsonResponse(
-            "Hesap silme talepleri",
-            z.array(deletionRequestSchema),
+            "Hesap silme talepleri sayfası",
+            pageSchema(deletionRequestSchema),
           ),
         }),
       },

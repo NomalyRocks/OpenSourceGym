@@ -20,12 +20,12 @@
   - `apps/web` — React admin panel (Vite)
   - `apps/mobile` — placeholder (Faz 3'te Expo ile başlatılacak)
   - `packages/shared` — ortak tipler ve validasyon şemaları
-- [x] Docker Compose: MongoDB, Redis, API servisi
+- [x] Docker Compose: MongoDB ve Redis servisleri; API host üzerinde çalışır
 - [x] TypeScript yapılandırması (strict), ESLint, Prettier
 - [x] Temel CI (lint + typecheck + build — GitHub Actions)
 - [x] API health endpoint (`GET /health`)
 
-**Definition of Done:** `docker compose up` tek komutla çalışır; health endpoint 200 döner; CI yeşil.
+**Definition of Done:** `docker compose up` ile MongoDB ve Redis ayağa kalkar; host üzerinde çalışan API'nin health endpoint'i 200 döner; CI yeşil.
 
 ---
 

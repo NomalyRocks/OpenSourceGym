@@ -198,7 +198,10 @@ select:focus {
   border-color: var(--ink);
 }
 
-button {
+/* .button: buton gibi görünen bağlantılar için (ör. CSV indirme). Dosya
+   indirmesi fetch ile değil doğrudan <a> ile yapılır, görünüm aynı kalmalı. */
+button,
+.button {
   background: var(--accent);
   color: var(--accent-ink);
   border: none;
@@ -214,11 +217,18 @@ button {
     transform 0.05s;
 }
 
-button:hover {
+.button {
+  display: inline-block;
+  text-decoration: none;
+}
+
+button:hover,
+.button:hover {
   background: var(--accent-hover);
 }
 
-button:active {
+button:active,
+.button:active {
   transform: translateY(1px);
 }
 
@@ -227,13 +237,15 @@ button:disabled {
   cursor: not-allowed;
 }
 
-button.ghost {
+button.ghost,
+.button.ghost {
   background: transparent;
   color: var(--ink);
   border: 1px solid var(--line);
 }
 
-button.ghost:hover {
+button.ghost:hover,
+.button.ghost:hover {
   background: rgba(243, 242, 238, 0.08);
 }
 
@@ -837,4 +849,67 @@ tr:hover td {
 
 .stagger > *:nth-child(4) {
   animation-delay: 0.15s;
+}
+
+/* ---- Faz E: raporlar ---- */
+
+/* Üç kartlık satırda boş bir dördüncü hücre kalmasın. */
+.kpi-grid.cols-3 {
+  grid-template-columns: repeat(3, 1fr);
+}
+
+@media (max-width: 900px) {
+  .kpi-grid.cols-3 {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+.trend-chart {
+  display: flex;
+  align-items: flex-end;
+  gap: 2px;
+  height: 180px;
+  border-bottom: 1px solid var(--line);
+  padding-top: 8px;
+}
+
+.trend-bar-slot {
+  flex: 1;
+  height: 100%;
+  display: flex;
+  align-items: flex-end;
+  min-width: 2px;
+}
+
+.trend-bar {
+  width: 100%;
+  background: var(--ink-dim);
+  /* Sıfır geçişli gün de görünür kalmalı, aksi halde grafik "veri yok" gibi
+     okunur. */
+  min-height: 1px;
+  display: flex;
+  align-items: flex-start;
+  transition: background 0.15s;
+}
+
+.trend-bar-slot:hover .trend-bar {
+  background: var(--ink);
+}
+
+.trend-bar-denied {
+  width: 100%;
+  background: var(--danger);
+}
+
+/* Tıklanabilir KPI kartı: bağlantı olduğu belli olmalı ama kart görünümü
+   bozulmamalı. */
+.kpi-card-link {
+  display: block;
+  text-decoration: none;
+  color: inherit;
+  transition: background 0.15s;
+}
+
+.kpi-card-link:hover {
+  background: rgba(243, 242, 238, 0.05);
 }

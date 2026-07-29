@@ -1,13 +1,16 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import type {
   EntryEvent,
   GateRejectCode,
   OccupancyResponse,
+  Page,
 } from "@opengym/shared";
-import { api } from "../lib/api";
+import { api, isAbortError } from "../lib/api";
+import { usePollingQuery } from "../hooks/usePollingQuery";
 import { errorMessage } from "../i18n/errors";
 import { dateLocale } from "../i18n/format";
+import { dayEndIso, dayStartIso } from "../lib/dateRange";
 import type { WebTranslationKey } from "../i18n/resources";
 
 const reasonLabels: Record<GateRejectCode, WebTranslationKey> = {
@@ -33,28 +36,87 @@ export function Entries() {
     return key ? t(key) : reason;
   };
   const [entries, setEntries] = useState<EntryEvent[]>([]);
+  const [nextCursor, setNextCursor] = useState<string | null>(null);
   const [occupancy, setOccupancy] = useState<OccupancyResponse | null>(null);
+  const [allowed, setAllowed] = useState("");
+  const [from, setFrom] = useState("");
+  const [to, setTo] = useState("");
+  const [pagedBack, setPagedBack] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  async function load() {
+  function buildQuery(cursor: string | null): string {
+    const params = new URLSearchParams();
+    if (cursor) params.set("cursor", cursor);
+    if (allowed) params.set("allowed", allowed);
+    // Uçlar ayrı ayrı çözülür: kullanıcı yalnızca başlangıcı veya yalnızca
+    // bitişi seçebilir. Bitiş günün sonuna sabitlenir; gün başına gönderilseydi
+    // sunucudaki `$lte` seçilen son günü tamamen dışarıda bırakırdı.
+    const fromIso = dayStartIso(from);
+    const toIso = dayEndIso(to);
+    if (fromIso) params.set("from", fromIso);
+    if (toIso) params.set("to", toIso);
+    return params.toString();
+  }
+
+  // Otomatik tazeleme yalnızca ilk sayfayı yeniler. Kullanıcı "daha fazla
+  // yükle" ile geçmişe indiyse liste elinden alınmamalı; o durumda yalnızca
+  // doluluk sayacı güncellenir.
+  async function refresh(signal: AbortSignal) {
     try {
-      const [events, occ] = await Promise.all([
-        api<EntryEvent[]>("/api/admin/entry-events"),
-        api<OccupancyResponse>("/api/me/occupancy"),
+      const occupancyRequest = api<OccupancyResponse>("/api/me/occupancy", {
+        signal,
+      });
+      if (pagedBack) {
+        setOccupancy(await occupancyRequest);
+        setError(null);
+        return;
+      }
+      const [page, occ] = await Promise.all([
+        api<Page<EntryEvent>>(`/api/admin/entry-events?${buildQuery(null)}`, {
+          signal,
+        }),
+        occupancyRequest,
       ]);
-      setEntries(events);
+      setEntries(page.items);
+      setNextCursor(page.nextCursor);
       setOccupancy(occ);
       setError(null);
     } catch (err) {
+      if (isAbortError(err)) return;
       setError(errorMessage(err, t, "Yüklenemedi."));
     }
   }
 
-  useEffect(() => {
-    void load();
-    const timer = setInterval(() => void load(), 10000);
-    return () => clearInterval(timer);
-  }, []);
+  // Filtre değişince imleç geçersizdir: hook listeyi baştan yükler.
+  usePollingQuery(refresh, 10000, `${allowed}|${from}|${to}`);
+
+  /** Filtre değişince sayfalama sıfırlanır: eski imleç yeni filtrede geçersiz. */
+  function changeFilter(apply: () => void) {
+    apply();
+    setPagedBack(false);
+    setNextCursor(null);
+  }
+
+  async function loadMore() {
+    if (!nextCursor) return;
+    setLoadingMore(true);
+    try {
+      const page = await api<Page<EntryEvent>>(
+        `/api/admin/entry-events?${buildQuery(nextCursor)}`,
+      );
+      setEntries((prev) => [...prev, ...page.items]);
+      setNextCursor(page.nextCursor);
+      setPagedBack(true);
+      setError(null);
+    } catch (err) {
+      if (!isAbortError(err)) {
+        setError(errorMessage(err, t, "Yüklenemedi."));
+      }
+    } finally {
+      setLoadingMore(false);
+    }
+  }
 
   return (
     <div className="stagger">
@@ -68,6 +130,38 @@ export function Entries() {
             })}`}
         </p>
       )}
+      <div className="row" style={{ marginBottom: 16 }}>
+        <div className="field">
+          <label htmlFor="entries-result">{t("Sonuç")}</label>
+          <select
+            id="entries-result"
+            value={allowed}
+            onChange={(e) => changeFilter(() => setAllowed(e.target.value))}
+          >
+            <option value="">{t("Tümü")}</option>
+            <option value="true">{t("İzin verildi")}</option>
+            <option value="false">{t("Reddedildi")}</option>
+          </select>
+        </div>
+        <div className="field">
+          <label htmlFor="entries-from">{t("Başlangıç")}</label>
+          <input
+            id="entries-from"
+            type="date"
+            value={from}
+            onChange={(e) => changeFilter(() => setFrom(e.target.value))}
+          />
+        </div>
+        <div className="field">
+          <label htmlFor="entries-to">{t("Bitiş")}</label>
+          <input
+            id="entries-to"
+            type="date"
+            value={to}
+            onChange={(e) => changeFilter(() => setTo(e.target.value))}
+          />
+        </div>
+      </div>
       {error && <div className="msg error">{error}</div>}
       <div className="panel">
         <table>
@@ -103,6 +197,15 @@ export function Entries() {
             )}
           </tbody>
         </table>
+        {nextCursor && (
+          <button
+            onClick={() => void loadMore()}
+            disabled={loadingMore}
+            style={{ marginTop: 16 }}
+          >
+            {t("Daha fazla yükle")}
+          </button>
+        )}
       </div>
     </div>
   );

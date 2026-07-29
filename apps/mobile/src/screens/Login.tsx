@@ -2,6 +2,7 @@ import { useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Pressable, Text, TextInput, View } from "react-native";
 import { authClient } from "../lib/auth";
+import { runAuthAction } from "../lib/authAction";
 import { getDeviceFingerprint } from "../lib/fingerprint";
 import { colors } from "../theme";
 import {
@@ -44,31 +45,39 @@ export function Login({
       return;
     }
 
-    setBusy(true);
-    const fp = await getDeviceFingerprint();
-    const { error } = await authClient.signIn.email({
-      email,
-      password,
-      fetchOptions: fp
-        ? { headers: { "X-Device-Fingerprint": fp } }
-        : undefined,
-    });
-    setBusy(false);
-    if (error) {
-      if (error.code === "EMAIL_NOT_VERIFIED") {
-        await authClient.emailOtp.sendVerificationOtp({
-          email,
-          type: "email-verification",
-        });
-        onNeedsVerification(email, password);
-        return;
+    await runAuthAction(setBusy, showUnreachable, async () => {
+      const fp = await getDeviceFingerprint();
+      const { error } = await authClient.signIn.email({
+        email,
+        password,
+        fetchOptions: fp
+          ? { headers: { "X-Device-Fingerprint": fp } }
+          : undefined,
+      });
+      if (error) {
+        if (error.code === "EMAIL_NOT_VERIFIED") {
+          await authClient.emailOtp.sendVerificationOtp({
+            email,
+            type: "email-verification",
+          });
+          onNeedsVerification(email, password);
+          return;
+        }
+        setError(
+          error.status === 429
+            ? t("Çok fazla deneme. Lütfen bir dakika bekleyin.")
+            : t("E-posta veya şifre hatalı."),
+        );
       }
-      setError(
-        error.status === 429
-          ? t("Çok fazla deneme. Lütfen bir dakika bekleyin.")
-          : t("E-posta veya şifre hatalı."),
-      );
-    }
+    });
+  }
+
+  function showUnreachable() {
+    setError(
+      t(
+        "Bağlantı kurulamadı. İnternet bağlantınızı kontrol edip tekrar deneyin.",
+      ),
+    );
   }
 
   return (

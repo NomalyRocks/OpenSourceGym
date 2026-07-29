@@ -1,10 +1,23 @@
-import { MongoClient, ObjectId } from "mongodb";
+import { MongoClient, MongoServerError, ObjectId } from "mongodb";
 import type { Collection, Db, WithId } from "mongodb";
-import type { GymSettings, Role, SharingConfig } from "@opengym/shared";
+import type {
+  GymSettings,
+  ReminderConfig,
+  Role,
+  SharingConfig,
+} from "@opengym/shared";
 import { env } from "./env.js";
 
 export const mongoClient = new MongoClient(env.mongodbUri);
 export const db = mongoClient.db();
+
+/**
+ * Mongo'nun atomik benzersizlik ihlali (E11000) hatası mı.
+ * "Önce oku sonra yaz" desenlerinde yarışı yakalayan tek güvenilir sinyal budur.
+ */
+export function isDuplicateKeyError(error: unknown): boolean {
+  return error instanceof MongoServerError && error.code === 11000;
+}
 
 /** Yol/gövde parametresinden gelen kimliği güvenle ObjectId'ye çevirir. */
 export function toObjectId(value: string): ObjectId | null {
@@ -66,6 +79,7 @@ export interface GymSettingsDocument {
   capacity?: number | null;
   autoExitHours?: number;
   sharing?: Partial<SharingConfig>;
+  reminders?: Partial<ReminderConfig>;
 }
 
 export function gymSettingsCollection(

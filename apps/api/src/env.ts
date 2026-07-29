@@ -1,40 +1,111 @@
-function required(name: string, fallback?: string): string {
-  const value = process.env[name] ?? fallback;
-  if (value === undefined) {
-    throw new Error(`Missing required environment variable: ${name}`);
-  }
-  return value;
+import { z } from "zod";
+
+const isProduction = process.env.NODE_ENV === "production";
+
+/** Virgülle ayrılmış origin listesini temizleyip diziye çevirir. */
+const originList = z
+  .string()
+  .transform((value) =>
+    value
+      .split(",")
+      .map((origin) => origin.trim())
+      .filter(Boolean),
+  )
+  .pipe(z.array(z.url()).nonempty());
+
+const port = z.coerce.number().int().min(1).max(65535);
+
+// Raporlardaki "gün" salonun yerel günüdür, UTC günü değil: sabah 01:00'deki
+// bir geçiş dünkü kovaya düşerse günlük sayılar salon sahibinin gördüğü
+// gerçekle uyuşmaz. Geçersiz bir bölge adı Intl'de RangeError fırlatır; bunu
+// açılışta yakalayıp anlaşılır hata veriyoruz.
+const timeZone = z.string().refine(
+  (value) => {
+    try {
+      new Intl.DateTimeFormat("en-US", { timeZone: value });
+      return true;
+    } catch {
+      return false;
+    }
+  },
+  { message: "geçerli bir IANA saat dilimi olmalı (ör. Europe/Istanbul)" },
+);
+
+// Production'da zayıf varsayılanlar kabul edilmez: BETTER_AUTH_SECRET
+// verilmemişse süreç açılışta düşmeli, sessizce dev anahtarına inmemeli.
+const betterAuthSecret = isProduction
+  ? z.string().min(32)
+  : z.string().min(1).default("dev-only-secret-do-not-use-in-prod");
+
+const envSchema = z.object({
+  PORT: port.default(3000),
+  NODE_ENV: z.string().default("development"),
+  ENABLE_API_DOCS: z.string().optional(),
+  MONGODB_URI: z.string().min(1).default("mongodb://localhost:27017/opengym"),
+  REDIS_URL: z.string().min(1).default("redis://localhost:6379"),
+  BETTER_AUTH_SECRET: betterAuthSecret,
+  BETTER_AUTH_URL: z.url().default("http://localhost:3000"),
+  // prefault (default değil): varsayılan da transform+doğrulamadan geçmeli,
+  // aksi halde zod çıkış tarafında kısa devre yapıp ham string bırakır.
+  TRUSTED_ORIGINS: originList.prefault("http://localhost:5173"),
+  R2_ACCOUNT_ID: z.string().optional(),
+  R2_ACCESS_KEY_ID: z.string().optional(),
+  R2_SECRET_ACCESS_KEY: z.string().optional(),
+  R2_BUCKET_NAME: z.string().optional(),
+  R2_PUBLIC_BASE_URL: z.url().optional(),
+  SMTP_HOST: z.string().optional(),
+  SMTP_PORT: port.default(587),
+  SMTP_USER: z.string().optional(),
+  SMTP_PASS: z.string().optional(),
+  SMTP_FROM: z.string().default("OpenGym <noreply@opengym.local>"),
+  // prefault: varsayılan da refine'dan geçmeli (bkz. TRUSTED_ORIGINS notu).
+  REPORTS_TIME_ZONE: timeZone.prefault("Europe/Istanbul"),
+});
+
+// Boş string "tanımsız" demektir. docker compose'daki `${VAR:-}` yazımı
+// değişkeni BOŞ DEĞERLE gönderir, hiç göndermemiş olmaz; bunu ayıklamazsak
+// isteğe bağlı bir URL alanı (ör. R2_PUBLIC_BASE_URL) boş geldiğinde şema
+// hata verir ve R2 kullanmayan her kurulum açılışta crash-loop'a girer.
+const presentEnv = Object.fromEntries(
+  Object.entries(process.env).filter(([, value]) => value !== ""),
+);
+
+const parsed = envSchema.safeParse(presentEnv);
+
+if (!parsed.success) {
+  // Yapılandırma hatası çalışma anına ertelenmemeli: hangi değişkenin neden
+  // reddedildiğini tek seferde yazıp süreci sonlandırıyoruz.
+  const issues = parsed.error.issues
+    .map((issue) => `  ${issue.path.join(".") || "(kök)"}: ${issue.message}`)
+    .join("\n");
+  console.error(`Geçersiz ortam yapılandırması:\n${issues}`);
+  process.exit(1);
 }
 
+const raw = parsed.data;
+
 export const env = {
-  port: Number(process.env.PORT ?? 3000),
-  nodeEnv: process.env.NODE_ENV ?? "development",
-  enableApiDocs: process.env.ENABLE_API_DOCS === "true",
-  mongodbUri: required("MONGODB_URI", "mongodb://localhost:27017/opengym"),
-  redisUrl: required("REDIS_URL", "redis://localhost:6379"),
-  betterAuthSecret: required(
-    "BETTER_AUTH_SECRET",
-    process.env.NODE_ENV === "production"
-      ? undefined
-      : "dev-only-secret-do-not-use-in-prod",
-  ),
-  betterAuthUrl: required("BETTER_AUTH_URL", "http://localhost:3000"),
-  trustedOrigins: (process.env.TRUSTED_ORIGINS ?? "http://localhost:5173")
-    .split(",")
-    .map((origin) => origin.trim())
-    .filter(Boolean),
+  port: raw.PORT,
+  nodeEnv: raw.NODE_ENV,
+  enableApiDocs: raw.ENABLE_API_DOCS === "true",
+  mongodbUri: raw.MONGODB_URI,
+  redisUrl: raw.REDIS_URL,
+  betterAuthSecret: raw.BETTER_AUTH_SECRET,
+  betterAuthUrl: raw.BETTER_AUTH_URL,
+  trustedOrigins: raw.TRUSTED_ORIGINS,
+  reportsTimeZone: raw.REPORTS_TIME_ZONE,
   r2: {
-    accountId: process.env.R2_ACCOUNT_ID,
-    accessKeyId: process.env.R2_ACCESS_KEY_ID,
-    secretAccessKey: process.env.R2_SECRET_ACCESS_KEY,
-    bucketName: process.env.R2_BUCKET_NAME,
-    publicBaseUrl: process.env.R2_PUBLIC_BASE_URL,
+    accountId: raw.R2_ACCOUNT_ID,
+    accessKeyId: raw.R2_ACCESS_KEY_ID,
+    secretAccessKey: raw.R2_SECRET_ACCESS_KEY,
+    bucketName: raw.R2_BUCKET_NAME,
+    publicBaseUrl: raw.R2_PUBLIC_BASE_URL,
   },
   smtp: {
-    host: process.env.SMTP_HOST,
-    port: Number(process.env.SMTP_PORT ?? 587),
-    user: process.env.SMTP_USER,
-    pass: process.env.SMTP_PASS,
-    from: process.env.SMTP_FROM ?? "OpenGym <noreply@opengym.local>",
+    host: raw.SMTP_HOST,
+    port: raw.SMTP_PORT,
+    user: raw.SMTP_USER,
+    pass: raw.SMTP_PASS,
+    from: raw.SMTP_FROM,
   },
 };

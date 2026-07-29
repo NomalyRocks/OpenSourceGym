@@ -66,7 +66,7 @@ export interface CreatedSequentialSubscription {
 
 export class SubscriptionLockTimeoutError extends Error {
   constructor() {
-    super("Abonelik işlemi başka bir istek tarafından yürütülüyor.");
+    super("A subscription operation is being processed by another request.");
     this.name = "SubscriptionLockTimeoutError";
   }
 }
@@ -74,7 +74,7 @@ export class SubscriptionLockTimeoutError extends Error {
 class SubscriptionLockLostError extends SubscriptionLockTimeoutError {
   constructor() {
     super();
-    this.message = "Abonelik işlem kilidinin sahipliği kaybedildi.";
+    this.message = "Subscription operation lock ownership was lost.";
     this.name = "SubscriptionLockLostError";
   }
 }

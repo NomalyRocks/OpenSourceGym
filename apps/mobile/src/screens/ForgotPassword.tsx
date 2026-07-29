@@ -2,6 +2,7 @@ import { useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Pressable, Text, TextInput, View } from "react-native";
 import { authClient } from "../lib/auth";
+import { runAuthAction } from "../lib/authAction";
 import { AuthShell, Button, ErrorMsg, Field, LogoMark, styles } from "../ui";
 
 export function ForgotPassword({
@@ -25,20 +26,29 @@ export function ForgotPassword({
       emailRef.current?.focus();
       return;
     }
-    setBusy(true);
-    const { error } = await authClient.emailOtp.requestPasswordReset({
-      email,
-    });
-    setBusy(false);
-    if (error) {
-      setError(
-        error.status === 429
-          ? t("Çok fazla deneme. Lütfen bir dakika bekleyin.")
-          : t("İstek gönderilemedi. Lütfen tekrar deneyin."),
-      );
-      return;
-    }
-    onSent(email);
+    await runAuthAction(
+      setBusy,
+      () =>
+        setError(
+          t(
+            "Bağlantı kurulamadı. İnternet bağlantınızı kontrol edip tekrar deneyin.",
+          ),
+        ),
+      async () => {
+        const { error } = await authClient.emailOtp.requestPasswordReset({
+          email,
+        });
+        if (error) {
+          setError(
+            error.status === 429
+              ? t("Çok fazla deneme. Lütfen bir dakika bekleyin.")
+              : t("İstek gönderilemedi. Lütfen tekrar deneyin."),
+          );
+          return;
+        }
+        onSent(email);
+      },
+    );
   }
 
   return (

@@ -260,6 +260,9 @@ const en = {
     "The turnstile is offline. Ask gym reception for help.",
   "Sorun sürerse salon resepsiyonundan destek alın.":
     "Contact gym reception if the problem continues.",
+  "Bağlantı kurulamadı. İnternet bağlantınızı kontrol edip tekrar deneyin.":
+    "Could not connect. Check your internet connection and try again.",
+  "Çıkış yapılamadı. Tekrar deneyin.": "Could not sign out. Please try again.",
 } as const;
 
 const tr = Object.fromEntries(Object.keys(en).map((key) => [key, key]));
