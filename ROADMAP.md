@@ -193,7 +193,7 @@ bakım/hedef kalorisi ile genel makro dağılımını tahmin edebilmesi (US-7).
 - [x] Beşinci mobil alt hedef olarak Araçlar ekranı ve çalışan kalori kartı
 - [x] Mifflin–St Jeor, beş hareket çarpanı, üç hedef ve AMDR içi makro dağılımları için saf TypeScript hesaplama modülü
 - [x] Cinsiyet, yaş, boy, kilo, hareket ve hedef için ayrı tam ekran adımlar; metrik/imperial dönüşümü
-- [x] OpenGym temasını izleyen ilerleme/geri akışı ve iki özgün ahtapot splash illüstrasyonu
+- [x] OpenGym temasını izleyen ilerleme/geri akışı ve iki özgün low-poly kalamar splash illüstrasyonu
 - [x] Sonuçta hedef kalorisi, bakım kalorisi, makro gram/yüzdeleri, yöntem ayrıntısı ve sağlık uyarısı
 - [x] Girdilerin yalnız akış belleğinde tutulması; API, veritabanı ve SecureStore yazımı olmaması
 - [x] TR/EN, açık/koyu tema, büyük yazı, ekran okuyucu, azaltılmış hareket ve Android sistem geri desteği

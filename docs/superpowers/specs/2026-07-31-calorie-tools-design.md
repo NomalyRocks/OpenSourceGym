@@ -4,14 +4,14 @@
 
 Mobil uygulamaya beşinci `Araçlar` hedefi ve tamamen cihazda çalışan bir günlük
 kalori/makro hesaplayıcısı eklenir. Yazio referansından tek soru, üst ilerleme ve
-sabit alt eylem ritmi alınır; OpenGym teması ve özgün ahtapot maskotu korunur.
+sabit alt eylem ritmi alınır; OpenGym teması ve özgün kalamar maskotu korunur.
 
 ## Deneyim
 
 - Araçlar gridinde ilk sürümde yalnız çalışan günlük kalori kartı görünür.
 - Kart; giriş, cinsiyet, yaş, boy, kilo, hareket, hedef ve sonuç ekranlarını tam
   ekran açar. Alt menü gizlenir; görsel ve sistem geri eylemleri önceki adıma döner.
-- Giriş ve sonuçta iki özgün ahtapot illüstrasyonu yer alır. Veri adımları odaklı
+- Giriş ve sonuçta iki özgün kalamar illüstrasyonu yer alır. Veri adımları odaklı
   ve illüstrasyonsuzdur; açık/koyu tema ile TR/EN birlikte desteklenir.
 - Girdiler yalnız açık akışta tutulur ve çıkışta silinir.
 

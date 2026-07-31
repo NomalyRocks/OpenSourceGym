@@ -12,6 +12,7 @@ import {
   Text,
   TextInput,
   View,
+  useWindowDimensions,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import type { MobileTranslationKey } from "../i18n/resources";
@@ -28,6 +29,7 @@ import {
   type CalorieResult,
   type Sex,
 } from "../lib/calorieCalculator";
+import { getCalorieIntroArtworkSize } from "../lib/calorieCalculatorLayout";
 import {
   tabularNumbers,
   useTheme,
@@ -36,8 +38,8 @@ import {
   type Theme,
 } from "../theme";
 import { BackButton, Button, Segmented, StatusMessage, useEnter } from "../ui";
-import introArtwork from "../../assets/calorie-octopus-intro.webp";
-import resultArtwork from "../../assets/calorie-octopus-result.webp";
+import introArtwork from "../../assets/calorie-squid-intro.webp";
+import resultArtwork from "../../assets/calorie-squid-result.webp";
 
 type UnitSystem = "metric" | "imperial";
 type FlowStage =
@@ -265,6 +267,7 @@ export function CalorieCalculator({ onClose }: { onClose: () => void }) {
   const theme = useTheme();
   const styles = useThemedStyles(calculatorStyles);
   const insets = useSafeAreaInsets();
+  const viewport = useWindowDimensions();
   const [stage, setStage] = useState<FlowStage>("intro");
   const [sex, setSex] = useState<Sex | null>(null);
   const [age, setAge] = useState("");
@@ -277,6 +280,9 @@ export function CalorieCalculator({ onClose }: { onClose: () => void }) {
   const [weightLb, setWeightLb] = useState("");
   const [activity, setActivity] = useState<ActivityLevel | null>(null);
   const [goal, setGoal] = useState<CalorieGoal | null>(null);
+
+  const introArtworkSize = getCalorieIntroArtworkSize(viewport);
+  const compactIntro = introArtworkSize < 228;
 
   const language = i18n.resolvedLanguage;
   const ageValue = parseLocalizedNumber(age);
@@ -438,13 +444,16 @@ export function CalorieCalculator({ onClose }: { onClose: () => void }) {
     switch (stage) {
       case "intro":
         return (
-          <View style={styles.intro}>
+          <View style={[styles.intro, compactIntro && styles.introCompact]}>
             <Image
               source={introArtwork}
               resizeMode="contain"
               accessible={false}
               accessibilityIgnoresInvertColors
-              style={styles.introArtwork}
+              style={[
+                styles.introArtwork,
+                { width: introArtworkSize, height: introArtworkSize },
+              ]}
             />
             <Text accessibilityRole="header" style={styles.heroTitle}>
               {t("Günlük enerjini birlikte bulalım")}
@@ -934,10 +943,11 @@ const calculatorStyles = (theme: Theme) =>
       justifyContent: "center",
       paddingTop: theme.spacing.sm,
     },
+    introCompact: {
+      justifyContent: "flex-start",
+      paddingTop: theme.spacing.xs,
+    },
     introArtwork: {
-      width: "82%",
-      maxWidth: 320,
-      aspectRatio: 1,
       marginBottom: theme.spacing.xs,
     },
     heroTitle: {
