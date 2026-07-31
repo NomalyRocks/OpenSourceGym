@@ -5,9 +5,15 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTheme, useThemedStyles, withAlpha, type Theme } from "../theme";
 import type { MobileTranslationKey } from "../i18n/resources";
 import { easing, useReducedMotion } from "../ui";
-import { CalendarGlyph, HomeGlyph, PersonGlyph, QrGlyph } from "./icons";
+import {
+  CalendarGlyph,
+  HomeGlyph,
+  PersonGlyph,
+  QrGlyph,
+  ToolsGlyph,
+} from "./icons";
 
-export type AppTab = "home" | "calendar" | "scan" | "profile";
+export type AppTab = "home" | "calendar" | "scan" | "tools" | "profile";
 
 /** Çubuğun kendi yüksekliği (iç boşluk + öğe yüksekliği). */
 const BAR_HEIGHT = 72;
@@ -33,6 +39,7 @@ const tabs: ReadonlyArray<{
   { id: "home", label: "Ana Sayfa", icon: (c) => <HomeGlyph color={c} /> },
   { id: "calendar", label: "Takvim", icon: (c) => <CalendarGlyph color={c} /> },
   { id: "scan", label: "QR Tara", icon: (c) => <QrGlyph color={c} /> },
+  { id: "tools", label: "Araçlar", icon: (c) => <ToolsGlyph color={c} /> },
   { id: "profile", label: "Profil", icon: (c) => <PersonGlyph color={c} /> },
 ];
 

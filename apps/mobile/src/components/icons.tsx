@@ -142,6 +142,45 @@ export function CalendarGlyph({ size = 22, color }: IconProps) {
   );
 }
 
+/** Araç kutusu: farklı hesaplayıcıları temsil eden 2×2 modül ızgarası. */
+export function ToolsGlyph({ size = 22, color }: IconProps) {
+  const u = size / 24;
+  return (
+    <Frame size={size}>
+      <View style={outlineRect(u, color, 3, 3, 7.2, 7.2, 2)} />
+      <View style={outlineRect(u, color, 13.8, 3, 7.2, 7.2, 2)} />
+      <View style={outlineRect(u, color, 3, 13.8, 7.2, 7.2, 2)} />
+      <View
+        style={rect(u, 13.8, 13.8, 7.2, 7.2, {
+          borderRadius: 2 * u,
+          backgroundColor: color,
+        })}
+      />
+    </Frame>
+  );
+}
+
+/** Hesap makinesi: kalori aracının katalog glifi. */
+export function CalculatorGlyph({ size = 22, color }: IconProps) {
+  const u = size / 24;
+  return (
+    <Frame size={size}>
+      <View style={outlineRect(u, color, 4, 2.5, 16, 19, 3)} />
+      <View style={outlineRect(u, color, 7, 5.5, 10, 4.5, 1.2)} />
+      {[7, 11.2, 15.4].map((x) =>
+        [13.2, 17.2].map((y) => (
+          <View
+            key={`${x}-${y}`}
+            style={line(u, color, x, y, 2.2, 2.2, {
+              borderRadius: 0.8 * u,
+            })}
+          />
+        )),
+      )}
+    </Frame>
+  );
+}
+
 /** Baş ve omuz silüeti. */
 export function PersonGlyph({ size = 22, color }: IconProps) {
   const u = size / 24;

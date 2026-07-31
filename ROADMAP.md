@@ -1,7 +1,7 @@
 # OpenGym — Geliştirme Yol Haritası
 
 > PRD §4.1'deki fazlı çıkış planının geliştirme adımlarına bölünmüş hali.
-> Eşleme: **MVP = Faz 0–3 · v1.1 = Faz 4–5 · v2.0 = Faz 6**
+> Eşleme: **MVP = Faz 0–3 · v1.1 = Faz 4–5 · v2.0 = Faz 6 · v2.1 = Faz 7–9**
 > US-x ve KPI-x referansları [PRD.md](PRD.md) içindeki user story ve başarı kriterlerine işaret eder.
 
 ---
@@ -178,3 +178,29 @@ tercihini kalıcı olarak saklayan iki dilli deneyim.
 - [x] iOS native izin metinlerinin Türkçe ve İngilizce yerelleştirilmesi
 - [x] API hataları için istemciden bağımsız kararlı `code` sözleşmesi
 - [x] Sözlük eşliği, dil çözümleme ve API hata yanıtı testleri; lint, typecheck ve build doğrulaması
+
+---
+
+## Faz 9 — Üye Araçları: Günlük Kalori ve Makrolar
+
+**Hedef:** Üyenin kişisel verilerini saklamadan, mobil uygulama içinde günlük
+bakım/hedef kalorisi ile genel makro dağılımını tahmin edebilmesi (US-7).
+
+**Bağımlılıklar:** Faz 8 (TR/EN altyapısı ve açık/koyu tema).
+
+**İş Kırılımı:**
+
+- [x] Beşinci mobil alt hedef olarak Araçlar ekranı ve çalışan kalori kartı
+- [x] Mifflin–St Jeor, beş hareket çarpanı, üç hedef ve AMDR içi makro dağılımları için saf TypeScript hesaplama modülü
+- [x] Cinsiyet, yaş, boy, kilo, hareket ve hedef için ayrı tam ekran adımlar; metrik/imperial dönüşümü
+- [x] OpenGym temasını izleyen ilerleme/geri akışı ve iki özgün ahtapot splash illüstrasyonu
+- [x] Sonuçta hedef kalorisi, bakım kalorisi, makro gram/yüzdeleri, yöntem ayrıntısı ve sağlık uyarısı
+- [x] Girdilerin yalnız akış belleğinde tutulması; API, veritabanı ve SecureStore yazımı olmaması
+- [x] TR/EN, açık/koyu tema, büyük yazı, ekran okuyucu, azaltılmış hareket ve Android sistem geri desteği
+- [x] Formül/birim/sınır testleri ile mobil lint, typecheck, test ve kök CI doğrulaması
+- [ ] KVM erişimli Android emülatörde tam akış ve açık/koyu tema görsel duman testi
+
+**Definition of Done:** US-7 kabul kriterleri geçer; Android emülatörde tam akış
+ve iki tema doğrulanır; tüm depo kontrolleri yeşildir. Otomatik kontroller ve Android
+üretim paketi doğrulandı; mevcut çalışma ortamında `/dev/kvm` bulunmadığı için
+emülatör görsel kontrolü bekliyor.

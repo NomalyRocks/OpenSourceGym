@@ -55,6 +55,7 @@ import { GateScan } from "./src/screens/GateScan";
 import { Profile } from "./src/screens/Profile";
 import { Notifications } from "./src/screens/Notifications";
 import { Settings } from "./src/screens/Settings";
+import { Tools } from "./src/screens/Tools";
 import {
   BottomTabBar,
   useTabBarSpace,
@@ -170,10 +171,12 @@ function SignedInApp({
   const styles = useThemedStyles(appStyles);
   const [activeTab, setActiveTab] = useState<AppTab>("home");
   const [overlay, setOverlay] = useState<Overlay>(null);
+  const [toolsFullscreen, setToolsFullscreen] = useState(false);
   const [visited, setVisited] = useState<Record<AppTab, boolean>>({
     home: true,
     calendar: false,
     scan: false,
+    tools: false,
     profile: false,
   });
   const reducedMotion = useReducedMotion();
@@ -214,7 +217,7 @@ function SignedInApp({
 
   return (
     <View style={styles.root}>
-      <BottomInsetProvider value={tabBarSpace}>
+      <BottomInsetProvider value={toolsFullscreen ? 0 : tabBarSpace}>
         <Animated.View style={[styles.flex, { opacity }]}>
           <View style={activeTab === "home" ? styles.flex : styles.hidden}>
             <Home
@@ -247,6 +250,12 @@ function SignedInApp({
             )
           ) : null}
 
+          {visited.tools ? (
+            <View style={activeTab === "tools" ? styles.flex : styles.hidden}>
+              <Tools onFullscreenChange={setToolsFullscreen} />
+            </View>
+          ) : null}
+
           {visited.profile ? (
             <View style={activeTab === "profile" ? styles.flex : styles.hidden}>
               <Profile
@@ -257,7 +266,9 @@ function SignedInApp({
           ) : null}
         </Animated.View>
 
-        <BottomTabBar activeTab={activeTab} onTabChange={setActiveTab} />
+        {toolsFullscreen ? null : (
+          <BottomTabBar activeTab={activeTab} onTabChange={setActiveTab} />
+        )}
       </BottomInsetProvider>
 
       {/* İtilen ekranlar sekme çubuğunu kapatır; alt pay onlara uygulanmaz. */}
