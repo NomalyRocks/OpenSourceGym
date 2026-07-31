@@ -1,13 +1,18 @@
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Pressable, Text, View } from "react-native";
+import { Pressable, StyleSheet, Text, View } from "react-native";
 import { authClient } from "../lib/auth";
 import { runAuthAction } from "../lib/authAction";
 import { getDeviceFingerprint } from "../lib/fingerprint";
 import { EnvelopeGlyph } from "../components/icons";
 import { OtpInput } from "../components/OtpInput";
-import { colors } from "../theme";
-import { AuthShell, Button, ErrorMsg, InfoMsg, styles } from "../ui";
+import {
+  tabularNumbers,
+  useTheme,
+  useThemedStyles,
+  type Theme,
+} from "../theme";
+import { AuthHeading, AuthShell, Button, ErrorMsg, InfoMsg } from "../ui";
 
 const RESEND_COOLDOWN_SECONDS = 30;
 
@@ -23,6 +28,8 @@ export function VerifyOtp({
   onVerified: () => void;
 }) {
   const { t } = useTranslation();
+  const theme = useTheme();
+  const styles = useThemedStyles(verifyStyles);
   const [otp, setOtp] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [info, setInfo] = useState<string | null>(null);
@@ -91,68 +98,98 @@ export function VerifyOtp({
     });
   }
 
+  const cooling = secondsLeft > 0;
+
   return (
-    <AuthShell
-      footer={
-        <Pressable accessibilityRole="button" onPress={onBack}>
-          <Text style={styles.link}>{t("Geri dön")}</Text>
-        </Pressable>
-      }
-    >
-      <View
-        style={{
-          width: 56,
-          height: 56,
-          borderRadius: 28,
-          backgroundColor: colors.input,
-          alignItems: "center",
-          justifyContent: "center",
-          alignSelf: "center",
-        }}
-      >
-        <EnvelopeGlyph size={22} color={colors.ink} />
+    <AuthShell onBack={onBack}>
+      <AuthHeading
+        title={t("Doğrulama Kodu")}
+        subtitle={t("Gelen kutuna 6 haneli bir kod gönderdik.")}
+      />
+
+      <View style={styles.recipient}>
+        <EnvelopeGlyph size={18} color={theme.colors.textSecondary} />
+        <Text style={styles.recipientText} numberOfLines={1}>
+          {email}
+        </Text>
       </View>
 
-      <Text style={[styles.heading, { marginTop: 22, textAlign: "center" }]}>
-        {t("Doğrulama Kodu")}
-      </Text>
-      <Text style={[styles.sub, { marginTop: 8, textAlign: "center" }]}>
-        {t("{{email}} adresinize gönderilen 6 haneli kodu girin", { email })}
-      </Text>
+      {error || info ? (
+        <View style={styles.messages}>
+          <ErrorMsg text={error} />
+          <InfoMsg text={info} />
+        </View>
+      ) : null}
 
-      <View style={{ marginTop: 20, width: "100%" }}>
-        <ErrorMsg text={error} />
-        <InfoMsg text={info} />
-      </View>
-
-      <View style={{ marginTop: error || info ? 0 : 32, alignItems: "center" }}>
+      <View style={styles.otp}>
         <OtpInput value={otp} onChangeText={setOtp} autoFocus />
       </View>
 
       <Pressable
         accessibilityRole="button"
+        accessibilityState={{ disabled: cooling || resending }}
+        accessibilityLabel={t("Kodu tekrar gönder")}
         onPress={() => void resend()}
-        disabled={secondsLeft > 0 || resending}
+        disabled={cooling || resending}
         hitSlop={8}
-        style={{ minHeight: 48, marginTop: 16, justifyContent: "center" }}
+        style={({ pressed }) => [styles.resend, pressed && styles.pressed]}
       >
-        <Text
-          style={{
-            color: secondsLeft > 0 ? colors.inkDim : colors.ink,
-            fontSize: 13.5,
-            textAlign: "center",
-          }}
-        >
-          {t("Kodu tekrar gönder")}{" "}
-          {secondsLeft > 0 && (
-            <Text style={{ fontWeight: "700" }}>
-              {`00:${String(secondsLeft).padStart(2, "0")}`}
-            </Text>
-          )}
+        <Text style={[styles.resendLabel, cooling && styles.resendLabelIdle]}>
+          {t("Kodu tekrar gönder")}
         </Text>
+        {cooling ? (
+          <Text style={styles.countdown}>
+            {`00:${String(secondsLeft).padStart(2, "0")}`}
+          </Text>
+        ) : null}
       </Pressable>
 
-      <Button title={t("Doğrula")} onPress={submit} busy={busy} />
+      <Button
+        title={t("Doğrula")}
+        onPress={submit}
+        busy={busy}
+        disabled={otp.length !== 6}
+      />
     </AuthShell>
   );
 }
+
+const verifyStyles = (theme: Theme) =>
+  StyleSheet.create({
+    recipient: {
+      flexDirection: "row",
+      alignItems: "center",
+      alignSelf: "flex-start",
+      maxWidth: "100%",
+      gap: theme.spacing.xs,
+      marginTop: theme.spacing.md,
+      paddingVertical: 7,
+      paddingHorizontal: theme.spacing.sm,
+      borderRadius: theme.radius.pill,
+      backgroundColor: theme.colors.surfaceRaised,
+    },
+    recipientText: {
+      ...theme.type.label,
+      color: theme.colors.textSecondary,
+      flexShrink: 1,
+    },
+    messages: { marginTop: theme.spacing.md, gap: theme.spacing.xs },
+    otp: { marginTop: theme.spacing.xl },
+    resend: {
+      minHeight: 48,
+      marginTop: theme.spacing.md,
+      marginBottom: theme.spacing.sm,
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "center",
+      gap: theme.spacing.xs,
+    },
+    resendLabel: { ...theme.type.supporting, color: theme.colors.accent },
+    resendLabelIdle: { color: theme.colors.textTertiary },
+    countdown: {
+      ...theme.type.label,
+      ...tabularNumbers,
+      color: theme.colors.textSecondary,
+    },
+    pressed: { opacity: 0.6 },
+  });

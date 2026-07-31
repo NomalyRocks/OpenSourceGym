@@ -1,170 +1,194 @@
 import { View, type ViewStyle } from "react-native";
 
-// Small presentational glyphs built from plain Views (no react-native-svg
-// dependency in this workspace — adding one would require a native
-// dev-client rebuild that can't be verified in this environment). Shapes
-// approximate the SVG icons from the design mockup closely enough for the
-// dark/rounded visual language without needing exact path fidelity.
+/**
+ * Görünüm tabanlı glif seti.
+ *
+ * Bu çalışma alanında `react-native-svg` yok; eklemek native dev-client
+ * rebuild'i gerektirir. Bunun yerine her ikon 24 birimlik bir ızgarada düz
+ * `View`'lardan kuruluyor: aynı 1.8 birim çizgi kalınlığı, aynı köşe yumuşaklığı,
+ * aynı optik ağırlık. Tek bir ailenin parçası gibi okunmaları için kurallar
+ * ikonlar arasında sabit tutulur.
+ */
 
-/** Approximates the design's bottom-nav QR/scan icon (three finder squares
- * + a small module cluster) for the Home screen's QR entry button. */
-export function QrGlyph({
-  size = 20,
-  color,
-}: {
+export interface IconProps {
   size?: number;
   color: string;
-}) {
-  const u = size / 24;
-  const square: ViewStyle = {
+}
+
+const STROKE = 1.8;
+
+/** 24'lük ızgarada mutlak konumlu dikdörtgen/çizgi. */
+function rect(
+  u: number,
+  x: number,
+  y: number,
+  w: number,
+  h: number,
+  extra?: ViewStyle,
+): ViewStyle {
+  return {
     position: "absolute",
+    left: x * u,
+    top: y * u,
+    width: w * u,
+    height: h * u,
+    ...extra,
+  };
+}
+
+/** İçi boş (çizgi) kutu. */
+function outlineRect(
+  u: number,
+  color: string,
+  x: number,
+  y: number,
+  w: number,
+  h: number,
+  r = 2,
+): ViewStyle {
+  return rect(u, x, y, w, h, {
+    borderWidth: STROKE * u,
+    borderColor: color,
+    borderRadius: r * u,
+  });
+}
+
+/** Dolu çizgi (yatay ya da dikey). */
+function line(
+  u: number,
+  color: string,
+  x: number,
+  y: number,
+  w: number,
+  h: number,
+  extra?: ViewStyle,
+): ViewStyle {
+  return rect(u, x, y, w, h, {
+    backgroundColor: color,
+    borderRadius: 1 * u,
+    ...extra,
+  });
+}
+
+function Frame({
+  size,
+  children,
+}: {
+  size: number;
+  children: React.ReactNode;
+}) {
+  return <View style={{ width: size, height: size }}>{children}</View>;
+}
+
+/** Turnike QR'ı: üç bulucu kare + modül kümesi. */
+export function QrGlyph({ size = 22, color }: IconProps) {
+  const u = size / 24;
+  const finder: ViewStyle = {
     width: 7 * u,
     height: 7 * u,
-    borderRadius: 1.4 * u,
-    borderWidth: 1.8 * u,
+    borderRadius: 1.6 * u,
+    borderWidth: STROKE * u,
     borderColor: color,
+    position: "absolute",
   };
   return (
-    <View style={{ width: size, height: size }}>
-      <View style={[square, { left: 3 * u, top: 3 * u }]} />
-      <View style={[square, { left: 14 * u, top: 3 * u }]} />
-      <View style={[square, { left: 3 * u, top: 14 * u }]} />
-      <View
-        style={[
-          square,
-          {
-            left: 14 * u,
-            top: 14 * u,
-            width: 3.4 * u,
-            height: 3.4 * u,
-            borderRadius: 1 * u,
-          },
-        ]}
-      />
-      <View
-        style={{
-          position: "absolute",
-          left: 19.6 * u,
-          top: 14 * u,
-          width: 1.6 * u,
-          height: 6.6 * u,
-          backgroundColor: color,
-        }}
-      />
-      <View
-        style={{
-          position: "absolute",
-          left: 14 * u,
-          top: 19.6 * u,
-          width: 6.6 * u,
-          height: 1.6 * u,
-          backgroundColor: color,
-        }}
-      />
-    </View>
+    <Frame size={size}>
+      <View style={[finder, { left: 3 * u, top: 3 * u }]} />
+      <View style={[finder, { left: 14 * u, top: 3 * u }]} />
+      <View style={[finder, { left: 3 * u, top: 14 * u }]} />
+      <View style={outlineRect(u, color, 14, 14, 3.6, 3.6, 1)} />
+      <View style={line(u, color, 19.8, 14, 1.6, 6.6)} />
+      <View style={line(u, color, 14, 19.8, 6.6, 1.6)} />
+    </Frame>
   );
 }
 
-/** Rounded card with a header divider — stands in for the design's calendar
- * icon on the "Üyelik durumu" card. */
-export function CalendarGlyph({
-  size = 19,
-  color,
-}: {
-  size?: number;
-  color: string;
-}) {
+/** Ev: çatı üçgeni yerine kesilmiş kutu + saçak çizgisi. */
+export function HomeGlyph({ size = 22, color }: IconProps) {
+  const u = size / 24;
   return (
-    <View
-      style={{
-        width: size,
-        height: size,
-        borderRadius: size * 0.22,
-        borderWidth: 1.6,
-        borderColor: color,
-        overflow: "hidden",
-      }}
-    >
+    <Frame size={size}>
+      <View style={outlineRect(u, color, 4, 9, 16, 12, 2.5)} />
       <View
-        style={{
-          height: size * 0.32,
-          borderBottomWidth: 1.6,
-          borderBottomColor: color,
-        }}
-      />
-    </View>
-  );
-}
-
-/** Envelope silhouette (rect + a "V" flap) for the e-mail OTP badge —
- * adapted from the design's phone-verification icon since this app verifies
- * by e-mail, not SMS. */
-export function EnvelopeGlyph({
-  size = 24,
-  color,
-}: {
-  size?: number;
-  color: string;
-}) {
-  const height = size * 0.72;
-  return (
-    <View style={{ width: size, height, alignItems: "center" }}>
-      <View
-        style={{
-          position: "absolute",
-          width: size,
-          height,
-          borderRadius: 4,
-          borderWidth: 1.6,
+        style={rect(u, 7.6, 2.6, 9, 9, {
+          borderTopWidth: STROKE * u,
+          borderLeftWidth: STROKE * u,
           borderColor: color,
-        }}
+          borderTopLeftRadius: 2.5 * u,
+          transform: [{ rotate: "45deg" }],
+        })}
       />
-      <View
-        style={{
-          position: "absolute",
-          top: height * 0.12,
-          left: size * 0.08,
-          width: size * 0.46,
-          height: 1.6,
-          backgroundColor: color,
-          transform: [{ rotate: "26deg" }],
-        }}
-      />
-      <View
-        style={{
-          position: "absolute",
-          top: height * 0.12,
-          right: size * 0.08,
-          width: size * 0.46,
-          height: 1.6,
-          backgroundColor: color,
-          transform: [{ rotate: "-26deg" }],
-        }}
-      />
-    </View>
+      <View style={line(u, color, 10, 15, 4, 6, { borderRadius: 0.8 * u })} />
+    </Frame>
   );
 }
 
-/** Bell silhouette for the dashboard header's notification button. */
-export function BellGlyph({
-  size = 18,
-  color,
-}: {
-  size?: number;
-  color: string;
-}) {
+/** Takvim: başlık ayraçlı kart + iki askı. */
+export function CalendarGlyph({ size = 22, color }: IconProps) {
+  const u = size / 24;
+  return (
+    <Frame size={size}>
+      <View style={outlineRect(u, color, 3, 5, 18, 16, 2.5)} />
+      <View style={line(u, color, 3, 10, 18, STROKE, { borderRadius: 0 })} />
+      <View style={line(u, color, 7.5, 2.5, STROKE, 4.5)} />
+      <View style={line(u, color, 15, 2.5, STROKE, 4.5)} />
+      <View
+        style={rect(u, 7, 13.5, 3, 3, {
+          backgroundColor: color,
+          borderRadius: 1 * u,
+        })}
+      />
+    </Frame>
+  );
+}
+
+/** Baş ve omuz silüeti. */
+export function PersonGlyph({ size = 22, color }: IconProps) {
   const u = size / 24;
   return (
     <View style={{ width: size, height: size, alignItems: "center" }}>
       <View
         style={{
           position: "absolute",
-          top: 2 * u,
+          top: 3.5 * u,
+          width: 8.5 * u,
+          height: 8.5 * u,
+          borderRadius: 4.25 * u,
+          borderWidth: STROKE * u,
+          borderColor: color,
+        }}
+      />
+      <View
+        style={{
+          position: "absolute",
+          top: 14 * u,
+          width: 16.5 * u,
+          height: 8.5 * u,
+          borderTopLeftRadius: 8.5 * u,
+          borderTopRightRadius: 8.5 * u,
+          borderWidth: STROKE * u,
+          borderBottomWidth: 0,
+          borderColor: color,
+        }}
+      />
+    </View>
+  );
+}
+
+/** Zil. */
+export function BellGlyph({ size = 20, color }: IconProps) {
+  const u = size / 24;
+  return (
+    <View style={{ width: size, height: size, alignItems: "center" }}>
+      <View
+        style={{
+          position: "absolute",
+          top: 3 * u,
           width: 14 * u,
-          height: 12 * u,
+          height: 11.5 * u,
           borderTopLeftRadius: 7 * u,
           borderTopRightRadius: 7 * u,
-          borderWidth: 1.8 * u,
+          borderWidth: STROKE * u,
           borderBottomWidth: 0,
           borderColor: color,
         }}
@@ -172,22 +196,82 @@ export function BellGlyph({
       <View
         style={{
           position: "absolute",
-          top: 13.5 * u,
+          top: 14.5 * u,
           width: 18 * u,
-          height: 1.8 * u,
+          height: STROKE * u,
+          borderRadius: u,
           backgroundColor: color,
         }}
       />
       <View
         style={{
           position: "absolute",
-          top: 16 * u,
+          top: 17.5 * u,
           width: 6 * u,
-          height: 3 * u,
+          height: 3.2 * u,
           borderBottomLeftRadius: 3 * u,
           borderBottomRightRadius: 3 * u,
-          borderWidth: 1.8 * u,
+          borderWidth: STROKE * u,
           borderTopWidth: 0,
+          borderColor: color,
+        }}
+      />
+      <View
+        style={{
+          position: "absolute",
+          top: 1.2 * u,
+          width: 2.4 * u,
+          height: 2.4 * u,
+          borderRadius: 1.2 * u,
+          backgroundColor: color,
+        }}
+      />
+    </View>
+  );
+}
+
+/** Dişli: gövde halkası + altı diş. */
+export function GearGlyph({ size = 20, color }: IconProps) {
+  const u = size / 24;
+  const teeth = [0, 60, 120];
+  return (
+    <View
+      style={{
+        width: size,
+        height: size,
+        alignItems: "center",
+        justifyContent: "center",
+      }}
+    >
+      {teeth.map((angle) => (
+        <View
+          key={angle}
+          style={{
+            position: "absolute",
+            width: 3.4 * u,
+            height: 21 * u,
+            borderRadius: 1.6 * u,
+            backgroundColor: color,
+            transform: [{ rotate: `${angle}deg` }],
+          }}
+        />
+      ))}
+      <View
+        style={{
+          position: "absolute",
+          width: 13 * u,
+          height: 13 * u,
+          borderRadius: 6.5 * u,
+          backgroundColor: color,
+        }}
+      />
+      <View
+        style={{
+          position: "absolute",
+          width: 6.6 * u,
+          height: 6.6 * u,
+          borderRadius: 3.3 * u,
+          borderWidth: STROKE * u,
           borderColor: color,
         }}
       />
@@ -195,14 +279,11 @@ export function BellGlyph({
   );
 }
 
-/** Flame silhouette for the daily-streak stat card. */
-export function FlameGlyph({
-  size = 20,
+function Chevron({
+  size,
   color,
-}: {
-  size?: number;
-  color: string;
-}) {
+  rotate,
+}: IconProps & { size: number; rotate: string }) {
   const u = size / 24;
   return (
     <View
@@ -210,76 +291,180 @@ export function FlameGlyph({
         width: size,
         height: size,
         alignItems: "center",
-        justifyContent: "flex-end",
+        justifyContent: "center",
       }}
     >
       <View
         style={{
-          width: 13 * u,
-          height: 16 * u,
-          borderRadius: 7 * u,
-          backgroundColor: color,
-          transform: [{ rotate: "180deg" }],
+          width: 8 * u,
+          height: 8 * u,
+          borderTopWidth: 2 * u,
+          borderRightWidth: 2 * u,
+          borderTopRightRadius: 1.4 * u,
+          borderColor: color,
+          transform: [{ rotate }, { translateX: -1 * u }, { translateY: u }],
         }}
       />
     </View>
   );
 }
 
-/** Barbell silhouette (bar + a weight disc on each end) for the body-weight
- * stat card. */
-export function BarbellGlyph({
-  size = 20,
-  color,
-}: {
-  size?: number;
-  color: string;
-}) {
-  const u = size / 24;
-  const disc: ViewStyle = {
-    position: "absolute",
-    width: 4 * u,
-    height: 8 * u,
-    borderRadius: 2 * u,
-    borderWidth: 1.8 * u,
-    borderColor: color,
-    top: 8 * u,
-  };
-  return (
-    <View style={{ width: size, height: size }}>
-      <View
-        style={{
-          position: "absolute",
-          left: 6 * u,
-          top: 11 * u,
-          width: 12 * u,
-          height: 1.8 * u,
-          backgroundColor: color,
-        }}
-      />
-      <View style={[disc, { left: 2 * u }]} />
-      <View style={[disc, { left: 18 * u }]} />
-    </View>
-  );
+export function ChevronRightGlyph({ size = 18, color }: IconProps) {
+  return <Chevron size={size} color={color} rotate="45deg" />;
 }
 
-/** Clock face for the "gym open now" info row. */
-export function ClockGlyph({
-  size = 19,
-  color,
-}: {
-  size?: number;
-  color: string;
-}) {
+export function ChevronLeftGlyph({ size = 18, color }: IconProps) {
+  return <Chevron size={size} color={color} rotate="-135deg" />;
+}
+
+export function CheckGlyph({ size = 18, color }: IconProps) {
   const u = size / 24;
   return (
     <View
       style={{
-        width: 18 * u,
-        height: 18 * u,
-        borderRadius: 9 * u,
-        borderWidth: 1.8 * u,
-        borderColor: color,
+        width: size,
+        height: size,
+        alignItems: "center",
+        justifyContent: "center",
+      }}
+    >
+      <View
+        style={{
+          width: 6.5 * u,
+          height: 12 * u,
+          borderRightWidth: 2.2 * u,
+          borderBottomWidth: 2.2 * u,
+          borderColor: color,
+          borderBottomRightRadius: 1.2 * u,
+          transform: [{ rotate: "42deg" }, { translateY: -1.4 * u }],
+        }}
+      />
+    </View>
+  );
+}
+
+export function CloseGlyph({ size = 18, color }: IconProps) {
+  const u = size / 24;
+  const bar: ViewStyle = {
+    position: "absolute",
+    width: 17 * u,
+    height: 2 * u,
+    borderRadius: u,
+    backgroundColor: color,
+  };
+  return (
+    <View
+      style={{
+        width: size,
+        height: size,
+        alignItems: "center",
+        justifyContent: "center",
+      }}
+    >
+      <View style={[bar, { transform: [{ rotate: "45deg" }] }]} />
+      <View style={[bar, { transform: [{ rotate: "-45deg" }] }]} />
+    </View>
+  );
+}
+
+/** Güneş: açık tema. */
+export function SunGlyph({ size = 18, color }: IconProps) {
+  const u = size / 24;
+  return (
+    <View
+      style={{
+        width: size,
+        height: size,
+        alignItems: "center",
+        justifyContent: "center",
+      }}
+    >
+      {[0, 45, 90, 135].map((angle) => (
+        <View
+          key={angle}
+          style={{
+            position: "absolute",
+            width: 21 * u,
+            height: 2 * u,
+            borderRadius: u,
+            backgroundColor: color,
+            transform: [{ rotate: `${angle}deg` }],
+          }}
+        />
+      ))}
+      <View
+        style={{
+          position: "absolute",
+          width: 13 * u,
+          height: 13 * u,
+          borderRadius: 6.5 * u,
+          backgroundColor: color,
+        }}
+      />
+      <View
+        style={{
+          position: "absolute",
+          width: 9.5 * u,
+          height: 9.5 * u,
+          borderRadius: 4.75 * u,
+          borderWidth: STROKE * u,
+          borderColor: color,
+        }}
+      />
+    </View>
+  );
+}
+
+/**
+ * Ay: dolu daireden ikinci bir daireyle "ısırık" alınır. `overflow: hidden`
+ * yerine zemin rengiyle maskelemek gerekmesin diye halka olarak çizilir.
+ */
+export function MoonGlyph({ size = 18, color }: IconProps) {
+  const u = size / 24;
+  return (
+    <View
+      style={{
+        width: size,
+        height: size,
+        alignItems: "center",
+        justifyContent: "center",
+      }}
+    >
+      <View
+        style={{
+          width: 17 * u,
+          height: 17 * u,
+          borderRadius: 8.5 * u,
+          borderWidth: 4.6 * u,
+          borderColor: color,
+          borderRightColor: "transparent",
+          borderTopColor: "transparent",
+          transform: [{ rotate: "-28deg" }],
+        }}
+      />
+    </View>
+  );
+}
+
+/** Telefon gövdesi: "cihazı takip et" seçeneği. */
+export function DeviceGlyph({ size = 18, color }: IconProps) {
+  const u = size / 24;
+  return (
+    <Frame size={size}>
+      <View style={outlineRect(u, color, 6, 2.5, 12, 19, 3)} />
+      <View style={line(u, color, 10.5, 17.5, 3, 1.6, { borderRadius: u })} />
+    </Frame>
+  );
+}
+
+/** Küre: dil seçimi. */
+export function GlobeGlyph({ size = 18, color }: IconProps) {
+  const u = size / 24;
+  return (
+    <View
+      style={{
+        width: size,
+        height: size,
         alignItems: "center",
         justifyContent: "center",
       }}
@@ -287,193 +472,369 @@ export function ClockGlyph({
       <View
         style={{
           position: "absolute",
-          width: 1.6 * u,
-          height: 5 * u,
-          backgroundColor: color,
-          top: 3.5 * u,
-          borderRadius: 1,
+          width: 19 * u,
+          height: 19 * u,
+          borderRadius: 9.5 * u,
+          borderWidth: STROKE * u,
+          borderColor: color,
         }}
       />
       <View
         style={{
           position: "absolute",
-          width: 4 * u,
-          height: 1.6 * u,
+          width: 8.6 * u,
+          height: 19 * u,
+          borderRadius: 4.3 * u,
+          borderWidth: STROKE * u,
+          borderColor: color,
+        }}
+      />
+      <View
+        style={{
+          position: "absolute",
+          width: 19 * u,
+          height: STROKE * u,
           backgroundColor: color,
-          left: 9 * u,
-          top: 8.5 * u,
-          borderRadius: 1,
-          transform: [{ rotate: "35deg" }],
         }}
       />
     </View>
   );
 }
 
-/** Simple right-pointing chevron for disclosure rows. */
-export function ChevronRightGlyph({
-  size = 16,
-  color,
-}: {
-  size?: number;
-  color: string;
-}) {
+/** Saat. */
+export function ClockGlyph({ size = 18, color }: IconProps) {
   const u = size / 24;
   return (
     <View
       style={{
-        width: 8 * u,
-        height: 8 * u,
-        borderTopWidth: 2 * u,
-        borderRightWidth: 2 * u,
-        borderColor: color,
-        transform: [{ rotate: "45deg" }],
+        width: size,
+        height: size,
+        alignItems: "center",
+        justifyContent: "center",
       }}
-    />
-  );
-}
-
-/** Speech-bubble silhouette for the group-class reminder card. */
-export function ChatGlyph({
-  size = 19,
-  color,
-}: {
-  size?: number;
-  color: string;
-}) {
-  const u = size / 24;
-  return (
-    <View style={{ width: size, height: size }}>
+    >
       <View
         style={{
           position: "absolute",
-          left: 2 * u,
-          top: 2 * u,
-          width: 20 * u,
-          height: 14 * u,
-          borderRadius: 3 * u,
-          borderWidth: 1.8 * u,
+          width: 19 * u,
+          height: 19 * u,
+          borderRadius: 9.5 * u,
+          borderWidth: STROKE * u,
           borderColor: color,
         }}
       />
       <View
         style={{
           position: "absolute",
-          left: 4 * u,
-          top: 14.5 * u,
-          width: 0,
-          height: 0,
-          borderTopWidth: 4 * u,
-          borderRightWidth: 4 * u,
-          borderTopColor: color,
-          borderRightColor: "transparent",
-        }}
-      />
-    </View>
-  );
-}
-
-/** Two uneven bars — the mockup's "Dashboard" tab-bar glyph. */
-export function DashboardGlyph({
-  size = 22,
-  color,
-}: {
-  size?: number;
-  color: string;
-}) {
-  const u = size / 24;
-  return (
-    <View style={{ width: size, height: size }}>
-      <View
-        style={{
-          position: "absolute",
-          left: 3 * u,
-          top: 10 * u,
-          width: 7 * u,
-          height: 10 * u,
-          borderRadius: 1.5 * u,
-          borderWidth: 1.8 * u,
-          borderColor: color,
+          width: STROKE * u,
+          height: 6 * u,
+          borderRadius: u,
+          backgroundColor: color,
+          top: 5.5 * u,
         }}
       />
       <View
         style={{
           position: "absolute",
-          left: 14 * u,
-          top: 4 * u,
-          width: 7 * u,
-          height: 16 * u,
-          borderRadius: 1.5 * u,
-          borderWidth: 1.8 * u,
-          borderColor: color,
+          width: 4.6 * u,
+          height: STROKE * u,
+          borderRadius: u,
+          backgroundColor: color,
+          left: 12 * u,
+          top: 11.1 * u,
         }}
       />
     </View>
   );
 }
 
-/** Three uneven vertical bars — the mockup's "activity" tab-bar glyph. */
-export function ActivityGlyph({
-  size = 22,
-  color,
-}: {
-  size?: number;
-  color: string;
-}) {
-  const u = size / 24;
-  const bar = (left: number, top: number, height: number): ViewStyle => ({
-    position: "absolute",
-    left: left * u,
-    top: top * u,
-    width: 1.8 * u,
-    height: height * u,
-    backgroundColor: color,
-    borderRadius: 1,
-  });
-  return (
-    <View style={{ width: size, height: size }}>
-      <View style={bar(4, 10, 10)} />
-      <View style={bar(12, 4, 16)} />
-      <View style={bar(20, 13, 7)} />
-    </View>
-  );
-}
-
-/** Head-and-shoulders silhouette — the mockup's "profile" tab-bar glyph. */
-export function PersonGlyph({
-  size = 22,
-  color,
-}: {
-  size?: number;
-  color: string;
-}) {
+/** Kalkan: güvenlik ve KVKK satırları. */
+export function ShieldGlyph({ size = 18, color }: IconProps) {
   const u = size / 24;
   return (
     <View style={{ width: size, height: size, alignItems: "center" }}>
       <View
         style={{
           position: "absolute",
-          top: 4 * u,
-          width: 8 * u,
-          height: 8 * u,
-          borderRadius: 4 * u,
-          borderWidth: 1.8 * u,
+          top: 2.5 * u,
+          width: 16 * u,
+          height: 13 * u,
+          borderWidth: STROKE * u,
+          borderBottomWidth: 0,
+          borderColor: color,
+          borderTopLeftRadius: 3 * u,
+          borderTopRightRadius: 3 * u,
+        }}
+      />
+      <View
+        style={{
+          position: "absolute",
+          top: 11 * u,
+          width: 11 * u,
+          height: 11 * u,
+          borderRightWidth: STROKE * u,
+          borderBottomWidth: STROKE * u,
+          borderColor: color,
+          borderBottomRightRadius: 3 * u,
+          transform: [{ rotate: "45deg" }],
+        }}
+      />
+    </View>
+  );
+}
+
+/** Zarf: e-posta OTP rozetleri. */
+export function EnvelopeGlyph({ size = 24, color }: IconProps) {
+  const u = size / 24;
+  const height = 18 * u;
+  return (
+    <View style={{ width: size, height, alignItems: "center" }}>
+      <View
+        style={{
+          position: "absolute",
+          width: size,
+          height,
+          borderRadius: 3.5 * u,
+          borderWidth: STROKE * u,
           borderColor: color,
         }}
       />
       <View
         style={{
           position: "absolute",
-          top: 14 * u,
-          width: 16 * u,
-          height: 8 * u,
-          borderTopLeftRadius: 8 * u,
-          borderTopRightRadius: 8 * u,
-          borderWidth: 1.8 * u,
+          top: 3 * u,
+          left: 2.4 * u,
+          width: 11.6 * u,
+          height: STROKE * u,
+          backgroundColor: color,
+          borderRadius: u,
+          transform: [{ rotate: "27deg" }],
+        }}
+      />
+      <View
+        style={{
+          position: "absolute",
+          top: 3 * u,
+          right: 2.4 * u,
+          width: 11.6 * u,
+          height: STROKE * u,
+          backgroundColor: color,
+          borderRadius: u,
+          transform: [{ rotate: "-27deg" }],
+        }}
+      />
+    </View>
+  );
+}
+
+/** Asma kilit: şifre akışları. */
+export function LockGlyph({ size = 18, color }: IconProps) {
+  const u = size / 24;
+  return (
+    <View style={{ width: size, height: size, alignItems: "center" }}>
+      <View
+        style={{
+          position: "absolute",
+          top: 2.5 * u,
+          width: 11 * u,
+          height: 9 * u,
+          borderTopLeftRadius: 5.5 * u,
+          borderTopRightRadius: 5.5 * u,
+          borderWidth: STROKE * u,
           borderBottomWidth: 0,
           borderColor: color,
         }}
       />
+      <View style={outlineRect(u, color, 3.5, 10, 17, 11.5, 3)} />
     </View>
+  );
+}
+
+/** Çıkış: kapı + ok. */
+export function LogOutGlyph({ size = 18, color }: IconProps) {
+  const u = size / 24;
+  return (
+    <Frame size={size}>
+      <View
+        style={rect(u, 3, 3, 10, 18, {
+          borderWidth: STROKE * u,
+          borderRightWidth: 0,
+          borderColor: color,
+          borderTopLeftRadius: 2.5 * u,
+          borderBottomLeftRadius: 2.5 * u,
+        })}
+      />
+      <View style={line(u, color, 10, 11.1, 11, STROKE)} />
+      <View
+        style={rect(u, 15.5, 8.4, 7, 7, {
+          borderTopWidth: STROKE * u,
+          borderRightWidth: STROKE * u,
+          borderColor: color,
+          borderTopRightRadius: 1.4 * u,
+          transform: [{ rotate: "45deg" }],
+        })}
+      />
+    </Frame>
+  );
+}
+
+/** Çöp kutusu: hesap silme. */
+export function TrashGlyph({ size = 18, color }: IconProps) {
+  const u = size / 24;
+  return (
+    <Frame size={size}>
+      <View style={line(u, color, 3, 6, 18, STROKE)} />
+      <View style={outlineRect(u, color, 9, 2.6, 6, 3.4, 1.2)} />
+      <View
+        style={rect(u, 5, 7.8, 14, 13.6, {
+          borderWidth: STROKE * u,
+          borderTopWidth: 0,
+          borderColor: color,
+          borderBottomLeftRadius: 2.6 * u,
+          borderBottomRightRadius: 2.6 * u,
+        })}
+      />
+      <View style={line(u, color, 9.6, 11, STROKE, 7)} />
+      <View style={line(u, color, 13.6, 11, STROKE, 7)} />
+    </Frame>
+  );
+}
+
+/** Fotoğraf makinesi: profil fotoğrafı eylemi. */
+export function CameraGlyph({ size = 18, color }: IconProps) {
+  const u = size / 24;
+  return (
+    <View
+      style={{
+        width: size,
+        height: size,
+        alignItems: "center",
+        justifyContent: "center",
+      }}
+    >
+      <View style={outlineRect(u, color, 2.5, 6, 19, 14, 3)} />
+      <View style={line(u, color, 8, 3.4, 8, 3, { borderRadius: 1.2 * u })} />
+      <View
+        style={{
+          position: "absolute",
+          width: 7.4 * u,
+          height: 7.4 * u,
+          borderRadius: 3.7 * u,
+          borderWidth: STROKE * u,
+          borderColor: color,
+          top: 9.2 * u,
+        }}
+      />
+    </View>
+  );
+}
+
+/** Bilgi: ipucu ve boş durum rozetleri. */
+export function InfoGlyph({ size = 18, color }: IconProps) {
+  const u = size / 24;
+  return (
+    <View
+      style={{
+        width: size,
+        height: size,
+        alignItems: "center",
+        justifyContent: "center",
+      }}
+    >
+      <View
+        style={{
+          position: "absolute",
+          width: 19 * u,
+          height: 19 * u,
+          borderRadius: 9.5 * u,
+          borderWidth: STROKE * u,
+          borderColor: color,
+        }}
+      />
+      <View
+        style={{
+          position: "absolute",
+          width: 2.2 * u,
+          height: 2.2 * u,
+          borderRadius: 1.1 * u,
+          backgroundColor: color,
+          top: 6 * u,
+        }}
+      />
+      <View
+        style={{
+          position: "absolute",
+          width: 2.2 * u,
+          height: 7 * u,
+          borderRadius: 1.1 * u,
+          backgroundColor: color,
+          top: 10 * u,
+        }}
+      />
+    </View>
+  );
+}
+
+/** Uyarı: halka + ünlem. `InfoGlyph`'in ters yerleşimi. */
+export function AlertGlyph({ size = 18, color }: IconProps) {
+  const u = size / 24;
+  return (
+    <View
+      style={{
+        width: size,
+        height: size,
+        alignItems: "center",
+        justifyContent: "center",
+      }}
+    >
+      <View
+        style={{
+          position: "absolute",
+          width: 19 * u,
+          height: 19 * u,
+          borderRadius: 9.5 * u,
+          borderWidth: STROKE * u,
+          borderColor: color,
+        }}
+      />
+      <View
+        style={{
+          position: "absolute",
+          width: 2.2 * u,
+          height: 7 * u,
+          borderRadius: 1.1 * u,
+          backgroundColor: color,
+          top: 6 * u,
+        }}
+      />
+      <View
+        style={{
+          position: "absolute",
+          width: 2.2 * u,
+          height: 2.2 * u,
+          borderRadius: 1.1 * u,
+          backgroundColor: color,
+          top: 15.2 * u,
+        }}
+      />
+    </View>
+  );
+}
+
+/** Üç dengesiz çubuk: doluluk / etkinlik. */
+export function ActivityGlyph({ size = 20, color }: IconProps) {
+  const u = size / 24;
+  return (
+    <Frame size={size}>
+      <View
+        style={line(u, color, 3.4, 12, 3.2, 8, { borderRadius: 1.4 * u })}
+      />
+      <View
+        style={line(u, color, 10.4, 5, 3.2, 15, { borderRadius: 1.4 * u })}
+      />
+      <View
+        style={line(u, color, 17.4, 9, 3.2, 11, { borderRadius: 1.4 * u })}
+      />
+    </Frame>
   );
 }

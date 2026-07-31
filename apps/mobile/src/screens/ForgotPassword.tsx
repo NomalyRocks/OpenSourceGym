@@ -1,9 +1,17 @@
 import { useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Pressable, Text, TextInput, View } from "react-native";
+import { StyleSheet, View, type TextInput } from "react-native";
 import { authClient } from "../lib/auth";
 import { runAuthAction } from "../lib/authAction";
-import { AuthShell, Button, ErrorMsg, Field, LogoMark, styles } from "../ui";
+import { useThemedStyles, type Theme } from "../theme";
+import {
+  AuthFooterLink,
+  AuthHeading,
+  AuthShell,
+  Button,
+  ErrorMsg,
+  Field,
+} from "../ui";
 
 export function ForgotPassword({
   onBack,
@@ -13,6 +21,7 @@ export function ForgotPassword({
   onSent: (email: string) => void;
 }) {
   const { t } = useTranslation();
+  const styles = useThemedStyles(forgotStyles);
   const [email, setEmail] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [emailError, setEmailError] = useState<string | null>(null);
@@ -53,25 +62,29 @@ export function ForgotPassword({
 
   return (
     <AuthShell
+      onBack={onBack}
       footer={
-        <Pressable accessibilityRole="button" onPress={onBack}>
-          <Text style={styles.link}>{t("Giriş ekranına dön")}</Text>
-        </Pressable>
+        <AuthFooterLink
+          prompt={t("Şifreni hatırladın mı?")}
+          actionLabel={t("Giriş Yap")}
+          onPress={onBack}
+        />
       }
     >
-      <LogoMark />
-      <Text style={styles.heading}>{t("Şifreni yenile")}</Text>
-      <Text style={styles.sub}>
-        {t(
+      <AuthHeading
+        title={t("Şifreni yenile")}
+        subtitle={t(
           "E-posta adresinizi girin, size bir şifre sıfırlama kodu gönderelim.",
         )}
-      </Text>
+      />
 
-      <View style={{ marginTop: 28 }}>
-        <ErrorMsg text={error} />
-      </View>
+      {error ? (
+        <View style={styles.errorSlot}>
+          <ErrorMsg text={error} />
+        </View>
+      ) : null}
 
-      <View style={{ marginTop: error ? 0 : 8 }}>
+      <View style={styles.fields}>
         <Field
           inputRef={emailRef}
           label={t("E-posta")}
@@ -93,3 +106,9 @@ export function ForgotPassword({
     </AuthShell>
   );
 }
+
+const forgotStyles = (theme: Theme) =>
+  StyleSheet.create({
+    errorSlot: { marginTop: theme.spacing.lg },
+    fields: { marginTop: theme.spacing.xl, marginBottom: theme.spacing.md },
+  });

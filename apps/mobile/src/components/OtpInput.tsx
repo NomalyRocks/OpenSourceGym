@@ -1,7 +1,12 @@
 import { useRef } from "react";
 import { useTranslation } from "react-i18next";
 import { Pressable, StyleSheet, Text, TextInput, View } from "react-native";
-import { colors, radius } from "../theme";
+import {
+  tabularNumbers,
+  useTheme,
+  useThemedStyles,
+  type Theme,
+} from "../theme";
 
 const CELL_COUNT = 6;
 
@@ -22,6 +27,8 @@ export function OtpInput({
   error?: string | null;
 }) {
   const { t } = useTranslation();
+  const theme = useTheme();
+  const styles = useThemedStyles(otpStyles);
   const inputRef = useRef<TextInput>(null);
   const activeIndex = Math.min(value.length, CELL_COUNT - 1);
 
@@ -37,13 +44,15 @@ export function OtpInput({
         {Array.from({ length: CELL_COUNT }).map((_, index) => {
           const digit = value[index] ?? "";
           const active = index === activeIndex;
+          const filled = digit !== "";
           return (
             <View
               key={index}
               style={[
                 styles.cell,
+                filled && styles.cellFilled,
                 active && styles.cellActive,
-                error && styles.cellError,
+                error ? styles.cellError : null,
               ]}
             >
               <Text style={styles.digit}>{digit}</Text>
@@ -65,6 +74,7 @@ export function OtpInput({
         maxLength={CELL_COUNT}
         autoFocus={autoFocus}
         caretHidden
+        selectionColor={theme.colors.accent}
         style={styles.hiddenInput}
       />
       {error ? (
@@ -76,47 +86,42 @@ export function OtpInput({
   );
 }
 
-const styles = StyleSheet.create({
-  field: { width: "100%", gap: 7 },
-  label: {
-    color: colors.textSecondary,
-    fontSize: 13,
-    lineHeight: 18,
-    fontWeight: "600",
-  },
-  row: {
-    flexDirection: "row",
-    gap: 8,
-    width: "100%",
-  },
-  cell: {
-    flex: 1,
-    maxWidth: 52,
-    height: 56,
-    borderRadius: radius.input,
-    borderWidth: 1,
-    borderColor: colors.outline,
-    backgroundColor: colors.surfaceInput,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  cellActive: {
-    backgroundColor: colors.surfaceRaised,
-    borderColor: colors.textPrimary,
-  },
-  cellError: { borderColor: colors.error },
-  digit: {
-    fontSize: 20,
-    fontWeight: "700",
-    color: colors.ink,
-  },
-  hiddenInput: {
-    position: "absolute",
-    top: 25,
-    left: 0,
-    right: 0,
-    height: 56,
-    opacity: 0,
-  },
-  error: { color: colors.error, fontSize: 14, lineHeight: 20 },
-});
+const otpStyles = (theme: Theme) =>
+  StyleSheet.create({
+    field: { width: "100%", gap: 7 },
+    label: { ...theme.type.label, color: theme.colors.textSecondary },
+    row: { flexDirection: "row", gap: 8, width: "100%" },
+    cell: {
+      flex: 1,
+      maxWidth: 56,
+      height: 58,
+      borderRadius: theme.radius.input,
+      borderWidth: 1,
+      borderColor: theme.colors.outline,
+      backgroundColor: theme.colors.surfaceInput,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    cellFilled: { borderColor: theme.colors.outlineStrong },
+    cellActive: {
+      borderColor: theme.colors.accent,
+      backgroundColor: theme.colors.surface,
+    },
+    cellError: { borderColor: theme.colors.error },
+    digit: {
+      fontSize: 21,
+      lineHeight: 26,
+      fontWeight: "700",
+      color: theme.colors.textPrimary,
+      ...tabularNumbers,
+    },
+    hiddenInput: {
+      position: "absolute",
+      top: 25,
+      left: 0,
+      right: 0,
+      height: 58,
+      opacity: 0,
+    },
+    error: { ...theme.type.supporting, color: theme.colors.error },
+  });

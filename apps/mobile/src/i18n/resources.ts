@@ -263,6 +263,98 @@ const en = {
   "Bağlantı kurulamadı. İnternet bağlantınızı kontrol edip tekrar deneyin.":
     "Could not connect. Check your internet connection and try again.",
   "Çıkış yapılamadı. Tekrar deneyin.": "Could not sign out. Please try again.",
+
+  // Açılış ekranı
+  "Üyeliğin ve turnike geçişin tek yerde":
+    "Your membership and turnstile access in one place",
+  "Hazırlanıyor…": "Getting ready…",
+
+  // Kimlik akışı
+  "Gelen kutuna 6 haneli bir kod gönderdik.":
+    "We sent a 6-digit code to your inbox.",
+  "Şifreni hatırladın mı?": "Remembered your password?",
+
+  // Sekmeler ve gezinme
+  Takvim: "Calendar",
+  Bildirimler: "Notifications",
+  Ayarlar: "Settings",
+  Hesap: "Account",
+  Üyelik: "Membership",
+  "Kalan gün": "Days left",
+  "Üyeliğin yakında bitiyor; yenilemek için resepsiyona uğra.":
+    "Your membership expires soon — visit reception to renew it.",
+
+  // Takvim
+  "Üyelik dönemini ve salon geçmişini gün gün gör.":
+    "See your membership period and gym history day by day.",
+  "Önceki ay": "Previous month",
+  "Sonraki ay": "Next month",
+  "Üyelik dönemi": "Membership period",
+  Bugün: "Today",
+  Geliş: "Visit",
+  "Tanımlı değil": "Not set",
+  "Kapsam içinde": "Within coverage",
+  "Kapsam dışında": "Outside coverage",
+  "{{n}} kayıt": "{{n}} records",
+  "Geliş geçmişi henüz yok": "No visit history yet",
+  "Turnikeden her geçişin bu takvimde işaretlenecek. Geçmiş kayıtlar salon tarafında hazırlanınca burada görünür.":
+    "Every turnstile entry will be marked on this calendar. Past records appear here once the gym enables them.",
+
+  // Bildirimler
+  "Az önce": "Just now",
+  "{{n}} dk önce": "{{n}} min ago",
+  "{{n}} sa önce": "{{n}} h ago",
+  "Tümünü okundu işaretle": "Mark all as read",
+  "Bildirim yok": "No notifications",
+  "Bildirimler alınamadı.": "Could not load notifications.",
+  "Üyeliğin ve geçişlerinle ilgili haberler burada belirir.":
+    "News about your membership and entries appears here.",
+  "Üyeliğinle ilgili uyarılar burada belirir. Salon duyuruları bağlandığında onlar da bu listeye düşer.":
+    "Alerts about your membership appear here. Gym announcements will join this list once they are connected.",
+  "Üyeliğin aktif değil": "Your membership is not active",
+  "Salona giriş yapabilmek için resepsiyondan üyeliğini yenilemen gerekiyor.":
+    "Renew your membership at reception to enter the gym.",
+  "Üyeliğin yakında bitiyor": "Your membership expires soon",
+  "Üyeliğinin bitmesine {{n}} gün kaldı.":
+    "{{n}} days left until your membership expires.",
+  "Hesap silme talebin inceleniyor":
+    "Your account deletion request is under review",
+  "Talebin salon personeline iletildi. Onaylanana kadar hesabın açık kalır.":
+    "Your request was sent to gym staff. Your account stays active until it is approved.",
+  "Hesap silme talebin reddedildi":
+    "Your account deletion request was rejected",
+  "Ayrıntı için salon resepsiyonuna başvurabilirsin.":
+    "Contact gym reception for details.",
+
+  // Profil
+  "Değiştirmek için fotoğrafa dokun": "Tap the photo to change it",
+  "Fotoğraf eklemek için dokun": "Tap to add a photo",
+  "İki adımlı doğrulama": "Two-factor authentication",
+  Etkin: "On",
+  "Etkin değil": "Off",
+  "Görünüm, dil, bildirimler ve hesap işlemleri":
+    "Appearance, language, notifications and account actions",
+
+  // Ayarlar
+  Görünüm: "Appearance",
+  "Uygulamanın açık mı koyu mu görüneceğini seç.":
+    "Choose whether the app looks light or dark.",
+  Tema: "Theme",
+  Cihaz: "System",
+  Açık: "Light",
+  Koyu: "Dark",
+  "Üyelik hatırlatmaları": "Membership reminders",
+  "Üyeliğin bitmeye yaklaştığında uyar.":
+    "Warn me when my membership is close to expiring.",
+  "Hesap silme talebinin durumu değişince haber ver.":
+    "Notify me when my deletion request changes status.",
+  "Bu uyarılar cihazında üretilir; salon duyuruları için anlık bildirim henüz kullanılmıyor.":
+    "These alerts are generated on your device; push notifications for gym announcements are not in use yet.",
+  "Gizlilik ve izinler": "Privacy and permissions",
+  "Uygulama izinleri": "App permissions",
+  "Kamera ve konum izinlerini sistem ayarlarından yönet.":
+    "Manage camera and location permissions in system settings.",
+  "OpenGym {{version}} ({{build}})": "OpenGym {{version}} ({{build}})",
 } as const;
 
 const tr = Object.fromEntries(Object.keys(en).map((key) => [key, key]));

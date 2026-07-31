@@ -2,59 +2,77 @@ import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
   Alert,
-  Image,
   Linking,
   Pressable,
-  RefreshControl,
-  ScrollView,
   StyleSheet,
   Text,
   View,
 } from "react-native";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
 import * as ImagePicker from "expo-image-picker";
 import type {
-  MyDeletionRequest,
   MyProfile,
+  MySubscription,
   ProfilePhotoResponse,
 } from "@opengym/shared";
 import { api, uploadBinary } from "../lib/api";
-import { authClient } from "../lib/auth";
-import { LanguageSwitcher } from "../i18n/LanguageSwitcher";
+import { Avatar } from "../components/Avatar";
 import { errorMessage } from "../i18n/errors";
 import { dateLocale } from "../i18n/format";
-import { colors, radius, spacing, type } from "../theme";
-import { Button, ErrorMsg, Skeleton, StatusMessage } from "../ui";
+import {
+  CameraGlyph,
+  ChevronRightGlyph,
+  GearGlyph,
+  ShieldGlyph,
+} from "../components/icons";
+import {
+  tabularNumbers,
+  useTheme,
+  useThemedStyles,
+  type Theme,
+} from "../theme";
+import {
+  Badge,
+  Divider,
+  IconButton,
+  Plate,
+  ScreenHeader,
+  ScrollScreen,
+  SectionHeading,
+  SettingRow,
+  Skeleton,
+  StatusMessage,
+} from "../ui";
 
-const AVATAR_SIZE = 88;
+const AVATAR_SIZE = 76;
 
-export function Profile({ fallbackName }: { fallbackName: string }) {
+export function Profile({
+  fallbackName,
+  onOpenSettings,
+}: {
+  fallbackName: string;
+  onOpenSettings: () => void;
+}) {
   const { t, i18n } = useTranslation();
-  const insets = useSafeAreaInsets();
+  const theme = useTheme();
+  const styles = useThemedStyles(profileStyles);
   const locale = dateLocale(i18n.resolvedLanguage);
   const [profile, setProfile] = useState<MyProfile | null>(null);
-  const [deletion, setDeletion] = useState<MyDeletionRequest | null>(null);
+  const [subscription, setSubscription] = useState<MySubscription | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [photoError, setPhotoError] = useState<string | null>(null);
   const [photoPermissionDenied, setPhotoPermissionDenied] = useState(false);
   const [photoBusy, setPhotoBusy] = useState(false);
-  const [photoLoadFailed, setPhotoLoadFailed] = useState(false);
-  const [deletionError, setDeletionError] = useState<string | null>(null);
-  const [deletionBusy, setDeletionBusy] = useState(false);
-  const [signOutError, setSignOutError] = useState<string | null>(null);
-  const [signOutBusy, setSignOutBusy] = useState(false);
 
   const load = useCallback(async () => {
-    const [profileResult, deletionResult] = await Promise.allSettled([
+    const [profileResult, subscriptionResult] = await Promise.allSettled([
       api<MyProfile>("/api/me/profile"),
-      api<MyDeletionRequest>("/api/me/deletion-request"),
+      api<MySubscription>("/api/me/subscription"),
     ]);
 
     if (profileResult.status === "fulfilled") {
       setProfile(profileResult.value);
-      setPhotoLoadFailed(false);
       setLoadError(null);
     } else {
       setLoadError(
@@ -62,8 +80,8 @@ export function Profile({ fallbackName }: { fallbackName: string }) {
       );
     }
 
-    if (deletionResult.status === "fulfilled") {
-      setDeletion(deletionResult.value);
+    if (subscriptionResult.status === "fulfilled") {
+      setSubscription(subscriptionResult.value);
     }
     setLoading(false);
   }, [t]);
@@ -120,7 +138,6 @@ export function Profile({ fallbackName }: { fallbackName: string }) {
           ? { ...current, profilePhotoUrl: response.profilePhotoUrl }
           : current,
       );
-      setPhotoLoadFailed(false);
     } catch (error) {
       setPhotoError(
         errorMessage(error, t, "Profil fotoğrafı yüklenemedi. Tekrar deneyin."),
@@ -155,7 +172,6 @@ export function Profile({ fallbackName }: { fallbackName: string }) {
       setProfile((current) =>
         current ? { ...current, profilePhotoUrl: null } : current,
       );
-      setPhotoLoadFailed(false);
     } catch (error) {
       setPhotoError(
         errorMessage(
@@ -169,306 +185,264 @@ export function Profile({ fallbackName }: { fallbackName: string }) {
     }
   }
 
-  function confirmDeletion() {
-    Alert.alert(
-      t("Hesabı sil"),
-      t(
-        "Bu talep personel onayına gönderilir. Onaylanırsa hesabınız ve kişisel verileriniz kalıcı olarak silinir, bu işlem geri alınamaz.",
-      ),
-      [
-        { text: t("Vazgeç"), style: "cancel" },
-        {
-          text: t("Talep oluştur"),
-          style: "destructive",
-          onPress: () => void requestDeletion(),
-        },
-      ],
-    );
-  }
-
-  async function requestDeletion() {
-    setDeletionError(null);
-    setDeletionBusy(true);
-    try {
-      await api("/api/me/deletion-request", { method: "POST" });
-      setDeletion(await api<MyDeletionRequest>("/api/me/deletion-request"));
-    } catch (error) {
-      setDeletionError(
-        errorMessage(error, t, "Talep oluşturulamadı. Tekrar deneyin."),
-      );
-    } finally {
-      setDeletionBusy(false);
-    }
-  }
-
-  async function cancelDeletion() {
-    setDeletionError(null);
-    setDeletionBusy(true);
-    try {
-      await api("/api/me/deletion-request", { method: "DELETE" });
-      setDeletion(await api<MyDeletionRequest>("/api/me/deletion-request"));
-    } catch (error) {
-      setDeletionError(
-        errorMessage(error, t, "Talep iptal edilemedi. Tekrar deneyin."),
-      );
-    } finally {
-      setDeletionBusy(false);
-    }
-  }
-
-  // Çıkış da ağ isteğidir: sessizce başarısız olursa üye hâlâ oturumda olduğunu
-  // fark etmez. Hata görünür olmalı ve buton yeniden denenebilir kalmalı.
-  async function signOut() {
-    setSignOutError(null);
-    setSignOutBusy(true);
-    try {
-      await authClient.signOut();
-    } catch (error) {
-      setSignOutError(
-        errorMessage(error, t, "Çıkış yapılamadı. Tekrar deneyin."),
-      );
-    } finally {
-      setSignOutBusy(false);
-    }
-  }
-
   const profileName = profile?.name ?? fallbackName;
-  const initials = profileName
-    .split(/\s+/)
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((part) => part[0]?.toLocaleUpperCase(locale) ?? "")
-    .join("");
   const profilePhotoUrl = profile?.profilePhotoUrl ?? null;
+  const active = subscription?.active === true;
+  const formatDate = (value?: string | null) =>
+    value
+      ? new Date(value).toLocaleDateString(locale, {
+          day: "numeric",
+          month: "short",
+          year: "numeric",
+        })
+      : "—";
 
   return (
-    <ScrollView
-      style={profileStyles.screen}
-      contentContainerStyle={[
-        profileStyles.content,
-        { paddingTop: insets.top + spacing.lg },
-      ]}
-      refreshControl={
-        <RefreshControl
-          refreshing={refreshing}
-          onRefresh={refresh}
-          tintColor={colors.textPrimary}
-          colors={[colors.textPrimary]}
-          progressBackgroundColor={colors.surfaceRaised}
-        />
-      }
-    >
-      <Text accessibilityRole="header" style={profileStyles.screenTitle}>
-        {t("Profil")}
-      </Text>
-      <Text style={profileStyles.screenSubtitle}>
-        {t("Hesabını ve uygulama tercihlerini yönet.")}
-      </Text>
-
-      <View style={profileStyles.identity}>
-        {loading ? (
-          <>
-            <Skeleton width={AVATAR_SIZE} height={AVATAR_SIZE} radius={44} />
-            <View style={{ flex: 1, gap: spacing.sm }}>
-              <Skeleton width="70%" height={24} />
-              <Skeleton width="52%" height={18} />
-            </View>
-          </>
-        ) : (
-          <>
-            <View style={profileStyles.avatar}>
-              {profilePhotoUrl && !photoLoadFailed ? (
-                <Image
-                  source={{ uri: profilePhotoUrl }}
-                  style={profileStyles.avatarImage}
-                  accessibilityLabel={t("{{name}} profil fotoğrafı", {
-                    name: profileName,
-                  })}
-                  onError={() => setPhotoLoadFailed(true)}
-                />
-              ) : (
-                <Text style={profileStyles.initials}>{initials || "O"}</Text>
-              )}
-            </View>
-            <View style={profileStyles.identityCopy}>
-              <Text style={profileStyles.name}>{profileName}</Text>
-              {profile?.email ? (
-                <Text style={profileStyles.email}>{profile.email}</Text>
-              ) : null}
-              <View style={profileStyles.photoActions}>
-                <Pressable
-                  accessibilityRole="button"
-                  onPress={() => void chooseProfilePhoto()}
-                  disabled={photoBusy}
-                  style={({ pressed }) => [
-                    profileStyles.textAction,
-                    pressed && profileStyles.pressed,
-                    photoBusy && profileStyles.disabled,
-                  ]}
-                >
-                  <Text style={profileStyles.textActionLabel}>
-                    {photoBusy
-                      ? t("İşleniyor…")
-                      : profilePhotoUrl
-                        ? t("Fotoğrafı değiştir")
-                        : t("Fotoğraf ekle")}
-                  </Text>
-                </Pressable>
-                {profilePhotoUrl ? (
-                  <Pressable
-                    accessibilityRole="button"
-                    onPress={confirmRemoveProfilePhoto}
-                    disabled={photoBusy}
-                    style={({ pressed }) => [
-                      profileStyles.textAction,
-                      pressed && profileStyles.pressed,
-                    ]}
-                  >
-                    <Text style={profileStyles.removeAction}>
-                      {t("Kaldır")}
-                    </Text>
-                  </Pressable>
-                ) : null}
-              </View>
-            </View>
-          </>
-        )}
-      </View>
-
-      <StatusMessage
-        text={loadError}
-        actionLabel={t("Tekrar dene")}
-        onAction={() => void load()}
-      />
-      <StatusMessage
-        text={photoError}
-        actionLabel={photoPermissionDenied ? t("Ayarları aç") : undefined}
-        onAction={
-          photoPermissionDenied ? () => void Linking.openSettings() : undefined
+    <ScrollScreen refreshing={refreshing} onRefresh={refresh}>
+      <ScreenHeader
+        title={t("Profil")}
+        trailing={
+          <IconButton
+            label={t("Ayarlar")}
+            onPress={onOpenSettings}
+            icon={(color) => <GearGlyph size={21} color={color} />}
+          />
         }
       />
 
-      <View style={profileStyles.section}>
-        <Text style={profileStyles.sectionTitle}>{t("Dil")}</Text>
-        <Text style={profileStyles.sectionHint}>
-          {t("Uygulamada kullanmak istediğin dili seç.")}
-        </Text>
-        <View style={{ marginTop: spacing.md }}>
-          <LanguageSwitcher />
-        </View>
-      </View>
-
-      <View style={profileStyles.section}>
-        <Text style={profileStyles.sectionTitle}>{t("Oturum")}</Text>
-        <ErrorMsg text={signOutError} />
-        <View style={{ marginTop: spacing.sm }}>
-          <Button
-            title={t("Çıkış yap")}
-            variant="secondary"
-            busy={signOutBusy}
-            onPress={() => void signOut()}
-          />
-        </View>
-      </View>
-
-      <View style={profileStyles.dangerSection}>
-        <Text style={profileStyles.dangerTitle}>{t("Hesap işlemleri")}</Text>
-        <Text style={profileStyles.sectionHint}>
-          {t("Hesap silme talepleri salon personeli tarafından incelenir.")}
-        </Text>
-        <View style={{ marginTop: spacing.md }}>
-          <StatusMessage text={deletionError} />
-          {deletion?.status === "pending" ? (
+      <Plate>
+        <View style={styles.identity}>
+          {loading ? (
             <>
-              <StatusMessage
-                tone="warning"
-                text={t("Hesap silme talebiniz personel onayı bekliyor.")}
+              <Skeleton
+                width={AVATAR_SIZE}
+                height={AVATAR_SIZE}
+                radius={AVATAR_SIZE / 2}
               />
-              <Button
-                title={t("Talebi iptal et")}
-                variant="secondary"
-                busy={deletionBusy}
-                onPress={() => void cancelDeletion()}
-              />
+              <View style={styles.identitySkeleton}>
+                <Skeleton width="72%" height={22} />
+                <Skeleton width="54%" height={16} />
+              </View>
             </>
           ) : (
             <>
-              {deletion?.status === "rejected" ? (
-                <StatusMessage
-                  tone="neutral"
-                  text={t("Önceki silme talebiniz reddedildi.")}
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel={
+                  profilePhotoUrl ? t("Fotoğrafı değiştir") : t("Fotoğraf ekle")
+                }
+                accessibilityState={{ disabled: photoBusy }}
+                onPress={() => void chooseProfilePhoto()}
+                disabled={photoBusy}
+                style={({ pressed }) => [
+                  styles.avatar,
+                  pressed && styles.pressed,
+                  photoBusy && styles.disabled,
+                ]}
+              >
+                <Avatar
+                  size={AVATAR_SIZE}
+                  name={profileName}
+                  photoUrl={profilePhotoUrl}
+                  locale={locale}
                 />
-              ) : null}
-              <Button
-                title={t("Hesabımı sil")}
-                variant="danger"
-                busy={deletionBusy}
-                onPress={confirmDeletion}
-              />
+                <View style={styles.avatarBadge}>
+                  <CameraGlyph size={14} color={theme.colors.onAccent} />
+                </View>
+              </Pressable>
+
+              <View style={styles.identityCopy}>
+                <Text style={styles.name} numberOfLines={2}>
+                  {profileName}
+                </Text>
+                {profile?.email ? (
+                  <Text style={styles.email} numberOfLines={1}>
+                    {profile.email}
+                  </Text>
+                ) : null}
+                <View style={styles.photoActions}>
+                  <Text style={styles.photoHint}>
+                    {photoBusy
+                      ? t("İşleniyor…")
+                      : profilePhotoUrl
+                        ? t("Değiştirmek için fotoğrafa dokun")
+                        : t("Fotoğraf eklemek için dokun")}
+                  </Text>
+                  {profilePhotoUrl && !photoBusy ? (
+                    <Pressable
+                      accessibilityRole="button"
+                      onPress={confirmRemoveProfilePhoto}
+                      hitSlop={8}
+                      style={({ pressed }) => [
+                        styles.removeAction,
+                        pressed && styles.pressed,
+                      ]}
+                    >
+                      <Text style={styles.removeLabel}>{t("Kaldır")}</Text>
+                    </Pressable>
+                  ) : null}
+                </View>
+              </View>
             </>
           )}
         </View>
+      </Plate>
+
+      <View style={styles.messages}>
+        <StatusMessage
+          text={loadError}
+          actionLabel={t("Tekrar dene")}
+          onAction={() => void load()}
+        />
+        <StatusMessage
+          text={photoError}
+          actionLabel={photoPermissionDenied ? t("Ayarları aç") : undefined}
+          onAction={
+            photoPermissionDenied
+              ? () => void Linking.openSettings()
+              : undefined
+          }
+        />
       </View>
-    </ScrollView>
+
+      <View style={styles.section}>
+        <SectionHeading
+          title={t("Üyelik")}
+          trailing={
+            loading ? null : (
+              <Badge
+                label={active ? t("Aktif") : t("Pasif")}
+                tone={active ? "success" : "error"}
+              />
+            )
+          }
+        />
+        <Plate>
+          {loading ? (
+            <Skeleton height={18} />
+          ) : (
+            <>
+              <View style={styles.factRow}>
+                <Text style={styles.factLabel}>{t("Başlangıç")}</Text>
+                <Text style={styles.factValue}>
+                  {formatDate(subscription?.startsAt)}
+                </Text>
+              </View>
+              <Divider />
+              <View style={styles.factRow}>
+                <Text style={styles.factLabel}>{t("Bitiş")}</Text>
+                <Text style={styles.factValue}>
+                  {formatDate(subscription?.endsAt)}
+                </Text>
+              </View>
+              {active ? (
+                <>
+                  <Divider />
+                  <View style={styles.factRow}>
+                    <Text style={styles.factLabel}>{t("Kalan gün")}</Text>
+                    <Text style={styles.factValue}>
+                      {subscription?.remainingDays ?? 0}
+                    </Text>
+                  </View>
+                </>
+              ) : null}
+            </>
+          )}
+        </Plate>
+      </View>
+
+      <View style={styles.section}>
+        <SectionHeading title={t("Hesap")} />
+        <Plate padded={false}>
+          <SettingRow
+            icon={(color) => <ShieldGlyph size={19} color={color} />}
+            title={t("İki adımlı doğrulama")}
+            subtitle={profile?.twoFactorEnabled ? t("Etkin") : t("Etkin değil")}
+          />
+          <Divider inset={theme.spacing.md + 34 + theme.spacing.sm} />
+          <SettingRow
+            icon={(color) => <GearGlyph size={19} color={color} />}
+            title={t("Ayarlar")}
+            subtitle={t("Görünüm, dil, bildirimler ve hesap işlemleri")}
+            onPress={onOpenSettings}
+            trailing={
+              <ChevronRightGlyph size={18} color={theme.colors.textTertiary} />
+            }
+          />
+        </Plate>
+      </View>
+    </ScrollScreen>
   );
 }
 
-const profileStyles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: colors.background },
-  content: {
-    paddingHorizontal: spacing.gutter,
-    paddingBottom: spacing.xxl,
-  },
-  screenTitle: { ...type.screenTitle, color: colors.textPrimary },
-  screenSubtitle: {
-    ...type.body,
-    color: colors.textSecondary,
-    marginTop: spacing.xs,
-  },
-  identity: {
-    minHeight: AVATAR_SIZE,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing.md,
-    marginTop: spacing.xl,
-    marginBottom: spacing.lg,
-  },
-  avatar: {
-    width: AVATAR_SIZE,
-    height: AVATAR_SIZE,
-    borderRadius: AVATAR_SIZE / 2,
-    backgroundColor: colors.surfaceRaised,
-    alignItems: "center",
-    justifyContent: "center",
-    overflow: "hidden",
-  },
-  avatarImage: { width: "100%", height: "100%" },
-  initials: { fontSize: 28, fontWeight: "700", color: colors.textPrimary },
-  identityCopy: { flex: 1 },
-  name: { ...type.sectionTitle, color: colors.textPrimary },
-  email: { ...type.supporting, color: colors.textSecondary, marginTop: 2 },
-  photoActions: { flexDirection: "row", flexWrap: "wrap", gap: spacing.xs },
-  textAction: { minHeight: 44, justifyContent: "center" },
-  textActionLabel: { ...type.label, color: colors.textPrimary },
-  removeAction: { ...type.label, color: colors.textSecondary },
-  section: {
-    paddingVertical: spacing.lg,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: colors.outline,
-  },
-  sectionTitle: { ...type.title, color: colors.textPrimary },
-  sectionHint: {
-    ...type.supporting,
-    color: colors.textSecondary,
-    marginTop: spacing.xxs,
-  },
-  dangerSection: {
-    marginTop: spacing.md,
-    padding: spacing.lg,
-    borderRadius: radius.card,
-    backgroundColor: colors.errorSurface,
-  },
-  dangerTitle: { ...type.title, color: colors.error },
-  pressed: { opacity: 0.68 },
-  disabled: { opacity: 0.46 },
-});
+const profileStyles = (theme: Theme) =>
+  StyleSheet.create({
+    pressed: { opacity: 0.7 },
+    disabled: { opacity: 0.45 },
+
+    identity: {
+      minHeight: AVATAR_SIZE,
+      flexDirection: "row",
+      alignItems: "center",
+      gap: theme.spacing.md,
+    },
+    identitySkeleton: { flex: 1, gap: theme.spacing.sm },
+    avatar: { borderRadius: AVATAR_SIZE / 2 },
+    avatarBadge: {
+      position: "absolute",
+      right: -2,
+      bottom: -2,
+      width: 26,
+      height: 26,
+      borderRadius: 13,
+      backgroundColor: theme.colors.accent,
+      alignItems: "center",
+      justifyContent: "center",
+      borderWidth: 2,
+      borderColor: theme.colors.surface,
+    },
+    identityCopy: { flex: 1, minWidth: 0 },
+    name: { ...theme.type.sectionTitle, color: theme.colors.textPrimary },
+    email: {
+      ...theme.type.supporting,
+      color: theme.colors.textSecondary,
+      marginTop: 2,
+    },
+    photoActions: {
+      flexDirection: "row",
+      flexWrap: "wrap",
+      alignItems: "center",
+      gap: theme.spacing.sm,
+      marginTop: theme.spacing.xs,
+    },
+    photoHint: {
+      ...theme.type.label,
+      fontSize: 12,
+      color: theme.colors.textTertiary,
+      flexShrink: 1,
+    },
+    removeAction: { minHeight: 32, justifyContent: "center" },
+    removeLabel: {
+      ...theme.type.label,
+      fontSize: 12,
+      color: theme.colors.error,
+    },
+
+    messages: { gap: theme.spacing.xs, marginTop: theme.spacing.sm },
+    section: { marginTop: theme.spacing.xl },
+
+    factRow: {
+      minHeight: 40,
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+      gap: theme.spacing.md,
+    },
+    factLabel: { ...theme.type.supporting, color: theme.colors.textSecondary },
+    factValue: {
+      ...theme.type.supporting,
+      ...tabularNumbers,
+      fontWeight: "600",
+      color: theme.colors.textPrimary,
+    },
+  });

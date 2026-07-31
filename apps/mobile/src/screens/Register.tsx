@@ -1,17 +1,18 @@
 import { useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Pressable, Text, TextInput, View } from "react-native";
+import { StyleSheet, View, type TextInput } from "react-native";
 import { authClient } from "../lib/auth";
 import { runAuthAction } from "../lib/authAction";
+import { useThemedStyles, type Theme } from "../theme";
 import {
+  AuthFooterLink,
+  AuthHeading,
   AuthShell,
   Button,
   Checkbox,
   ErrorMsg,
   Field,
-  LogoMark,
   PasswordField,
-  styles,
 } from "../ui";
 
 export function Register({
@@ -22,6 +23,7 @@ export function Register({
   onRegistered: (email: string, password: string) => void;
 }) {
   const { t } = useTranslation();
+  const styles = useThemedStyles(registerStyles);
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
   const [phone, setPhone] = useState("");
@@ -112,56 +114,65 @@ export function Register({
 
   return (
     <AuthShell
+      onBack={onLogin}
       footer={
-        <View
-          style={{ flexDirection: "row", justifyContent: "center", gap: 4 }}
-        >
-          <Text style={styles.footer}>{t("Zaten hesabın var mı?")}</Text>
-          <Pressable accessibilityRole="button" onPress={onLogin} hitSlop={8}>
-            <Text style={[styles.footer, styles.footerStrong]}>
-              {t("Giriş Yap")}
-            </Text>
-          </Pressable>
-        </View>
+        <AuthFooterLink
+          prompt={t("Zaten hesabın var mı?")}
+          actionLabel={t("Giriş Yap")}
+          onPress={onLogin}
+        />
       }
     >
-      <LogoMark />
-      <Text style={styles.heading}>{t("Hesap oluştur")}</Text>
-      <Text style={styles.sub}>
-        {t("Üyeliğini oluştur ve QR ile giriş yap")}
-      </Text>
+      <AuthHeading
+        title={t("Hesap oluştur")}
+        subtitle={t("Üyeliğini oluştur ve QR ile giriş yap")}
+      />
 
-      <View style={{ marginTop: 24 }}>
-        <ErrorMsg text={error} />
-      </View>
+      {error ? (
+        <View style={styles.errorSlot}>
+          <ErrorMsg text={error} />
+        </View>
+      ) : null}
 
-      <View style={{ marginTop: error ? 0 : 8, gap: 16 }}>
-        <Field
-          inputRef={refs.firstName}
-          label={t("İsim")}
-          value={firstName}
-          error={fieldErrors.firstName}
-          onChangeText={(value) => {
-            setFirstName(value);
-            setFieldErrors((current) => ({ ...current, firstName: undefined }));
-          }}
-          autoComplete="given-name"
-          returnKeyType="next"
-          onSubmitEditing={() => refs.lastName.current?.focus()}
-        />
-        <Field
-          inputRef={refs.lastName}
-          label={t("Soyisim")}
-          value={lastName}
-          error={fieldErrors.lastName}
-          onChangeText={(value) => {
-            setLastName(value);
-            setFieldErrors((current) => ({ ...current, lastName: undefined }));
-          }}
-          autoComplete="family-name"
-          returnKeyType="next"
-          onSubmitEditing={() => refs.email.current?.focus()}
-        />
+      <View style={styles.fields}>
+        <View style={styles.nameRow}>
+          <View style={styles.nameCell}>
+            <Field
+              inputRef={refs.firstName}
+              label={t("İsim")}
+              value={firstName}
+              error={fieldErrors.firstName}
+              onChangeText={(value) => {
+                setFirstName(value);
+                setFieldErrors((current) => ({
+                  ...current,
+                  firstName: undefined,
+                }));
+              }}
+              autoComplete="given-name"
+              returnKeyType="next"
+              onSubmitEditing={() => refs.lastName.current?.focus()}
+            />
+          </View>
+          <View style={styles.nameCell}>
+            <Field
+              inputRef={refs.lastName}
+              label={t("Soyisim")}
+              value={lastName}
+              error={fieldErrors.lastName}
+              onChangeText={(value) => {
+                setLastName(value);
+                setFieldErrors((current) => ({
+                  ...current,
+                  lastName: undefined,
+                }));
+              }}
+              autoComplete="family-name"
+              returnKeyType="next"
+              onSubmitEditing={() => refs.email.current?.focus()}
+            />
+          </View>
+        </View>
         <Field
           inputRef={refs.email}
           label={t("E-posta")}
@@ -207,7 +218,7 @@ export function Register({
         />
       </View>
 
-      <View style={{ marginTop: 16 }}>
+      <View style={styles.consents}>
         <Checkbox
           checked={kvkk}
           onToggle={() => setKvkk(!kvkk)}
@@ -226,3 +237,16 @@ export function Register({
     </AuthShell>
   );
 }
+
+const registerStyles = (theme: Theme) =>
+  StyleSheet.create({
+    errorSlot: { marginTop: theme.spacing.lg },
+    fields: { marginTop: theme.spacing.xl, gap: theme.spacing.md },
+    nameRow: { flexDirection: "row", gap: theme.spacing.sm },
+    nameCell: { flex: 1, minWidth: 0 },
+    consents: {
+      marginTop: theme.spacing.md,
+      marginBottom: theme.spacing.md,
+      gap: theme.spacing.xxs,
+    },
+  });

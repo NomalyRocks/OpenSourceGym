@@ -1,89 +1,57 @@
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { StyleSheet, View } from "react-native";
 import { useTranslation } from "react-i18next";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { colors } from "../theme";
+import { useThemedStyles, type Theme } from "../theme";
+import { Segmented, type SegmentOption } from "../ui";
 import { setLanguage } from "./index";
+import type { Language } from "./core";
 
+/**
+ * Dil seçimi. `floating` biçim kimlik ekranlarının fotoğraf bandı üzerinde
+ * durur, normal biçim Ayarlar'da satır içinde kullanılır.
+ */
 export function LanguageSwitcher({ floating = false }: { floating?: boolean }) {
   const { t, i18n } = useTranslation();
+  const styles = useThemedStyles(switcherStyles);
   const insets = useSafeAreaInsets();
-  const active = i18n.resolvedLanguage?.startsWith("tr") ? "tr" : "en";
+  const active: Language = i18n.resolvedLanguage?.startsWith("tr")
+    ? "tr"
+    : "en";
+
+  const options: ReadonlyArray<SegmentOption<Language>> = floating
+    ? [
+        { value: "tr", label: "TR" },
+        { value: "en", label: "EN" },
+      ]
+    : [
+        { value: "tr", label: "Türkçe" },
+        { value: "en", label: "English" },
+      ];
 
   return (
     <View
-      accessibilityRole="tablist"
-      style={[
-        styles.container,
-        floating && styles.floating,
-        floating && { top: insets.top + 12 },
-      ]}
+      style={[floating && styles.floating, floating && { top: insets.top + 8 }]}
     >
-      <Pressable
-        accessibilityRole="tab"
-        accessibilityLabel={t("Dili Türkçe yap")}
-        accessibilityState={{ selected: active === "tr" }}
-        style={({ pressed }) => [
-          styles.optionButton,
-          active === "tr" && styles.optionButtonActive,
-          pressed && styles.pressed,
-        ]}
-        onPress={() => void setLanguage("tr")}
-      >
-        <Text style={[styles.option, active === "tr" && styles.active]}>
-          Türkçe
-        </Text>
-      </Pressable>
-      <Pressable
-        accessibilityRole="tab"
-        accessibilityLabel={t("Dili İngilizce yap")}
-        accessibilityState={{ selected: active === "en" }}
-        style={({ pressed }) => [
-          styles.optionButton,
-          active === "en" && styles.optionButtonActive,
-          pressed && styles.pressed,
-        ]}
-        onPress={() => void setLanguage("en")}
-      >
-        <Text style={[styles.option, active === "en" && styles.active]}>
-          English
-        </Text>
-      </Pressable>
+      <Segmented
+        options={options}
+        value={active}
+        onChange={(next) => void setLanguage(next)}
+        accessibilityLabel={t("Dil")}
+      />
     </View>
   );
 }
 
-const styles = StyleSheet.create({
-  container: {
-    flexDirection: "row",
-    alignItems: "center",
-    alignSelf: "flex-start",
-    padding: 3,
-    borderRadius: 12,
-    backgroundColor: colors.surfaceRaised,
-  },
-  floating: {
-    position: "absolute",
-    zIndex: 20,
-    right: 20,
-  },
-  optionButton: {
-    minHeight: 38,
-    minWidth: 72,
-    paddingHorizontal: 10,
-    alignItems: "center",
-    justifyContent: "center",
-    borderRadius: 9,
-  },
-  optionButtonActive: {
-    backgroundColor: colors.primaryMuted,
-  },
-  option: {
-    color: colors.textTertiary,
-    fontSize: 13,
-    fontWeight: "600",
-  },
-  active: {
-    color: colors.textPrimary,
-  },
-  pressed: { opacity: 0.7 },
-});
+const switcherStyles = (theme: Theme) =>
+  StyleSheet.create({
+    floating: {
+      position: "absolute",
+      zIndex: 20,
+      right: theme.spacing.md,
+      width: 128,
+      borderRadius: theme.radius.input,
+      // Fotoğraf bandının üstünde okunur kalması için kendi zemini var.
+      backgroundColor: theme.colors.surface,
+      ...theme.shadows.plate,
+    },
+  });
