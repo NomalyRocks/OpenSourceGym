@@ -2,12 +2,12 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
   ActivityIndicator,
+  Animated,
   Linking,
   StyleSheet,
   Text,
   View,
 } from "react-native";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
 import {
   CameraView,
   useCameraPermissions,
@@ -17,8 +17,16 @@ import * as Haptics from "expo-haptics";
 import * as Location from "expo-location";
 import type { GateScanResponse } from "@opengym/shared";
 import { ApiError, api } from "../lib/api";
-import { colors, radius, spacing, type } from "../theme";
-import { Button, StatusMessage } from "../ui";
+import { AlertGlyph, CheckGlyph, QrGlyph } from "../components/icons";
+import { useTheme, useThemedStyles, type Theme } from "../theme";
+import {
+  Button,
+  Screen,
+  ScreenHeader,
+  StatusMessage,
+  easing,
+  useReducedMotion,
+} from "../ui";
 import { errorMessage } from "../i18n/errors";
 
 type ScanState =
@@ -33,9 +41,65 @@ const GATE_QR_PREFIX = "OGGATE1.";
 const RESCAN_DELAY_MS = 3500;
 const LOCATION_TIMEOUT_MS = 5000;
 
+/** Bulucu çerçevesinde gezen tarama çizgisi — "şu an okuyor" durumunu taşır. */
+function ScanLine({ color }: { color: string }) {
+  const reduced = useReducedMotion();
+  const travel = useRef(new Animated.Value(0)).current;
+  const [height, setHeight] = useState(0);
+
+  useEffect(() => {
+    if (reduced || height === 0) return;
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(travel, {
+          toValue: 1,
+          duration: 1600,
+          easing: easing.inOut,
+          useNativeDriver: true,
+        }),
+        Animated.timing(travel, {
+          toValue: 0,
+          duration: 1600,
+          easing: easing.inOut,
+          useNativeDriver: true,
+        }),
+      ]),
+    );
+    loop.start();
+    return () => loop.stop();
+  }, [height, reduced, travel]);
+
+  if (reduced) return null;
+
+  return (
+    <View
+      style={StyleSheet.absoluteFill}
+      pointerEvents="none"
+      onLayout={(event) => setHeight(event.nativeEvent.layout.height)}
+    >
+      <Animated.View
+        style={{
+          height: 2,
+          backgroundColor: color,
+          opacity: 0.9,
+          transform: [
+            {
+              translateY: travel.interpolate({
+                inputRange: [0, 1],
+                outputRange: [0, Math.max(0, height - 2)],
+              }),
+            },
+          ],
+        }}
+      />
+    </View>
+  );
+}
+
 export function GateScan() {
   const { t } = useTranslation();
-  const insets = useSafeAreaInsets();
+  const theme = useTheme();
+  const styles = useThemedStyles(scanStyles);
   const [permission, requestPermission] = useCameraPermissions();
   const [state, setState] = useState<ScanState>({ kind: "scanning" });
   const busyRef = useRef(false);
@@ -135,58 +199,52 @@ export function GateScan() {
 
   if (!permission) {
     return (
-      <View style={scan.center}>
-        <ActivityIndicator color={colors.textPrimary} size="large" />
-      </View>
+      <Screen style={styles.center}>
+        <ActivityIndicator color={theme.colors.accent} size="large" />
+      </Screen>
     );
   }
 
   if (!permission.granted) {
     const canAskAgain = permission.canAskAgain !== false;
     return (
-      <View
-        style={[scan.permissionScreen, { paddingTop: insets.top + spacing.xl }]}
-      >
-        <Text accessibilityRole="header" style={scan.screenTitle}>
-          {t("QR Tara")}
-        </Text>
-        <View style={scan.permissionCard}>
-          <View style={scan.permissionIcon}>
-            <Text style={scan.permissionIconText}>QR</Text>
+      <Screen>
+        <ScreenHeader title={t("QR Tara")} />
+        <View style={styles.permission}>
+          <View style={styles.permissionIcon}>
+            <QrGlyph size={28} color={theme.colors.accent} />
           </View>
-          <Text style={scan.resultTitle}>{t("Kamera erişimi gerekli")}</Text>
-          <Text style={scan.resultDetail}>
+          <Text style={styles.resultTitle}>{t("Kamera erişimi gerekli")}</Text>
+          <Text style={styles.resultDetail}>
             {t("Turnikedeki QR kodunu okutmak için kamera erişimi gerekir.")}
           </Text>
-          <Button
-            title={canAskAgain ? t("İzin ver") : t("Ayarları aç")}
-            onPress={() =>
-              canAskAgain
-                ? void requestPermission()
-                : void Linking.openSettings()
-            }
-          />
+          <View style={styles.permissionAction}>
+            <Button
+              title={canAskAgain ? t("İzin ver") : t("Ayarları aç")}
+              onPress={() =>
+                canAskAgain
+                  ? void requestPermission()
+                  : void Linking.openSettings()
+              }
+            />
+          </View>
         </View>
-      </View>
+      </Screen>
     );
   }
 
   const scanning = state.kind === "scanning" || state.kind === "validating";
 
   return (
-    <View style={[scan.screen, { paddingTop: insets.top + spacing.lg }]}>
-      <View style={scan.header}>
-        <Text accessibilityRole="header" style={scan.screenTitle}>
-          {t("QR Tara")}
-        </Text>
-        <Text style={scan.screenSubtitle}>
-          {t("Kamerayı turnikedeki OpenGym koduna doğrult.")}
-        </Text>
-      </View>
+    <Screen>
+      <ScreenHeader
+        title={t("QR Tara")}
+        subtitle={t("Kamerayı turnikedeki OpenGym koduna doğrult.")}
+      />
 
       {scanning ? (
-        <>
-          <View style={scan.cameraFrame}>
+        <View style={styles.scanBody}>
+          <View style={styles.cameraFrame}>
             <CameraView
               style={StyleSheet.absoluteFill}
               facing="back"
@@ -197,37 +255,38 @@ export function GateScan() {
                   : undefined
               }
             />
-            <View style={scan.cameraShade} pointerEvents="none" />
-            <View style={scan.finder} pointerEvents="none">
-              <View style={[scan.corner, scan.cornerTopLeft]} />
-              <View style={[scan.corner, scan.cornerTopRight]} />
-              <View style={[scan.corner, scan.cornerBottomLeft]} />
-              <View style={[scan.corner, scan.cornerBottomRight]} />
+            <View style={styles.cameraShade} pointerEvents="none" />
+            <View style={styles.finder} pointerEvents="none">
+              <View style={[styles.corner, styles.cornerTopLeft]} />
+              <View style={[styles.corner, styles.cornerTopRight]} />
+              <View style={[styles.corner, styles.cornerBottomLeft]} />
+              <View style={[styles.corner, styles.cornerBottomRight]} />
+              {state.kind === "scanning" ? (
+                <ScanLine color={theme.colors.accent} />
+              ) : null}
             </View>
             {state.kind === "validating" ? (
-              <View style={scan.validatingOverlay}>
-                <ActivityIndicator color={colors.onPrimary} />
-                <Text style={scan.validatingText}>
+              <View style={styles.validating}>
+                <ActivityIndicator color={theme.colors.onAccent} />
+                <Text style={styles.validatingText}>
                   {t("Giriş doğrulanıyor…")}
                 </Text>
               </View>
             ) : null}
           </View>
-          <Text style={scan.scanHint}>
+          <Text style={styles.hint}>
             {state.kind === "validating"
               ? t("Kodu kontrol ediyoruz, kısa bir an bekle.")
               : t("Kod algılandığında doğrulama otomatik başlar.")}
           </Text>
-        </>
+        </View>
       ) : state.kind === "success" ? (
-        <View style={scan.resultPanel}>
-          <View style={[scan.resultIcon, scan.resultIconSuccess]}>
-            <Text style={[scan.resultIconText, { color: colors.success }]}>
-              ✓
-            </Text>
+        <View style={styles.resultPanel}>
+          <View style={[styles.resultIcon, styles.resultIconSuccess]}>
+            <CheckGlyph size={34} color={theme.colors.success} />
           </View>
-          <Text style={scan.resultTitle}>{t("Turnike açıldı")}</Text>
-          <Text style={scan.resultDetail}>
+          <Text style={styles.resultTitle}>{t("Turnike açıldı")}</Text>
+          <Text style={styles.resultDetail}>
             {t("{{device}} için {{direction}} kaydı oluşturuldu.", {
               device: state.data.deviceName,
               direction:
@@ -240,19 +299,19 @@ export function GateScan() {
           />
         </View>
       ) : (
-        <View style={scan.resultPanel}>
-          <View style={[scan.resultIcon, scan.resultIconError]}>
-            <Text style={[scan.resultIconText, { color: colors.error }]}>
-              !
-            </Text>
+        <View style={styles.resultPanel}>
+          <View style={[styles.resultIcon, styles.resultIconError]}>
+            <AlertGlyph size={32} color={theme.colors.error} />
           </View>
-          <Text style={scan.resultTitle}>{t("Geçiş tamamlanamadı")}</Text>
-          <Text style={scan.resultDetail}>{state.message}</Text>
+          <Text style={styles.resultTitle}>{t("Geçiş tamamlanamadı")}</Text>
+          <Text style={styles.resultDetail}>{state.message}</Text>
           <RecoveryHint code={state.code} />
-          <Button title={t("Tekrar tara")} onPress={resetToScanning} />
+          <View style={styles.resultAction}>
+            <Button title={t("Tekrar tara")} onPress={resetToScanning} />
+          </View>
         </View>
       )}
-    </View>
+    </Screen>
   );
 }
 
@@ -272,140 +331,137 @@ function RecoveryHint({ code }: { code?: string }) {
   return <StatusMessage tone="neutral" text={text} />;
 }
 
-const scan = StyleSheet.create({
-  screen: {
-    flex: 1,
-    backgroundColor: colors.background,
-    paddingHorizontal: spacing.gutter,
-    paddingBottom: spacing.xl,
-  },
-  permissionScreen: {
-    flex: 1,
-    backgroundColor: colors.background,
-    paddingHorizontal: spacing.gutter,
-    paddingBottom: spacing.xl,
-  },
-  center: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: colors.background,
-  },
-  header: { marginBottom: spacing.xl },
-  screenTitle: { ...type.screenTitle, color: colors.textPrimary },
-  screenSubtitle: {
-    ...type.body,
-    color: colors.textSecondary,
-    marginTop: spacing.xs,
-  },
-  permissionCard: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
-    paddingHorizontal: spacing.md,
-  },
-  permissionIcon: {
-    width: 64,
-    height: 64,
-    borderRadius: radius.card,
-    backgroundColor: colors.primaryMuted,
-    alignItems: "center",
-    justifyContent: "center",
-    marginBottom: spacing.lg,
-  },
-  permissionIconText: { ...type.label, color: colors.textPrimary },
-  cameraFrame: {
-    width: "100%",
-    maxWidth: 520,
-    aspectRatio: 1,
-    alignSelf: "center",
-    overflow: "hidden",
-    borderRadius: radius.card,
-    backgroundColor: colors.surface,
-  },
-  cameraShade: {
-    position: "absolute",
-    top: 0,
-    right: 0,
-    bottom: 0,
-    left: 0,
-    backgroundColor: "rgba(0,0,0,0.14)",
-  },
-  finder: {
-    position: "absolute",
-    width: "66%",
-    aspectRatio: 1,
-    alignSelf: "center",
-    top: "17%",
-  },
-  corner: {
-    position: "absolute",
-    width: 36,
-    height: 36,
-    borderColor: colors.textPrimary,
-  },
-  cornerTopLeft: { top: 0, left: 0, borderTopWidth: 3, borderLeftWidth: 3 },
-  cornerTopRight: { top: 0, right: 0, borderTopWidth: 3, borderRightWidth: 3 },
-  cornerBottomLeft: {
-    bottom: 0,
-    left: 0,
-    borderBottomWidth: 3,
-    borderLeftWidth: 3,
-  },
-  cornerBottomRight: {
-    bottom: 0,
-    right: 0,
-    borderBottomWidth: 3,
-    borderRightWidth: 3,
-  },
-  validatingOverlay: {
-    position: "absolute",
-    left: spacing.lg,
-    right: spacing.lg,
-    bottom: spacing.lg,
-    minHeight: 54,
-    borderRadius: radius.control,
-    backgroundColor: colors.primary,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: spacing.sm,
-  },
-  validatingText: { ...type.label, color: colors.onPrimary },
-  scanHint: {
-    ...type.supporting,
-    color: colors.textSecondary,
-    textAlign: "center",
-    marginTop: spacing.md,
-  },
-  resultPanel: {
-    flex: 1,
-    justifyContent: "center",
-    alignItems: "stretch",
-    paddingHorizontal: spacing.md,
-  },
-  resultIcon: {
-    width: 72,
-    height: 72,
-    borderRadius: 36,
-    alignSelf: "center",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  resultIconSuccess: { backgroundColor: colors.successSurface },
-  resultIconError: { backgroundColor: colors.errorSurface },
-  resultIconText: { fontSize: 30, fontWeight: "700" },
-  resultTitle: {
-    ...type.sectionTitle,
-    color: colors.textPrimary,
-    textAlign: "center",
-    marginTop: spacing.lg,
-  },
-  resultDetail: {
-    ...type.body,
-    color: colors.textSecondary,
-    textAlign: "center",
-    marginTop: spacing.xs,
-    marginBottom: spacing.lg,
-  },
-});
+const scanStyles = (theme: Theme) =>
+  StyleSheet.create({
+    center: { alignItems: "center", justifyContent: "center" },
+
+    permission: {
+      flex: 1,
+      alignItems: "center",
+      justifyContent: "center",
+      paddingHorizontal: theme.spacing.md,
+    },
+    permissionIcon: {
+      width: 64,
+      height: 64,
+      borderRadius: theme.radius.card,
+      backgroundColor: theme.colors.accentSurface,
+      alignItems: "center",
+      justifyContent: "center",
+      marginBottom: theme.spacing.lg,
+    },
+    permissionAction: { alignSelf: "stretch", marginTop: theme.spacing.md },
+
+    scanBody: { flex: 1, justifyContent: "center" },
+    cameraFrame: {
+      width: "100%",
+      maxWidth: 520,
+      aspectRatio: 1,
+      alignSelf: "center",
+      overflow: "hidden",
+      borderRadius: theme.radius.card,
+      backgroundColor: theme.colors.alwaysDarkSurface,
+    },
+    cameraShade: {
+      position: "absolute",
+      top: 0,
+      right: 0,
+      bottom: 0,
+      left: 0,
+      backgroundColor: "rgba(0,0,0,0.18)",
+    },
+    finder: {
+      position: "absolute",
+      width: "64%",
+      aspectRatio: 1,
+      alignSelf: "center",
+      top: "18%",
+      overflow: "hidden",
+    },
+    corner: {
+      position: "absolute",
+      width: 34,
+      height: 34,
+      borderColor: theme.colors.accent,
+      zIndex: 2,
+    },
+    cornerTopLeft: {
+      top: 0,
+      left: 0,
+      borderTopWidth: 3,
+      borderLeftWidth: 3,
+      borderTopLeftRadius: theme.radius.tiny,
+    },
+    cornerTopRight: {
+      top: 0,
+      right: 0,
+      borderTopWidth: 3,
+      borderRightWidth: 3,
+      borderTopRightRadius: theme.radius.tiny,
+    },
+    cornerBottomLeft: {
+      bottom: 0,
+      left: 0,
+      borderBottomWidth: 3,
+      borderLeftWidth: 3,
+      borderBottomLeftRadius: theme.radius.tiny,
+    },
+    cornerBottomRight: {
+      bottom: 0,
+      right: 0,
+      borderBottomWidth: 3,
+      borderRightWidth: 3,
+      borderBottomRightRadius: theme.radius.tiny,
+    },
+    validating: {
+      position: "absolute",
+      left: theme.spacing.lg,
+      right: theme.spacing.lg,
+      bottom: theme.spacing.lg,
+      minHeight: 52,
+      borderRadius: theme.radius.control,
+      backgroundColor: theme.colors.accent,
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "center",
+      gap: theme.spacing.sm,
+      paddingHorizontal: theme.spacing.md,
+    },
+    validatingText: { ...theme.type.label, color: theme.colors.onAccent },
+    hint: {
+      ...theme.type.supporting,
+      color: theme.colors.textSecondary,
+      textAlign: "center",
+      marginTop: theme.spacing.lg,
+    },
+
+    resultPanel: {
+      flex: 1,
+      justifyContent: "center",
+      paddingHorizontal: theme.spacing.md,
+    },
+    resultIcon: {
+      width: 76,
+      height: 76,
+      borderRadius: 38,
+      alignSelf: "center",
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    resultIconSuccess: { backgroundColor: theme.colors.successSurface },
+    resultIconError: { backgroundColor: theme.colors.errorSurface },
+    resultTitle: {
+      ...theme.type.sectionTitle,
+      color: theme.colors.textPrimary,
+      textAlign: "center",
+      marginTop: theme.spacing.lg,
+    },
+    resultDetail: {
+      ...theme.type.body,
+      color: theme.colors.textSecondary,
+      textAlign: "center",
+      marginTop: theme.spacing.xs,
+      marginBottom: theme.spacing.lg,
+    },
+    resultAction: { marginTop: theme.spacing.sm },
+  });

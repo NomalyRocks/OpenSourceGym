@@ -25,6 +25,7 @@ import {
   healthSchema,
   initialPasswordRequestSchema,
   myDeletionRequestSchema,
+  myEntriesSchema,
   myProfileSchema,
   mySubscriptionSchema,
   objectIdSchema,
@@ -90,6 +91,18 @@ const idPathParams = z.object({
 const userSearchQuery = z.object({
   q: z.string().trim().min(2).meta({
     description: "Telefon, e-posta, ad veya soyad; en az 2 karakter",
+  }),
+});
+
+const dayLabelQuerySchema = z
+  .string()
+  .regex(/^\d{4}-\d{2}-\d{2}$/)
+  .meta({ description: "Salon saat dilimindeki takvim günü (YYYY-MM-DD)" });
+
+const myEntriesQuery = z.object({
+  from: dayLabelQuerySchema,
+  to: dayLabelQuerySchema.meta({
+    description: "Aralığın son günü; from ile arası en çok 92 gün olabilir",
   }),
 });
 
@@ -704,6 +717,22 @@ export const openApiDocument: OpenApiDocument = createDocument({
         ),
         responses: protectedResponses({
           "200": jsonResponse("Abonelik özeti", mySubscriptionSchema),
+        }),
+      },
+    },
+    "/api/me/entries": {
+      get: {
+        tags: ["me"],
+        operationId: "getMyEntries",
+        summary: "Geliş günlerimi getir",
+        ...requiredRole(
+          "admin | staff | member",
+          "Oturumdaki kullanıcının verilen aralıktaki geliş günlerini salon saat dilimine göre gruplayarak döndürür",
+        ),
+        requestParams: { query: myEntriesQuery },
+        responses: protectedResponses({
+          "200": jsonResponse("Geliş günleri", myEntriesSchema),
+          "400": apiErrorResponse,
         }),
       },
     },

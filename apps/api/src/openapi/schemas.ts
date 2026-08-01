@@ -215,6 +215,26 @@ export const mySubscriptionSchema = withId(
   "MySubscription",
 );
 
+export const myEntriesSchema = withId(
+  z.object({
+    days: z.array(
+      z.object({
+        date: z
+          .string()
+          .regex(/^\d{4}-\d{2}-\d{2}$/)
+          .meta({
+            description: "Salon saat dilimindeki takvim günü",
+          }),
+        entries: z.number().int().positive(),
+      }),
+    ),
+    timeZone: z.string().meta({
+      description: "Günlerin hesaplandığı IANA saat dilimi",
+    }),
+  }),
+  "MyEntries",
+);
+
 export const gateScanResponseSchema = withId(
   z.object({
     ok: z.literal(true),

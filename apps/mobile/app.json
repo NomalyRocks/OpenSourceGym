@@ -6,8 +6,8 @@
     "version": "0.1.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
-    "userInterfaceStyle": "dark",
-    "backgroundColor": "#060607",
+    "userInterfaceStyle": "automatic",
+    "backgroundColor": "#090a0d",
     "locales": {
       "en": "./locales/en.json",
       "tr": "./locales/tr.json"
@@ -21,7 +21,7 @@
     },
     "android": {
       "adaptiveIcon": {
-        "backgroundColor": "#060607",
+        "backgroundColor": "#090a0d",
         "foregroundImage": "./assets/android-icon-foreground.png",
         "backgroundImage": "./assets/android-icon-background.png",
         "monochromeImage": "./assets/android-icon-monochrome.png"

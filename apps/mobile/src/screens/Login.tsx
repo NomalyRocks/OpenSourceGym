@@ -1,18 +1,18 @@
 import { useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Pressable, Text, TextInput, View } from "react-native";
+import { Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 import { authClient } from "../lib/auth";
 import { runAuthAction } from "../lib/authAction";
 import { getDeviceFingerprint } from "../lib/fingerprint";
-import { colors } from "../theme";
+import { useThemedStyles, type Theme } from "../theme";
 import {
-  Button,
+  AuthFooterLink,
+  AuthHeading,
   AuthShell,
+  Button,
   ErrorMsg,
   Field,
-  LogoMark,
   PasswordField,
-  styles,
 } from "../ui";
 
 export function Login({
@@ -25,6 +25,7 @@ export function Login({
   onForgot: () => void;
 }) {
   const { t } = useTranslation();
+  const styles = useThemedStyles(loginStyles);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -83,33 +84,25 @@ export function Login({
   return (
     <AuthShell
       footer={
-        <View
-          style={{ flexDirection: "row", justifyContent: "center", gap: 4 }}
-        >
-          <Text style={styles.footer}>{t("Hesabın yok mu?")}</Text>
-          <Pressable
-            accessibilityRole="button"
-            onPress={onRegister}
-            hitSlop={8}
-          >
-            <Text style={[styles.footer, styles.footerStrong]}>
-              {t("Kayıt Ol")}
-            </Text>
-          </Pressable>
-        </View>
+        <AuthFooterLink
+          prompt={t("Hesabın yok mu?")}
+          actionLabel={t("Kayıt Ol")}
+          onPress={onRegister}
+        />
       }
     >
-      <LogoMark />
-      <Text style={styles.heading}>{t("Tekrar hoş geldin")}</Text>
-      <Text style={styles.sub}>
-        {t("Üyeliğini kontrol et ve salona giriş yap")}
-      </Text>
+      <AuthHeading
+        title={t("Tekrar hoş geldin")}
+        subtitle={t("Üyeliğini kontrol et ve salona giriş yap")}
+      />
 
-      <View style={{ marginTop: 28 }}>
-        <ErrorMsg text={error} />
-      </View>
+      {error ? (
+        <View style={styles.errorSlot}>
+          <ErrorMsg text={error} />
+        </View>
+      ) : null}
 
-      <View style={{ marginTop: error ? 4 : 20, gap: 16 }}>
+      <View style={styles.fields}>
         <Field
           inputRef={emailRef}
           label={t("E-posta")}
@@ -143,18 +136,28 @@ export function Login({
       <Pressable
         accessibilityRole="button"
         onPress={onForgot}
-        style={{
-          alignSelf: "flex-end",
-          minHeight: 48,
-          justifyContent: "center",
-        }}
+        hitSlop={6}
+        style={({ pressed }) => [styles.forgot, pressed && styles.pressed]}
       >
-        <Text style={{ color: colors.textSecondary, fontSize: 14 }}>
-          {t("Şifremi unuttum")}
-        </Text>
+        <Text style={styles.forgotLabel}>{t("Şifremi unuttum")}</Text>
       </Pressable>
 
       <Button title={t("Giriş Yap")} onPress={submit} busy={busy} />
     </AuthShell>
   );
 }
+
+const loginStyles = (theme: Theme) =>
+  StyleSheet.create({
+    errorSlot: { marginTop: theme.spacing.lg },
+    fields: { marginTop: theme.spacing.xl, gap: theme.spacing.md },
+    forgot: {
+      alignSelf: "flex-end",
+      minHeight: 44,
+      justifyContent: "center",
+      paddingHorizontal: theme.spacing.xxs,
+      marginBottom: theme.spacing.xs,
+    },
+    forgotLabel: { ...theme.type.supporting, color: theme.colors.accent },
+    pressed: { opacity: 0.6 },
+  });

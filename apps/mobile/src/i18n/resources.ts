@@ -263,6 +263,202 @@ const en = {
   "Bağlantı kurulamadı. İnternet bağlantınızı kontrol edip tekrar deneyin.":
     "Could not connect. Check your internet connection and try again.",
   "Çıkış yapılamadı. Tekrar deneyin.": "Could not sign out. Please try again.",
+
+  // Açılış ekranı
+  "Üyeliğin ve turnike geçişin tek yerde":
+    "Your membership and turnstile access in one place",
+  "Hazırlanıyor…": "Getting ready…",
+
+  // Kimlik akışı
+  "Gelen kutuna 6 haneli bir kod gönderdik.":
+    "We sent a 6-digit code to your inbox.",
+  "Şifreni hatırladın mı?": "Remembered your password?",
+
+  // Sekmeler ve gezinme
+  Takvim: "Calendar",
+  Bildirimler: "Notifications",
+  Ayarlar: "Settings",
+  Hesap: "Account",
+  Üyelik: "Membership",
+  "Kalan gün": "Days left",
+  "Üyeliğin yakında bitiyor; yenilemek için resepsiyona uğra.":
+    "Your membership expires soon — visit reception to renew it.",
+
+  // Takvim
+  "Üyelik dönemini ve salon geçmişini gün gün gör.":
+    "See your membership period and gym history day by day.",
+  "Önceki ay": "Previous month",
+  "Sonraki ay": "Next month",
+  "Üyelik dönemi": "Membership period",
+  Bugün: "Today",
+  Geliş: "Visit",
+  "Tanımlı değil": "Not set",
+  "Kapsam içinde": "Within coverage",
+  "Kapsam dışında": "Outside coverage",
+  "{{n}} kayıt": "{{n}} records",
+  "{{n}} geliş": "{{n}} visits",
+  "Geliş yok": "No visit",
+  "Geliş geçmişi alınamadı.": "Visit history could not be loaded.",
+  "Bu ay geliş kaydın yok": "No visits recorded this month",
+  "Turnikeden her geçişin bu takvimde yeşil işaretlenir. Antrenmana başladığında günler burada dolmaya başlar.":
+    "Every turnstile entry is marked green on this calendar. Days start filling in here once you begin training.",
+
+  // Bildirimler
+  "Az önce": "Just now",
+  "{{n}} dk önce": "{{n}} min ago",
+  "{{n}} sa önce": "{{n}} h ago",
+  "Tümünü okundu işaretle": "Mark all as read",
+  "Bildirim yok": "No notifications",
+  "Bildirimler alınamadı.": "Could not load notifications.",
+  "Üyeliğin ve geçişlerinle ilgili haberler burada belirir.":
+    "News about your membership and entries appears here.",
+  "Üyeliğinle ilgili uyarılar burada belirir. Salon duyuruları bağlandığında onlar da bu listeye düşer.":
+    "Alerts about your membership appear here. Gym announcements will join this list once they are connected.",
+  "Üyeliğin aktif değil": "Your membership is not active",
+  "Salona giriş yapabilmek için resepsiyondan üyeliğini yenilemen gerekiyor.":
+    "Renew your membership at reception to enter the gym.",
+  "Üyeliğin yakında bitiyor": "Your membership expires soon",
+  "Üyeliğinin bitmesine {{n}} gün kaldı.":
+    "{{n}} days left until your membership expires.",
+  "Hesap silme talebin inceleniyor":
+    "Your account deletion request is under review",
+  "Talebin salon personeline iletildi. Onaylanana kadar hesabın açık kalır.":
+    "Your request was sent to gym staff. Your account stays active until it is approved.",
+  "Hesap silme talebin reddedildi":
+    "Your account deletion request was rejected",
+  "Ayrıntı için salon resepsiyonuna başvurabilirsin.":
+    "Contact gym reception for details.",
+
+  // Profil
+  "Değiştirmek için fotoğrafa dokun": "Tap the photo to change it",
+  "Fotoğraf eklemek için dokun": "Tap to add a photo",
+  "İki adımlı doğrulama": "Two-factor authentication",
+  Etkin: "On",
+  "Etkin değil": "Off",
+  "Görünüm, dil, bildirimler ve hesap işlemleri":
+    "Appearance, language, notifications and account actions",
+
+  // Ayarlar
+  Görünüm: "Appearance",
+  "Uygulamanın açık mı koyu mu görüneceğini seç.":
+    "Choose whether the app looks light or dark.",
+  Tema: "Theme",
+  Cihaz: "System",
+  Açık: "Light",
+  Koyu: "Dark",
+  "Üyelik hatırlatmaları": "Membership reminders",
+  "Üyeliğin bitmeye yaklaştığında uyar.":
+    "Warn me when my membership is close to expiring.",
+  "Hesap silme talebinin durumu değişince haber ver.":
+    "Notify me when my deletion request changes status.",
+  "Bu uyarılar cihazında üretilir; salon duyuruları için anlık bildirim henüz kullanılmıyor.":
+    "These alerts are generated on your device; push notifications for gym announcements are not in use yet.",
+  "Gizlilik ve izinler": "Privacy and permissions",
+  "Uygulama izinleri": "App permissions",
+  "Kamera ve konum izinlerini sistem ayarlarından yönet.":
+    "Manage camera and location permissions in system settings.",
+  "OpenGym {{version}} ({{build}})": "OpenGym {{version}} ({{build}})",
+
+  // Araçlar ve kalori hesaplayıcı
+  Araçlar: "Tools",
+  "Antrenman hedeflerini planlamana yardımcı olan hesaplayıcılar.":
+    "Calculators that help you plan your training goals.",
+  "Günlük kalori ihtiyacı": "Daily calorie needs",
+  "Kalori ve makro hesaplama akışını tam ekranda açar.":
+    "Opens the calorie and macro calculator in full screen.",
+  "Hedef kalorilerini ve günlük makrolarını tahmin et.":
+    "Estimate your target calories and daily macros.",
+  "Günlük enerjini birlikte bulalım": "Let's find your daily energy needs",
+  "Altı kısa soruyla günlük kalori hedefini ve makro dağılımını tahmin et.":
+    "Estimate your daily calorie target and macro split with six quick questions.",
+  "Girdiğin bilgiler kaydedilmez ve cihazından çıkmaz.":
+    "Your answers are not saved or sent off your device.",
+  "Hesaplamada hangi biyolojik parametre kullanılsın?":
+    "Which biological parameter should the calculation use?",
+  "Mifflin–St Jeor denklemi kadın ve erkek için farklı sabitler kullanır.":
+    "The Mifflin–St Jeor equation uses different constants for female and male bodies.",
+  Kadın: "Female",
+  Erkek: "Male",
+  "Kaç yaşındasın?": "How old are you?",
+  "Bu araç 18–80 yaş arasındaki yetişkinler için tasarlandı.":
+    "This tool is designed for adults aged 18–80.",
+  Yaş: "Age",
+  yaş: "years",
+  "18–80 yaş": "Ages 18–80",
+  "18 ile 80 arasında tam bir yaş girin.":
+    "Enter a whole-number age between 18 and 80.",
+  "Boyun kaç?": "How tall are you?",
+  "İstediğin birimi seçebilir, değeri daha sonra değiştirebilirsin.":
+    "Choose the unit you prefer; you can change the value later.",
+  "Boy birimi": "Height unit",
+  Boy: "Height",
+  Fit: "Feet",
+  İnç: "Inches",
+  "120–230 cm": "120–230 cm",
+  "120–230 cm aralığında geçerli bir boy girin.":
+    "Enter a valid height in the 120–230 cm range.",
+  "Güncel kilon kaç?": "What is your current weight?",
+  "Yaklaşık bir değer girebilirsin; ondalık değerler desteklenir.":
+    "An estimate is fine; decimal values are supported.",
+  "Kilo birimi": "Weight unit",
+  Kilo: "Weight",
+  "35–300 kg": "35–300 kg",
+  "35–300 kg aralığında geçerli bir kilo girin.":
+    "Enter a valid weight in the 35–300 kg range.",
+  "Gün içinde ne kadar hareketlisin?": "How active are you during the day?",
+  "Son birkaç haftadaki ortalama düzenini düşün.":
+    "Think about your average routine over the last few weeks.",
+  Hareketsiz: "Sedentary",
+  "Çok az hareket ediyorum veya egzersiz yapmıyorum.":
+    "I move very little or do not exercise.",
+  "Az hareketli": "Lightly active",
+  "Hafif hareketli bir yaşamım var; haftada 1–3 gün egzersiz yapıyorum.":
+    "I have a lightly active routine and exercise 1–3 days a week.",
+  "Orta hareketli": "Moderately active",
+  "Hareketli bir yaşamım var; haftada 3–5 gün egzersiz yapıyorum.":
+    "I have an active routine and exercise 3–5 days a week.",
+  "Çok hareketli": "Very active",
+  "Çok hareketliyim; haftada 6–7 gün egzersiz yapıyorum.":
+    "I am very active and exercise 6–7 days a week.",
+  "Aşırı hareketli": "Extremely active",
+  "Yoğun antrenman yapıyorum veya fiziksel bir işte çalışıyorum.":
+    "I train intensely or work in a physically demanding job.",
+  "Hedefin nedir?": "What is your goal?",
+  "Hedef, bakım kalorine uygulanacak küçük ve sürdürülebilir farkı belirler.":
+    "Your goal sets a small, sustainable adjustment to maintenance calories.",
+  "Yağ kaybet": "Lose fat",
+  "Bakım kalorinden yüzde 15 daha düşük bir hedef oluşturur.":
+    "Sets a target 15 percent below your maintenance calories.",
+  "Kiloyu koru": "Maintain weight",
+  "Tahmini günlük enerji harcamanı hedef olarak kullanır.":
+    "Uses your estimated daily energy expenditure as the target.",
+  "Kas kazan": "Gain muscle",
+  "Bakım kalorinden yüzde 10 daha yüksek bir hedef oluşturur.":
+    "Sets a target 10 percent above your maintenance calories.",
+  "Günlük hedefin hazır": "Your daily target is ready",
+  "kcal / gün": "kcal / day",
+  "Bakım kalorisi: {{calories}} kcal":
+    "Maintenance calories: {{calories}} kcal",
+  "Günlük makrolar": "Daily macros",
+  "Makro dağılımı: yüzde {{protein}} protein, yüzde {{carbohydrate}} karbonhidrat, yüzde {{fat}} yağ":
+    "Macro split: {{protein}} percent protein, {{carbohydrate}} percent carbohydrate, {{fat}} percent fat",
+  Protein: "Protein",
+  Karbonhidrat: "Carbohydrate",
+  Yağ: "Fat",
+  "{{grams}} g · %{{percent}}": "{{grams}} g · {{percent}}%",
+  "Nasıl hesaplandı?": "How was this calculated?",
+  "Bazal metabolizma": "Basal metabolic rate",
+  "Hareket çarpanı": "Activity multiplier",
+  "Hedef ayarı": "Goal adjustment",
+  "Bu sonuç genel yetişkinler için bir tahmindir. Hamilelik, emzirme, özel sağlık durumu veya profesyonel sporculukta bir sağlık uzmanına danışın.":
+    "This result is an estimate for the general adult population. Consult a health professional for pregnancy, breastfeeding, specific health conditions or professional athletics.",
+  "{{current}} / {{total}} adım": "Step {{current}} of {{total}}",
+  "{{current}} / {{total}}": "{{current}} / {{total}}",
+  Tamamlandı: "Complete",
+  "Değerleri düzenle": "Edit values",
+  "Araçlara dön": "Return to Tools",
+  "Hesaplamaya başla": "Start calculation",
+  Devam: "Continue",
 } as const;
 
 const tr = Object.fromEntries(Object.keys(en).map((key) => [key, key]));

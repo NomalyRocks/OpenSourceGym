@@ -6,11 +6,20 @@ import type {
   GateRejectCode,
   GateScanResponse,
   MyDeletionRequest,
+  MyEntriesResponse,
   MySubscription,
   OccupancyResponse,
   ProfilePhotoResponse,
 } from "@opengym/shared";
 import { db, findGymSettings, isDuplicateKeyError } from "../db.js";
+import { env } from "../env.js";
+import {
+  DAY_LABEL_PATTERN,
+  dayLabelSpan,
+  entryQueryWindow,
+  MAX_ENTRY_RANGE_DAYS,
+  toEntryDays,
+} from "../entryDays.js";
 import { sendApiError } from "../apiError.js";
 import { acquireLock, redis, releaseLock } from "../redis.js";
 import { authed, requireRole, type AuthedRequest } from "../middleware.js";
@@ -132,6 +141,90 @@ meRouter.get(
   requireRole("admin", "staff", "member"),
   authed(async (req, res) => {
     const body: MySubscription = await getSubscriptionSummary(req.user.id);
+    res.json(body);
+  }),
+);
+
+const myEntriesQuerySchema = z.object({
+  from: z.string().regex(DAY_LABEL_PATTERN),
+  to: z.string().regex(DAY_LABEL_PATTERN),
+});
+
+/**
+ * Mobil takvimin geliş katmanı: üyenin KENDİ geçiş günleri.
+ *
+ * Yalnızca izin verilen ve giriş yönündeki taramalar sayılır — çıkış turnikesi
+ * taraması aynı güne ikinci bir geliş gibi yazılırdı. Yön artık taranan anda
+ * `entry_events.direction` olarak kalıcı yazılır (cihaz sonradan silinse de
+ * geçmiş kayıt doğru sınıflandırılmış kalır). Bu alan eklenmeden ÖNCE yazılmış
+ * eski kayıtlarda `direction` yoktur; onlar için tek seferlik geriye dönük
+ * uyum olarak hâlâ mevcut cihazların kimlik listesine bakılır.
+ */
+meRouter.get(
+  "/entries",
+  requireRole("admin", "staff", "member"),
+  authed(async (req, res) => {
+    const query = myEntriesQuerySchema.safeParse(req.query);
+    if (!query.success) {
+      sendApiError(res, 400, "INVALID_REQUEST", "Geçersiz tarih aralığı.");
+      return;
+    }
+    const { from, to } = query.data;
+    const span = dayLabelSpan(from, to);
+    if (!Number.isFinite(span) || span < 0 || span > MAX_ENTRY_RANGE_DAYS) {
+      sendApiError(res, 400, "INVALID_REQUEST", "Geçersiz tarih aralığı.");
+      return;
+    }
+
+    const timeZone = env.reportsTimeZone;
+    const { start, end } = entryQueryWindow(from, to);
+
+    const outDevices = await db
+      .collection("devices")
+      .find({ direction: "out" }, { projection: { _id: 1 } })
+      .toArray();
+    const outDeviceIds = outDevices.map((device) => device._id.toString());
+
+    const rows = await db
+      .collection("entry_events")
+      .aggregate<{ _id: string; entries: number }>([
+        {
+          $match: {
+            userId: req.user.id,
+            allowed: true,
+            at: { $gte: start, $lte: end },
+            $or: [
+              // Yön kalıcı yazılmış (güncel kayıt) — cihaz silinmiş olsa da geçerli.
+              { direction: "in" },
+              // Eski kayıt: yön yok, mevcut cihaz kimlik listesine bakılır.
+              {
+                direction: { $exists: false },
+                ...(outDeviceIds.length > 0
+                  ? { deviceId: { $nin: outDeviceIds } }
+                  : {}),
+              },
+            ],
+          },
+        },
+        {
+          $group: {
+            _id: {
+              $dateToString: {
+                date: "$at",
+                format: "%Y-%m-%d",
+                timezone: timeZone,
+              },
+            },
+            entries: { $sum: 1 },
+          },
+        },
+      ])
+      .toArray();
+
+    const body: MyEntriesResponse = {
+      days: toEntryDays(rows, from, to),
+      timeZone,
+    };
     res.json(body);
   }),
 );
@@ -274,6 +367,7 @@ meRouter.post(
         allowed: false,
         reason: "INVALID_QR",
         at: new Date(),
+        direction: "in",
       });
       sendApiError(
         res,
@@ -303,6 +397,7 @@ meRouter.post(
         allowed: false,
         reason,
         at: new Date(),
+        direction,
       });
       sendApiError(res, 403, reason, message);
     };
@@ -394,6 +489,7 @@ meRouter.post(
       allowed: true,
       reason: null,
       at: new Date(),
+      direction,
     });
 
     const body: GateScanResponse = {

@@ -1,6 +1,6 @@
 # OpenGym — Ürün Gereksinim Dokümanı (PRD)
 
-> **Sürüm:** 1.0 · **Tarih:** 2026-07-06 · **Durum:** Taslak
+> **Sürüm:** 1.1 · **Tarih:** 2026-07-31 · **Durum:** Taslak
 
 ---
 
@@ -98,11 +98,25 @@ OpenGym: modern, self-hosted, açık kaynak bir spor salonu otomasyon sistemi (m
 - Personel, üyeyi arayıp abonelik başlangıç/bitiş tarihi (veya süre paketi) tanımlar/uzatır.
 - Her abonelik işlemi hangi personelin yaptığıyla birlikte loglanır (audit trail).
 
+#### US-7: Günlük Kalori ve Makro Hesaplama (Mobil)
+
+> Üye olarak, temel vücut bilgilerim ve hareket seviyemle günlük kalori ve
+> makro tahminimi görmek istiyorum ki antrenman hedefimi daha bilinçli
+> planlayabileyim.
+
+**Kabul Kriterleri:**
+
+- Mobil alt menüde ayrı bir **Araçlar** hedefi ve çalışan günlük kalori kartı bulunur.
+- Cinsiyet, yaş, boy, kilo, hareket seviyesi ve hedef girdileri ayrı adımlarda alınır; metrik ve imperial birimler desteklenir.
+- Bakım kalorisi Mifflin–St Jeor denklemi ve beş hareket çarpanıyla; hedef kalorisi yağ kaybında -%15, korumada %0, kas kazanımında +%10 ile hesaplanır.
+- Sonuç hedef kaloriyi, bakım kalorisini ve hedefe göre protein/karbonhidrat/yağ gramlarını gösterir; genel yetişkinlere yönelik bir tahmin olduğu açıkça belirtilir.
+- Araç 18–80 yaş, 120–230 cm ve 35–300 kg aralıklarını doğrular. Girdiler ve sonuç yalnız akış belleğinde tutulur; cihaz depolamasına veya sunucuya yazılmaz.
+
 ### 2.3 Non-Goals (Kapsam Dışı)
 
 - **Online ödeme entegrasyonu yok.** Ödeme salonda alınır; abonelik personel tarafından manuel tanımlanır.
 - **Multi-tenant / çoklu şube yok.** Her kurulum tek salona hizmet eder (single-tenant, self-hosted).
-- **Ders/rezervasyon, antrenman programı, diyet takibi yok.**
+- **Ders/rezervasyon, antrenman programı, diyet takibi, öğün planlama veya beslenme koçluğu yok.** Cihazda veri saklamadan genel yetişkinler için tahmin üreten bilgilendirici kalori/makro hesaplayıcısı bu sınırın istisnasıdır.
 - **Path obfuscation ve custom cipher katmanı bu sürümde uygulanmayacak** (bkz. §3.4 ve Ek A).
 
 ---
@@ -188,6 +202,7 @@ OpenGym Backend
 | **MVP**  | Üye kaydı (US-1), admin ilk kurulum (US-2), personel ekleme (US-3), abonelik tanımlama (US-6), mobil abonelik görüntüleme (US-4, doluluk hariç) |
 | **v1.1** | QR + turnike WebSocket entegrasyonu (US-5), konum doğrulama, doluluk oranı, MFA                                                                 |
 | **v2.0** | Hesap paylaşımı tespiti, anti-debugging sertleştirme; gerekirse deneysel güvenlik katmanı (Ek A) değerlendirmesi                                |
+| **v2.1** | Üye profil fotoğrafı, Türkçe/İngilizce deneyim ve cihazda çalışan bilgilendirici üye araçları (US-7)                                            |
 
 > Geliştirme adımlarına bölünmüş detaylı faz planı için bkz. [ROADMAP.md](ROADMAP.md) (MVP = Faz 0–3, v1.1 = Faz 4–5, v2.0 = Faz 6).
 
@@ -201,6 +216,7 @@ OpenGym Backend
 | SMTP teslimat sorunları       | Üye kaydı/MFA tıkanır                  | Kod yeniden gönderme + teslimat hatalarının panelde görünürlüğü                              |
 | Self-hosted ortam çeşitliliği | Kurulum hataları, destek yükü          | Docker Compose ile standart kurulum, KPI-3 (< 30 dk) hedefi                                  |
 | `admin:admin` varsayılanı     | Kurulum sonrası unutulursa kritik açık | Zorunlu şifre değişimi atlanamaz (US-2); değiştirilmeden hiçbir uç çalışmaz                  |
+| Kalori tahmininin reçete sanılması | Uygun olmayan beslenme kararı | Yetişkin girdi sınırları, “tahmin” etiketi, hamilelik/emzirme ve özel sağlık durumu uyarısı; veri kaydı yok |
 
 ---
 

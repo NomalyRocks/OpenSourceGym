@@ -1,18 +1,24 @@
 import { useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Alert, Pressable, Text, TextInput, View } from "react-native";
+import {
+  Alert,
+  Pressable,
+  StyleSheet,
+  Text,
+  View,
+  type TextInput,
+} from "react-native";
 import { authClient } from "../lib/auth";
 import { runAuthAction } from "../lib/authAction";
 import { OtpInput } from "../components/OtpInput";
+import { useThemedStyles, type Theme } from "../theme";
 import {
+  AuthHeading,
   AuthShell,
   Button,
   ErrorMsg,
-  Field,
   InfoMsg,
-  LogoMark,
   PasswordField,
-  styles,
 } from "../ui";
 
 export function ResetPassword({
@@ -25,6 +31,7 @@ export function ResetPassword({
   onBack: () => void;
 }) {
   const { t } = useTranslation();
+  const styles = useThemedStyles(resetStyles);
   const [otp, setOtp] = useState("");
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
@@ -114,28 +121,25 @@ export function ResetPassword({
   }
 
   return (
-    <AuthShell
-      footer={
-        <Pressable accessibilityRole="button" onPress={onBack}>
-          <Text style={styles.link}>{t("Giriş ekranına dön")}</Text>
-        </Pressable>
-      }
-    >
-      <LogoMark />
-      <Text style={styles.heading}>{t("Yeni şifre oluştur")}</Text>
-      <Text style={styles.sub}>
-        {t("{{email}} adresine gönderilen kodu ve yeni şifrenizi girin.", {
-          email,
-        })}
-      </Text>
+    <AuthShell onBack={onBack}>
+      <AuthHeading
+        title={t("Yeni şifre oluştur")}
+        subtitle={t(
+          "{{email}} adresine gönderilen kodu ve yeni şifrenizi girin.",
+          {
+            email,
+          },
+        )}
+      />
 
-      <View style={{ marginTop: 24 }}>
-        <ErrorMsg text={error} />
-        <InfoMsg text={info} />
-      </View>
+      {error || info ? (
+        <View style={styles.messages}>
+          <ErrorMsg text={error} />
+          <InfoMsg text={info} />
+        </View>
+      ) : null}
 
-      <View style={{ marginTop: error || info ? 0 : 8, gap: 16 }}>
-        <Field label={t("E-posta")} value={email} editable={false} />
+      <View style={styles.fields}>
         <OtpInput
           value={otp}
           error={otpError}
@@ -174,15 +178,37 @@ export function ResetPassword({
       </View>
 
       <Button title={t("Şifreyi sıfırla")} onPress={submit} busy={busy} />
+
       <Pressable
         accessibilityRole="button"
+        accessibilityState={{ disabled: resending }}
         onPress={() => void resend()}
         disabled={resending}
+        hitSlop={8}
+        style={({ pressed }) => [styles.resend, pressed && styles.pressed]}
       >
-        <Text style={styles.link}>
+        <Text style={styles.resendLabel}>
           {resending ? t("Kod gönderiliyor...") : t("Kodu tekrar gönder")}
         </Text>
       </Pressable>
     </AuthShell>
   );
 }
+
+const resetStyles = (theme: Theme) =>
+  StyleSheet.create({
+    messages: { marginTop: theme.spacing.lg, gap: theme.spacing.xs },
+    fields: {
+      marginTop: theme.spacing.xl,
+      marginBottom: theme.spacing.md,
+      gap: theme.spacing.md,
+    },
+    resend: {
+      minHeight: 48,
+      marginTop: theme.spacing.xs,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    resendLabel: { ...theme.type.supporting, color: theme.colors.accent },
+    pressed: { opacity: 0.6 },
+  });
