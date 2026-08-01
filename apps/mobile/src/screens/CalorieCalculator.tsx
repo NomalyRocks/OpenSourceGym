@@ -38,8 +38,8 @@ import {
   type Theme,
 } from "../theme";
 import { BackButton, Button, Segmented, StatusMessage, useEnter } from "../ui";
-import introArtwork from "../../assets/calorie-squid-intro.webp";
-import resultArtwork from "../../assets/calorie-squid-result.webp";
+import introArtwork from "../../assets/calorie-octopus-intro.webp";
+import resultArtwork from "../../assets/calorie-octopus-result.webp";
 
 type UnitSystem = "metric" | "imperial";
 type FlowStage =

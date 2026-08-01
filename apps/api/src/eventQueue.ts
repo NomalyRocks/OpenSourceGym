@@ -1,4 +1,4 @@
-import type { GateRejectCode } from "@opengym/shared";
+import type { DeviceDirection, GateRejectCode } from "@opengym/shared";
 import { db } from "./db.js";
 import { redis } from "./redis.js";
 
@@ -13,6 +13,12 @@ export interface EntryEventInput {
   allowed: boolean;
   reason: GateRejectCode | null;
   at: Date;
+  /**
+   * Taramanın yönü, olay anındaki cihaz kaydından. Kalıcı yazılır ki cihaz
+   * sonradan silinirse (`/api/me/entries` artık ona bakamaz hale gelse de)
+   * geçmiş taramanın giriş/çıkış sınıflandırması bozulmasın.
+   */
+  direction: DeviceDirection;
 }
 
 // Turnike geçiş olayını Redis kuyruğuna iter (fire-and-forget) — API yanıtını bekletmez

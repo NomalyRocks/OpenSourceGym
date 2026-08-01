@@ -154,8 +154,11 @@ const myEntriesQuerySchema = z.object({
  * Mobil takvimin geliş katmanı: üyenin KENDİ geçiş günleri.
  *
  * Yalnızca izin verilen ve giriş yönündeki taramalar sayılır — çıkış turnikesi
- * taraması aynı güne ikinci bir geliş gibi yazılırdı. Yön `entry_events`
- * üzerinde tutulmadığından çıkış cihazları kimlik listesiyle elenir.
+ * taraması aynı güne ikinci bir geliş gibi yazılırdı. Yön artık taranan anda
+ * `entry_events.direction` olarak kalıcı yazılır (cihaz sonradan silinse de
+ * geçmiş kayıt doğru sınıflandırılmış kalır). Bu alan eklenmeden ÖNCE yazılmış
+ * eski kayıtlarda `direction` yoktur; onlar için tek seferlik geriye dönük
+ * uyum olarak hâlâ mevcut cihazların kimlik listesine bakılır.
  */
 meRouter.get(
   "/entries",
@@ -190,9 +193,17 @@ meRouter.get(
             userId: req.user.id,
             allowed: true,
             at: { $gte: start, $lte: end },
-            ...(outDeviceIds.length > 0
-              ? { deviceId: { $nin: outDeviceIds } }
-              : {}),
+            $or: [
+              // Yön kalıcı yazılmış (güncel kayıt) — cihaz silinmiş olsa da geçerli.
+              { direction: "in" },
+              // Eski kayıt: yön yok, mevcut cihaz kimlik listesine bakılır.
+              {
+                direction: { $exists: false },
+                ...(outDeviceIds.length > 0
+                  ? { deviceId: { $nin: outDeviceIds } }
+                  : {}),
+              },
+            ],
           },
         },
         {
@@ -356,6 +367,7 @@ meRouter.post(
         allowed: false,
         reason: "INVALID_QR",
         at: new Date(),
+        direction: "in",
       });
       sendApiError(
         res,
@@ -385,6 +397,7 @@ meRouter.post(
         allowed: false,
         reason,
         at: new Date(),
+        direction,
       });
       sendApiError(res, 403, reason, message);
     };
@@ -476,6 +489,7 @@ meRouter.post(
       allowed: true,
       reason: null,
       at: new Date(),
+      direction,
     });
 
     const body: GateScanResponse = {
