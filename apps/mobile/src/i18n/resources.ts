@@ -296,9 +296,12 @@ const en = {
   "Kapsam içinde": "Within coverage",
   "Kapsam dışında": "Outside coverage",
   "{{n}} kayıt": "{{n}} records",
-  "Geliş geçmişi henüz yok": "No visit history yet",
-  "Turnikeden her geçişin bu takvimde işaretlenecek. Geçmiş kayıtlar salon tarafında hazırlanınca burada görünür.":
-    "Every turnstile entry will be marked on this calendar. Past records appear here once the gym enables them.",
+  "{{n}} geliş": "{{n}} visits",
+  "Geliş yok": "No visit",
+  "Geliş geçmişi alınamadı.": "Visit history could not be loaded.",
+  "Bu ay geliş kaydın yok": "No visits recorded this month",
+  "Turnikeden her geçişin bu takvimde yeşil işaretlenir. Antrenmana başladığında günler burada dolmaya başlar.":
+    "Every turnstile entry is marked green on this calendar. Days start filling in here once you begin training.",
 
   // Bildirimler
   "Az önce": "Just now",

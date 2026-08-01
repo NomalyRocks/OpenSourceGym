@@ -232,6 +232,22 @@ export interface EntryEvent {
   at: string;
 }
 
+/** Üyenin kendi geliş günü (mobil takvim) — tek bir yerel takvim gününün özeti */
+export interface MyEntryDay {
+  /** Salonun saat dilimindeki takvim günü, `YYYY-MM-DD` */
+  date: string;
+  /** O gün gerçekleşen geliş (giriş yönü) sayısı; her zaman ≥ 1 */
+  entries: number;
+}
+
+/** Üyenin kendi geliş geçmişi, gün gün (mobil takvim) */
+export interface MyEntriesResponse {
+  /** Yalnızca en az bir geliş olan günler; tarihe göre artan sırada */
+  days: MyEntryDay[];
+  /** Günlerin hesaplandığı IANA saat dilimi (salon saati) */
+  timeZone: string;
+}
+
 // Device Gateway WS protokolü (JSON text frame, cihaz ↔ sunucu)
 // Cihaz artık "dumb client": yalnızca kimlik doğrular ve open komutu dinler
 export type DeviceClientMessage = {

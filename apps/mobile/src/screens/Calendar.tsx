@@ -88,7 +88,8 @@ export function Calendar() {
     null,
   );
   const [attendance, setAttendance] = useState<AttendanceDay[]>([]);
-  const [attendanceConnected, setAttendanceConnected] = useState(false);
+  const [attendanceError, setAttendanceError] = useState<string | null>(null);
+  const [attendanceLoaded, setAttendanceLoaded] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
 
   const todayKey = dayKey(new Date());
@@ -104,7 +105,7 @@ export function Calendar() {
       api<MySubscription>("/api/me/subscription"),
       from && to
         ? fetchAttendance({ from, to })
-        : Promise.resolve({ days: [], connected: false }),
+        : Promise.resolve({ days: [], timeZone: "" }),
     ]);
 
     if (subscriptionResult.status === "fulfilled") {
@@ -119,11 +120,14 @@ export function Calendar() {
 
     if (attendanceResult.status === "fulfilled") {
       setAttendance(attendanceResult.value.days);
-      setAttendanceConnected(attendanceResult.value.connected);
+      setAttendanceError(null);
     } else {
       setAttendance([]);
-      setAttendanceConnected(false);
+      setAttendanceError(
+        errorMessage(attendanceResult.reason, t, "Geliş geçmişi alınamadı."),
+      );
     }
+    setAttendanceLoaded(true);
   }, [month, t]);
 
   useEffect(() => {
@@ -193,7 +197,7 @@ export function Calendar() {
       />
 
       <StatusMessage
-        text={subscriptionError}
+        text={subscriptionError ?? attendanceError}
         actionLabel={t("Tekrar dene")}
         onAction={() => void load()}
       />
@@ -235,7 +239,7 @@ export function Calendar() {
           ))}
         </View>
 
-        {!subscriptionLoaded ? (
+        {!subscriptionLoaded || !attendanceLoaded ? (
           <View style={styles.gridLoading}>
             {Array.from({ length: 6 }).map((_, index) => (
               <Skeleton key={index} height={40} radius={theme.radius.small} />
@@ -248,6 +252,9 @@ export function Calendar() {
               const isToday = cell.key === todayKey;
               const isSelected = cell.key === selected;
               const entries = attendanceByDay.get(cell.key) ?? 0;
+              // Geliş yalnızca ayın kendi günlerinde işaretlenir: komşu ay
+              // günleri için veri çekilmiyor, yeşil kenar boşluğu yanıltırdı.
+              const visited = entries > 0 && cell.inMonth;
               const isBoundary =
                 membership != null &&
                 (cell.key === membership.start || cell.key === membership.end);
@@ -257,17 +264,28 @@ export function Calendar() {
                   key={cell.key}
                   accessibilityRole="button"
                   accessibilityState={{ selected: isSelected }}
-                  accessibilityLabel={new Intl.DateTimeFormat(locale, {
-                    day: "numeric",
-                    month: "long",
-                  }).format(cell.date)}
+                  accessibilityLabel={[
+                    new Intl.DateTimeFormat(locale, {
+                      day: "numeric",
+                      month: "long",
+                    }).format(cell.date),
+                    visited ? t("{{n}} geliş", { n: entries }) : null,
+                  ]
+                    .filter(Boolean)
+                    .join(", ")}
                   onPress={() => setSelected(cell.key)}
+                  // Geliş, üyelik/bugün/seçim katmanlarının HEPSİNİN üstüne
+                  // yazar: bu katmanlar vurgu rengini taşıdığından altta
+                  // kalsaydı gelinen gün mavi görünür, sinyal kaybolurdu.
                   style={({ pressed }) => [
                     styles.cell,
                     covered && cell.inMonth && styles.cellCovered,
                     isBoundary && cell.inMonth && styles.cellBoundary,
                     isToday && styles.cellToday,
                     isSelected && styles.cellSelected,
+                    visited && styles.cellVisited,
+                    visited && isToday && styles.cellVisitedToday,
+                    visited && isSelected && styles.cellVisitedSelected,
                     pressed && styles.pressed,
                   ]}
                 >
@@ -275,13 +293,18 @@ export function Calendar() {
                     style={[
                       styles.cellLabel,
                       !cell.inMonth && styles.cellLabelMuted,
+                      visited && styles.cellLabelVisited,
                       isSelected && styles.cellLabelSelected,
                     ]}
                   >
                     {cell.date.getDate()}
                   </Text>
                   <View
-                    style={[styles.cellDot, entries > 0 && styles.cellDotOn]}
+                    style={[
+                      styles.cellDot,
+                      visited && styles.cellDotOn,
+                      visited && isSelected && styles.cellDotOnSelected,
+                    ]}
                   />
                 </Pressable>
               );
@@ -299,7 +322,7 @@ export function Calendar() {
             <Text style={styles.legendLabel}>{t("Bugün")}</Text>
           </View>
           <View style={styles.legendItem}>
-            <View style={styles.legendDot} />
+            <View style={[styles.legendSwatch, styles.legendVisited]} />
             <Text style={styles.legendLabel}>{t("Geliş")}</Text>
           </View>
         </View>
@@ -320,21 +343,30 @@ export function Calendar() {
           </View>
           <View style={styles.detailRow}>
             <Text style={styles.detailLabel}>{t("Geliş")}</Text>
-            <Text style={styles.detailValue}>
-              {attendanceConnected
-                ? t("{{n}} kayıt", { n: selectedEntries })
-                : "—"}
+            <Text
+              style={[
+                styles.detailValue,
+                selectedEntries > 0 && styles.detailValueVisited,
+              ]}
+            >
+              {attendanceError != null
+                ? "—"
+                : selectedEntries > 0
+                  ? t("{{n}} kayıt", { n: selectedEntries })
+                  : t("Geliş yok")}
             </Text>
           </View>
         </Plate>
       </View>
 
-      {!attendanceConnected ? (
+      {attendanceLoaded &&
+      attendanceError == null &&
+      attendance.length === 0 ? (
         <EmptyState
           icon={<CalendarGlyph size={24} color={theme.colors.textTertiary} />}
-          title={t("Geliş geçmişi henüz yok")}
+          title={t("Bu ay geliş kaydın yok")}
           body={t(
-            "Turnikeden her geçişin bu takvimde işaretlenecek. Geçmiş kayıtlar salon tarafında hazırlanınca burada görünür.",
+            "Turnikeden her geçişin bu takvimde yeşil işaretlenir. Antrenmana başladığında günler burada dolmaya başlar.",
           )}
         />
       ) : null}
@@ -403,6 +435,22 @@ const calendarStyles = (theme: Theme) =>
       gap: 2,
     },
     cellCovered: { backgroundColor: theme.colors.accentSurface },
+    // Geliş, üyelik tonunun üzerine yazar: gün gerçekten kullanıldıysa takvimde
+    // öne çıkan sinyal budur.
+    cellVisited: {
+      backgroundColor: theme.colors.successSurface,
+      borderColor: theme.colors.success,
+    },
+    // Bugün gelinmişse yeşil kalır; "bugün" işareti kenar kalınlığına düşer.
+    // Kenar içeriye çizilir, hücre ölçüsü değişmez.
+    cellVisitedToday: { borderWidth: 2 },
+    // Seçili gün gelinmişse zemin de yeşile döner: vurgu mavisi burada gelişi
+    // gizlerdi. Yazı/nokta `onAccent` — jeton hem vurgu hem başarı renginin
+    // üstünde okunacak polariteye sahip.
+    cellVisitedSelected: {
+      backgroundColor: theme.colors.success,
+      borderColor: theme.colors.success,
+    },
     cellBoundary: { borderColor: theme.colors.accentBorder },
     cellToday: { borderColor: theme.colors.accent },
     cellSelected: {
@@ -416,6 +464,7 @@ const calendarStyles = (theme: Theme) =>
       color: theme.colors.textPrimary,
     },
     cellLabelMuted: { color: theme.colors.textDisabled },
+    cellLabelVisited: { color: theme.colors.success },
     cellLabelSelected: { color: theme.colors.onAccent },
     cellDot: {
       width: 4,
@@ -424,6 +473,8 @@ const calendarStyles = (theme: Theme) =>
       backgroundColor: "transparent",
     },
     cellDotOn: { backgroundColor: theme.colors.success },
+    // Seçili gün zemini vurgu rengine döner; yeşil nokta orada okunmaz.
+    cellDotOnSelected: { backgroundColor: theme.colors.onAccent },
 
     legend: {
       flexDirection: "row",
@@ -449,12 +500,9 @@ const calendarStyles = (theme: Theme) =>
     },
     legendCovered: { backgroundColor: theme.colors.accentSurface },
     legendToday: { borderColor: theme.colors.accent },
-    legendDot: {
-      width: 6,
-      height: 6,
-      borderRadius: 3,
-      backgroundColor: theme.colors.success,
-      marginHorizontal: 4,
+    legendVisited: {
+      backgroundColor: theme.colors.successSurface,
+      borderColor: theme.colors.success,
     },
     legendLabel: { ...theme.type.label, color: theme.colors.textSecondary },
 
@@ -477,4 +525,5 @@ const calendarStyles = (theme: Theme) =>
       flexShrink: 1,
       textAlign: "right",
     },
+    detailValueVisited: { color: theme.colors.success },
   });

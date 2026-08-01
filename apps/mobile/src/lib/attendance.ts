@@ -1,46 +1,34 @@
 /**
  * Takvimin geliş katmanı.
  *
- * Üye tarafında geçiş geçmişini döndüren bir uç nokta henüz yok: `entry_events`
- * koleksiyonu yalnızca yönetim rotalarından (`/api/admin/entries`) okunuyor.
- * Ekranın tamamı bu sözleşmeye göre çizildi; uç nokta eklendiğinde değişmesi
- * gereken tek yer `fetchAttendance`.
- *
- * Bağlarken:
- *   1. API'ye `GET /api/me/entries?from=…&to=…` ekle (yalnızca oturumdaki
- *      kullanıcının `entry_events` kayıtları; `requireRole` + `logAudit`).
- *   2. Yanıt tipini `@opengym/shared` içine koy.
- *   3. Aşağıdaki gövdeyi `api<…>("/api/me/entries?…")` çağrısıyla değiştir ve
- *      günlere indirgeyip döndür.
+ * Kaynak `GET /api/me/entries`: oturumdaki üyenin `entry_events` kayıtları,
+ * salonun saat dilimine (`REPORTS_TIME_ZONE`) göre günlere indirgenmiş halde
+ * döner. Yalnızca izin verilen ve giriş yönündeki taramalar sayılır.
  */
 
-export interface AttendanceDay {
-  /** Yerel takvim günü, `YYYY-MM-DD`. */
-  date: string;
-  /** O gün oluşan giriş sayısı. */
-  entries: number;
-}
+import type { MyEntriesResponse, MyEntryDay } from "@opengym/shared";
+import { api } from "./api";
+
+export type AttendanceDay = MyEntryDay;
 
 export interface AttendanceRange {
-  /** Ayın ilk günü (yerel), `YYYY-MM-DD`. */
+  /** Aralığın ilk günü (yerel), `YYYY-MM-DD`. */
   from: string;
-  /** Ayın son günü (yerel), `YYYY-MM-DD`. */
+  /** Aralığın son günü (yerel), `YYYY-MM-DD`. */
   to: string;
 }
 
 export interface AttendanceResult {
+  /** Yalnızca en az bir geliş olan günler; tarihe göre artan sırada. */
   days: AttendanceDay[];
-  /**
-   * Kaynak henüz bağlı değil. Ekran bunu "veri yok"tan ayırt eder: boş bir ay
-   * ile bağlanmamış bir katman aynı şey değildir.
-   */
-  connected: boolean;
+  /** Günlerin hesaplandığı salon saat dilimi. */
+  timeZone: string;
 }
 
 export async function fetchAttendance(
   range: AttendanceRange,
 ): Promise<AttendanceResult> {
-  // Uç nokta bağlanınca: `api<...>(\`/api/me/entries?from=${range.from}&to=${range.to}\`)`
-  void range;
-  return { days: [], connected: false };
+  const from = encodeURIComponent(range.from);
+  const to = encodeURIComponent(range.to);
+  return api<MyEntriesResponse>(`/api/me/entries?from=${from}&to=${to}`);
 }
