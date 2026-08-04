@@ -15,12 +15,16 @@ import {
   useWindowDimensions,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import type { MyProfile } from "@opengym/shared";
 import type { MobileTranslationKey } from "../i18n/resources";
+import { api } from "../lib/api";
+import { authClient } from "../lib/auth";
 import {
   CALORIE_LIMITS,
   calculateCaloriePlan,
   cmToFeetAndInches,
   feetAndInchesToCm,
+  formatEditable,
   kgToPounds,
   parseLocalizedNumber,
   poundsToKg,
@@ -30,6 +34,10 @@ import {
   type Sex,
 } from "../lib/calorieCalculator";
 import { getCalorieIntroArtworkSize } from "../lib/calorieCalculatorLayout";
+import {
+  loadCalorieCalculatorState,
+  saveCalorieCalculatorState,
+} from "../lib/calorieCalculatorStorage";
 import {
   tabularNumbers,
   useTheme,
@@ -114,11 +122,6 @@ const GOAL_OPTIONS: ReadonlyArray<{
     body: "Bakım kalorinden yüzde 10 daha yüksek bir hedef oluşturur.",
   },
 ];
-
-function formatEditable(value: number, language: string | undefined) {
-  const normalized = value.toFixed(1).replace(/\.0$/, "");
-  return language?.startsWith("tr") ? normalized.replace(".", ",") : normalized;
-}
 
 function formatGoalAdjustment(factor: number, language: string | undefined) {
   const percent = Math.round(Math.abs(factor - 1) * 100);
@@ -335,6 +338,103 @@ export function CalorieCalculator({ onClose }: { onClose: () => void }) {
         })
       : null;
 
+  // Bu cihazda daha önce tamamlanmış bir akış varsa alanları önceden
+  // doldurur; yoksa üyenin profiline kaydettiği boy/kilo (varsa) yalnızca o
+  // iki alanı doldurur. Kullanıcıya sadece onaylamak/düzeltmek düşer.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const cached = await loadCalorieCalculatorState();
+      if (cancelled) return;
+      if (cached) {
+        setSex(cached.sex);
+        setAge(String(cached.age));
+        setHeightUnit(cached.heightUnit);
+        setWeightUnit(cached.weightUnit);
+        if (cached.heightUnit === "imperial") {
+          const converted = cmToFeetAndInches(cached.heightCm);
+          setHeightFeet(String(converted.feet));
+          setHeightInches(formatEditable(converted.inches, language));
+        } else {
+          setHeightCm(formatEditable(cached.heightCm, language));
+        }
+        if (cached.weightUnit === "imperial") {
+          setWeightLb(formatEditable(kgToPounds(cached.weightKg), language));
+        } else {
+          setWeightKg(formatEditable(cached.weightKg, language));
+        }
+        setActivity(cached.activity);
+        setGoal(cached.goal);
+        return;
+      }
+      try {
+        const profile = await api<MyProfile>("/api/me/profile");
+        if (cancelled) return;
+        if (typeof profile.age === "number") {
+          setAge(String(profile.age));
+        }
+        if (typeof profile.heightCm === "number") {
+          setHeightCm(formatEditable(profile.heightCm, language));
+        }
+        if (typeof profile.weightKg === "number") {
+          setWeightKg(formatEditable(profile.weightKg, language));
+        }
+      } catch {
+        // Profil alınamazsa akış boş başlar; kritik değil.
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // Yalnızca ilk montajda çalışır: bir dahaki hesaplamayı önceden doldurmak
+    // için, akış zaten sürerken dil değişiminde alanları ezmemeli.
+  }, []);
+
+  // Sonuç ekranına ulaşılınca girdiler bu cihaza kaydedilir; yaş/boy/kilo
+  // ayrıca üyenin profiline de yazılır (bir dahaki hesaplamayı otomatik doldursun).
+  useEffect(() => {
+    if (
+      stage !== "result" ||
+      sex == null ||
+      ageValue == null ||
+      normalizedHeight == null ||
+      normalizedWeight == null ||
+      activity == null ||
+      goal == null
+    ) {
+      return;
+    }
+    void saveCalorieCalculatorState({
+      sex,
+      age: ageValue,
+      heightCm: normalizedHeight,
+      weightKg: normalizedWeight,
+      activity,
+      goal,
+      heightUnit,
+      weightUnit,
+    });
+    void authClient
+      .updateUser({
+        age: ageValue,
+        heightCm: normalizedHeight,
+        weightKg: normalizedWeight,
+      })
+      .catch(() => {
+        // Sunucuya yazılamazsa hesaplama yine de gösterilir; kritik değil.
+      });
+  }, [
+    stage,
+    sex,
+    ageValue,
+    normalizedHeight,
+    normalizedWeight,
+    activity,
+    goal,
+    heightUnit,
+    weightUnit,
+  ]);
+
   const heightHasValue =
     heightUnit === "metric"
       ? heightCm.trim().length > 0
@@ -466,7 +566,9 @@ export function CalorieCalculator({ onClose }: { onClose: () => void }) {
             <View style={styles.privacyNote}>
               <StatusMessage
                 tone="neutral"
-                text={t("Girdiğin bilgiler kaydedilmez ve cihazından çıkmaz.")}
+                text={t(
+                  "Girdiğin bilgiler bu cihazda saklanır; boy ve kilon, bir dahaki sefere otomatik dolması için profiline de kaydedilir.",
+                )}
               />
             </View>
           </View>

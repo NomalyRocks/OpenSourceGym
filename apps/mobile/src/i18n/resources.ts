@@ -302,6 +302,8 @@ const en = {
   "Bu ay geliş kaydın yok": "No visits recorded this month",
   "Turnikeden her geçişin bu takvimde yeşil işaretlenir. Antrenmana başladığında günler burada dolmaya başlar.":
     "Every turnstile entry is marked green on this calendar. Days start filling in here once you begin training.",
+  "Kalori hedefi": "Calorie target",
+  "{{kcal}} kcal/gün": "{{kcal}} kcal/day",
 
   // Bildirimler
   "Az önce": "Just now",
@@ -337,6 +339,17 @@ const en = {
   "Etkin değil": "Off",
   "Görünüm, dil, bildirimler ve hesap işlemleri":
     "Appearance, language, notifications and account actions",
+  "Vücut bilgileri": "Body info",
+  "Kalori hesaplayıcısını otomatik doldurmak için kullanılır; boş bıraktığın alan değiştirilmez.":
+    "Used to auto-fill the calorie calculator; a field you leave empty is not changed.",
+  "Boy (cm)": "Height (cm)",
+  "Kilo (kg)": "Weight (kg)",
+  Kaydet: "Save",
+  "Kaydediliyor…": "Saving…",
+  "Kaydedildi.": "Saved.",
+  "Kaydedilemedi. Tekrar deneyin.": "Could not save. Please try again.",
+  "Kaydetmek için en az bir alan doldurun.":
+    "Fill in at least one field to save.",
 
   // Ayarlar
   Görünüm: "Appearance",
@@ -371,8 +384,8 @@ const en = {
   "Günlük enerjini birlikte bulalım": "Let's find your daily energy needs",
   "Altı kısa soruyla günlük kalori hedefini ve makro dağılımını tahmin et.":
     "Estimate your daily calorie target and macro split with six quick questions.",
-  "Girdiğin bilgiler kaydedilmez ve cihazından çıkmaz.":
-    "Your answers are not saved or sent off your device.",
+  "Girdiğin bilgiler bu cihazda saklanır; boy ve kilon, bir dahaki sefere otomatik dolması için profiline de kaydedilir.":
+    "Your answers are stored on this device; your height and weight are also saved to your profile so they auto-fill next time.",
   "Hesaplamada hangi biyolojik parametre kullanılsın?":
     "Which biological parameter should the calculation use?",
   "Mifflin–St Jeor denklemi kadın ve erkek için farklı sabitler kullanır.":

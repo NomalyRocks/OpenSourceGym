@@ -135,6 +135,15 @@ export function parseLocalizedNumber(value: string): number | null {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
+/** Bir sayıyı, gereksiz ondalık sıfırı atarak düzenlenebilir metin alanı için biçimler. */
+export function formatEditable(
+  value: number,
+  language: string | undefined,
+): string {
+  const normalized = value.toFixed(1).replace(/\.0$/, "");
+  return language?.startsWith("tr") ? normalized.replace(".", ",") : normalized;
+}
+
 export function poundsToKg(pounds: number): number {
   return pounds * 0.45359237;
 }

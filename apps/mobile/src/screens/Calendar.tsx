@@ -4,6 +4,9 @@ import { Pressable, StyleSheet, Text, View } from "react-native";
 import type { MySubscription } from "@opengym/shared";
 import { api } from "../lib/api";
 import { fetchAttendance, type AttendanceDay } from "../lib/attendance";
+import { dayKey, WEEK_START } from "../lib/dateKeys";
+import { fetchWeightHistory } from "../lib/weightHistory";
+import { resolveWeightForDay, type WeightEntry } from "../lib/weightResolve";
 import {
   CalendarGlyph,
   ChevronLeftGlyph,
@@ -26,15 +29,6 @@ import {
 } from "../ui";
 import { errorMessage } from "../i18n/errors";
 import { dateLocale } from "../i18n/format";
-
-/** Hafta pazartesi başlar — uygulamanın birincil yerelinin (tr) düzeni. */
-const WEEK_START = 1;
-
-function dayKey(date: Date): string {
-  const month = String(date.getMonth() + 1).padStart(2, "0");
-  const day = String(date.getDate()).padStart(2, "0");
-  return `${date.getFullYear()}-${month}-${day}`;
-}
 
 function startOfMonth(date: Date): Date {
   return new Date(date.getFullYear(), date.getMonth(), 1);
@@ -90,6 +84,7 @@ export function Calendar() {
   const [attendance, setAttendance] = useState<AttendanceDay[]>([]);
   const [attendanceError, setAttendanceError] = useState<string | null>(null);
   const [attendanceLoaded, setAttendanceLoaded] = useState(false);
+  const [weightHistory, setWeightHistory] = useState<WeightEntry[]>([]);
   const [refreshing, setRefreshing] = useState(false);
 
   const todayKey = dayKey(new Date());
@@ -101,12 +96,14 @@ export function Calendar() {
     const from = monthDays[0]?.key;
     const to = monthDays[monthDays.length - 1]?.key;
 
-    const [subscriptionResult, attendanceResult] = await Promise.allSettled([
-      api<MySubscription>("/api/me/subscription"),
-      from && to
-        ? fetchAttendance({ from, to })
-        : Promise.resolve({ days: [], timeZone: "" }),
-    ]);
+    const [subscriptionResult, attendanceResult, weightHistoryResult] =
+      await Promise.allSettled([
+        api<MySubscription>("/api/me/subscription"),
+        from && to
+          ? fetchAttendance({ from, to })
+          : Promise.resolve({ days: [], timeZone: "" }),
+        fetchWeightHistory(),
+      ]);
 
     if (subscriptionResult.status === "fulfilled") {
       setSubscription(subscriptionResult.value);
@@ -128,6 +125,12 @@ export function Calendar() {
       );
     }
     setAttendanceLoaded(true);
+
+    // Kilo geçmişi ikincil bir gösterim: çekilemezse detay satırı sessizce
+    // gizlenir, önceki değer korunur.
+    if (weightHistoryResult.status === "fulfilled") {
+      setWeightHistory(weightHistoryResult.value);
+    }
   }, [month, t]);
 
   useEffect(() => {
@@ -188,6 +191,10 @@ export function Calendar() {
     weekday: "long",
   }).format(selectedDate);
   const selectedEntries = attendanceByDay.get(selected) ?? 0;
+  const selectedWeightKg = useMemo(
+    () => resolveWeightForDay(weightHistory, selected),
+    [weightHistory, selected],
+  );
 
   return (
     <ScrollScreen refreshing={refreshing} onRefresh={refresh}>
@@ -356,6 +363,17 @@ export function Calendar() {
                   : t("Geliş yok")}
             </Text>
           </View>
+          {selectedWeightKg != null ? (
+            <View style={styles.detailRow}>
+              <Text style={styles.detailLabel}>{t("Kilo")}</Text>
+              <Text style={styles.detailValue}>
+                {new Intl.NumberFormat(i18n.resolvedLanguage, {
+                  maximumFractionDigits: 1,
+                }).format(selectedWeightKg)}{" "}
+                {t("kg")}
+              </Text>
+            </View>
+          ) : null}
         </Plate>
       </View>
 
