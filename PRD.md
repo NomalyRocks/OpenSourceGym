@@ -110,13 +110,13 @@ OpenGym: modern, self-hosted, açık kaynak bir spor salonu otomasyon sistemi (m
 - Cinsiyet, yaş, boy, kilo, hareket seviyesi ve hedef girdileri ayrı adımlarda alınır; metrik ve imperial birimler desteklenir.
 - Bakım kalorisi Mifflin–St Jeor denklemi ve beş hareket çarpanıyla; hedef kalorisi yağ kaybında -%15, korumada %0, kas kazanımında +%10 ile hesaplanır.
 - Sonuç hedef kaloriyi, bakım kalorisini ve hedefe göre protein/karbonhidrat/yağ gramlarını gösterir; genel yetişkinlere yönelik bir tahmin olduğu açıkça belirtilir.
-- Araç 18–80 yaş, 120–230 cm ve 35–300 kg aralıklarını doğrular. Girdiler ve sonuç yalnız akış belleğinde tutulur; cihaz depolamasına veya sunucuya yazılmaz.
+- Araç 18–80 yaş, 120–230 cm ve 35–300 kg aralıklarını doğrular. Tüm girdiler cihazda (SecureStore) saklanarak hesaplayıcı yeniden açılışında otomatik doldurulmaya olanak tanır; yaş, boy (cm) ve kilo (kg) ayrıca üyenin sunucu profiline yazılır ve Profil sayfasından da güncellenebilir. Takvim, hesaplanmış günlük kalori hedefini seçili günün detay kartında gösterir.
 
 ### 2.3 Non-Goals (Kapsam Dışı)
 
 - **Online ödeme entegrasyonu yok.** Ödeme salonda alınır; abonelik personel tarafından manuel tanımlanır.
 - **Multi-tenant / çoklu şube yok.** Her kurulum tek salona hizmet eder (single-tenant, self-hosted).
-- **Ders/rezervasyon, antrenman programı, diyet takibi, öğün planlama veya beslenme koçluğu yok.** Cihazda veri saklamadan genel yetişkinler için tahmin üreten bilgilendirici kalori/makro hesaplayıcısı bu sınırın istisnasıdır.
+- **Ders/rezervasyon, antrenman programı, diyet takibi, öğün planlama veya beslenme koçluğu yok.** Genel yetişkinler için tahmin üreten bilgilendirici kalori/makro hesaplayıcısı bu sınırın istisnasıdır (girdileri cihazda saklar, boy/kiloyu ayrıca üyenin sunucu profiline yazar — bkz. US-7).
 - **Path obfuscation ve custom cipher katmanı bu sürümde uygulanmayacak** (bkz. §3.4 ve Ek A).
 
 ---

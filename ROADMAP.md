@@ -183,8 +183,10 @@ tercihini kalıcı olarak saklayan iki dilli deneyim.
 
 ## Faz 9 — Üye Araçları: Günlük Kalori ve Makrolar
 
-**Hedef:** Üyenin kişisel verilerini saklamadan, mobil uygulama içinde günlük
-bakım/hedef kalorisi ile genel makro dağılımını tahmin edebilmesi (US-7).
+**Hedef:** Üyenin mobil uygulama içinde günlük bakım/hedef kalorisi ile genel
+makro dağılımını tahmin edebilmesi (US-7). Girdiler cihazda saklanarak
+hesaplayıcı yeniden açılışında otomatik doldurulur; yaş/boy/kilo ayrıca üyenin
+sunucu profiline yazılır ve Profil sayfasından güncellenebilir.
 
 **Bağımlılıklar:** Faz 8 (TR/EN altyapısı ve açık/koyu tema).
 
@@ -195,7 +197,8 @@ bakım/hedef kalorisi ile genel makro dağılımını tahmin edebilmesi (US-7).
 - [x] Cinsiyet, yaş, boy, kilo, hareket ve hedef için ayrı tam ekran adımlar; metrik/imperial dönüşümü
 - [x] OpenGym temasını izleyen ilerleme/geri akışı ve iki özgün low-poly ahtapot splash illüstrasyonu
 - [x] Sonuçta hedef kalorisi, bakım kalorisi, makro gram/yüzdeleri, yöntem ayrıntısı ve sağlık uyarısı
-- [x] Girdilerin yalnız akış belleğinde tutulması; API, veritabanı ve SecureStore yazımı olmaması
+- [x] Girdilerin cihazda (SecureStore) saklanması; yaş/boy/kilo ayrıca üyenin sunucu profiline yazılması, Profil sayfasındaki ayrı bir bölümden düzenlenebilmesi ve hesaplayıcı yeniden açılışında otomatik doldurulması
+- [x] Takvimde seçili günün detay kartında, hesaplanmışsa günlük kalori hedefinin gösterilmesi
 - [x] TR/EN, açık/koyu tema, büyük yazı, ekran okuyucu, azaltılmış hareket ve Android sistem geri desteği
 - [x] Formül/birim/sınır testleri ile mobil lint, typecheck, test ve kök CI doğrulaması
 - [ ] KVM erişimli Android emülatörde tam akış ve açık/koyu tema görsel duman testi
