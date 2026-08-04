@@ -72,6 +72,9 @@ export function requireRole(...roles: Role[]) {
         doc.profilePhotoKey,
         doc.profilePhotoUpdatedAt,
       ),
+      age: typeof doc.age === "number" ? doc.age : null,
+      heightCm: typeof doc.heightCm === "number" ? doc.heightCm : null,
+      weightKg: typeof doc.weightKg === "number" ? doc.weightKg : null,
     };
     if (!roles.includes(user.role)) {
       sendApiError(

@@ -25,6 +25,11 @@ import {
   PHONE_ALREADY_EXISTS_CODE,
   PHONE_ALREADY_EXISTS_MESSAGE,
 } from "./phone.js";
+import {
+  assertValidBodyMetricsUpdate,
+  InvalidBodyMetricError,
+} from "./bodyMetrics.js";
+import { recordWeightHistoryIfChanged } from "./weightHistory.js";
 
 function normalizePhoneForApi(value: unknown): string {
   try {
@@ -210,6 +215,12 @@ export const auth = betterAuth({
       privacyAccepted: { type: "boolean", required: true },
       kvkkAcceptedAt: { type: "date", required: false, input: false },
       privacyAcceptedAt: { type: "date", required: false, input: false },
+      // Mobil kalori hesaplayıcının otomatik doldurabilmesi için üyenin
+      // kendi girdiği boy/kilo — genel `update-user` uç noktasıyla
+      // yazılır, `update.before` hook'unda aralık doğrulanır.
+      age: { type: "number", required: false },
+      heightCm: { type: "number", required: false },
+      weightKg: { type: "number", required: false },
     },
   },
 
@@ -266,9 +277,23 @@ export const auth = betterAuth({
       },
       update: {
         before: async (user) => {
+          const candidate = user as typeof user & {
+            phone?: unknown;
+            age?: unknown;
+            heightCm?: unknown;
+            weightKg?: unknown;
+          };
+          try {
+            assertValidBodyMetricsUpdate(candidate);
+          } catch (err) {
+            if (err instanceof InvalidBodyMetricError) {
+              throw new APIError("BAD_REQUEST", { message: err.message });
+            }
+            throw err;
+          }
+
           if (!Object.prototype.hasOwnProperty.call(user, "phone")) return;
 
-          const candidate = user as typeof user & { phone?: unknown };
           const phoneE164 = normalizePhoneForApi(candidate.phone);
           if (await hasActivePhoneConflict(phoneE164)) {
             throw duplicatePhoneError();
@@ -276,9 +301,15 @@ export const auth = betterAuth({
           return { data: { ...user, phone: phoneE164, phoneE164 } };
         },
         after: async (user) => {
-          const updated = user as typeof user & { id?: unknown };
+          const updated = user as typeof user & {
+            id?: unknown;
+            weightKg?: unknown;
+          };
           if (typeof updated.id === "string") {
             await reconcilePhoneConflictsAfterUserChange(updated.id);
+            if (typeof updated.weightKg === "number") {
+              await recordWeightHistoryIfChanged(updated.id, updated.weightKg);
+            }
           }
         },
       },

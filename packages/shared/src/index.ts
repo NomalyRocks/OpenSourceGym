@@ -62,6 +62,12 @@ export interface MyProfile {
   mustChangePassword: boolean;
   twoFactorEnabled: boolean;
   profilePhotoUrl: string | null;
+  /** Mobil kalori hesaplayıcının otomatik doldurması için üyenin kendi girdiği yaş */
+  age: number | null;
+  /** Mobil kalori hesaplayıcının otomatik doldurması için üyenin kendi girdiği boy (cm) */
+  heightCm: number | null;
+  /** Mobil kalori hesaplayıcının otomatik doldurması için üyenin kendi girdiği kilo (kg) */
+  weightKg: number | null;
 }
 
 export interface ProfilePhotoResponse {
@@ -246,6 +252,18 @@ export interface MyEntriesResponse {
   days: MyEntryDay[];
   /** Günlerin hesaplandığı IANA saat dilimi (salon saati) */
   timeZone: string;
+}
+
+/** Üyenin profildeki kilosunun bir andaki değeri (mobil takvim) */
+export interface MyWeightEntry {
+  weightKg: number;
+  /** Kaydın oluşturulduğu an, ISO 8601 */
+  at: string;
+}
+
+/** Üyenin kendi kilo geçmişi — weightKg her değiştiğinde eklenir, artan zamana göre sıralı */
+export interface MyWeightHistoryResponse {
+  entries: MyWeightEntry[];
 }
 
 // Device Gateway WS protokolü (JSON text frame, cihaz ↔ sunucu)

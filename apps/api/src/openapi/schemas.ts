@@ -59,6 +59,15 @@ export const myProfileSchema = withId(
     mustChangePassword: z.boolean(),
     twoFactorEnabled: z.boolean(),
     profilePhotoUrl: z.url().nullable(),
+    age: z.number().nullable().meta({
+      description: "Kalori hesaplayıcının otomatik dolduracağı yaş",
+    }),
+    heightCm: z.number().nullable().meta({
+      description: "Kalori hesaplayıcının otomatik dolduracağı boy (cm)",
+    }),
+    weightKg: z.number().nullable().meta({
+      description: "Kalori hesaplayıcının otomatik dolduracağı kilo (kg)",
+    }),
   }),
   "MyProfile",
 );

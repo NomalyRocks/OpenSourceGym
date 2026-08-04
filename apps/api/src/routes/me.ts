@@ -8,6 +8,7 @@ import type {
   MyDeletionRequest,
   MyEntriesResponse,
   MySubscription,
+  MyWeightHistoryResponse,
   OccupancyResponse,
   ProfilePhotoResponse,
 } from "@opengym/shared";
@@ -20,6 +21,7 @@ import {
   MAX_ENTRY_RANGE_DAYS,
   toEntryDays,
 } from "../entryDays.js";
+import { listWeightHistory } from "../weightHistory.js";
 import { sendApiError } from "../apiError.js";
 import { acquireLock, redis, releaseLock } from "../redis.js";
 import { authed, requireRole, type AuthedRequest } from "../middleware.js";
@@ -224,6 +226,22 @@ meRouter.get(
     const body: MyEntriesResponse = {
       days: toEntryDays(rows, from, to),
       timeZone,
+    };
+    res.json(body);
+  }),
+);
+
+// Mobil takvimin kilo katmanı: weightKg her değiştiğinde eklenen geçmiş.
+meRouter.get(
+  "/weight-history",
+  requireRole("admin", "staff", "member"),
+  authed(async (req, res) => {
+    const entries = await listWeightHistory(req.user.id);
+    const body: MyWeightHistoryResponse = {
+      entries: entries.map((entry) => ({
+        weightKg: entry.weightKg,
+        at: entry.at.toISOString(),
+      })),
     };
     res.json(body);
   }),
