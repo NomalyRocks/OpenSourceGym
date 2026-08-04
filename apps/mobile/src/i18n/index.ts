@@ -25,23 +25,31 @@ async function readStoredLanguage(): Promise<string | null> {
   }
 }
 
+// `useTranslation()` kullanan bileşenler ilk React render'ında, yani
+// `useEffect` çalışmadan önce oluşturulabilir. Kaynaklar uygulamaya gömülü
+// olduğundan i18next'i burada senkron başlatıp react-i18next instance'ını
+// render başlamadan önce kaydediyoruz. SecureStore'daki kullanıcı tercihi
+// aşağıda ayrıca uygulanır.
+void i18n.use(initReactI18next).init({
+  resources,
+  lng: resolveLanguage(null, deviceLanguages()),
+  fallbackLng: "en",
+  supportedLngs: ["tr", "en"],
+  keySeparator: false,
+  nsSeparator: false,
+  interpolation: { escapeValue: false },
+  initAsync: false,
+});
+initialized = true;
+
 export async function initializeLocalization(): Promise<void> {
-  if (initialized) return;
   const stored = await readStoredLanguage();
   manualLanguage = isLanguage(stored);
   const language = resolveLanguage(stored, deviceLanguages());
 
-  await i18n.use(initReactI18next).init({
-    resources,
-    lng: language,
-    fallbackLng: "en",
-    supportedLngs: ["tr", "en"],
-    keySeparator: false,
-    nsSeparator: false,
-    interpolation: { escapeValue: false },
-    initAsync: false,
-  });
-  initialized = true;
+  if (language !== i18n.language) {
+    await i18n.changeLanguage(language);
+  }
 }
 
 export async function setLanguage(language: Language): Promise<void> {
