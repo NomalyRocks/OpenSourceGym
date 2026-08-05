@@ -124,6 +124,8 @@ export function Settings({
     setSignOutError(null);
     setSignOutBusy(true);
     try {
+      // Hesaplayıcının cihazdaki sağlık verisi App.tsx'teki oturum kaybı
+      // etkisinde silinir: iptal edilen oturumlarda da çalışan tek yol orası.
       await authClient.signOut();
     } catch (error) {
       setSignOutError(

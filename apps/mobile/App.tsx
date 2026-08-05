@@ -19,6 +19,7 @@ import { StatusBar } from "expo-status-bar";
 import { useTranslation } from "react-i18next";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { authClient } from "./src/lib/auth";
+import { clearCalorieCalculatorState } from "./src/lib/calorieCalculatorStorage";
 import {
   checkDeviceIntegrity,
   type DeviceIntegrityResult,
@@ -233,7 +234,7 @@ function SignedInApp({
             <View
               style={activeTab === "calendar" ? styles.flex : styles.hidden}
             >
-              <Calendar />
+              <Calendar active={activeTab === "calendar"} />
             </View>
           ) : null}
 
@@ -296,6 +297,7 @@ function AppContent() {
     null,
   );
   const hadSession = useRef(false);
+  const lastUserId = useRef<string | null>(null);
   const center = useNotificationCenter(Boolean(session));
 
   useEffect(() => {
@@ -313,10 +315,18 @@ function AppContent() {
   useEffect(() => {
     if (session) {
       hadSession.current = true;
+      lastUserId.current = session.user.id;
       return;
     }
     if (hadSession.current) {
       hadSession.current = false;
+      // Oturumun kaybolduğu her yol buradan geçer: elle çıkış, hesap silme
+      // onayı, paylaşım tespitiyle iptal, süre dolması. Sağlık verisi cihazda
+      // oturumdan uzun yaşamamalı, bu yüzden temizlik Ayarlar ekranında değil
+      // burada duruyor — oturum zaten iptal edilmişken kimlik okunamaz.
+      const userId = lastUserId.current;
+      lastUserId.current = null;
+      if (userId) void clearCalorieCalculatorState(userId);
       resetToLogin();
     }
   }, [resetToLogin, session]);
