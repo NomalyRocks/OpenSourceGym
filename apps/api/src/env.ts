@@ -2,7 +2,7 @@ import { z } from "zod";
 
 const isProduction = process.env.NODE_ENV === "production";
 
-/** Virgülle ayrılmış origin listesini temizleyip diziye çevirir. */
+/** Cleans a comma-separated origin list and converts it to an array. */
 const originList = z
   .string()
   .transform((value) =>
@@ -15,10 +15,10 @@ const originList = z
 
 const port = z.coerce.number().int().min(1).max(65535);
 
-// Raporlardaki "gün" salonun yerel günüdür, UTC günü değil: sabah 01:00'deki
-// bir geçiş dünkü kovaya düşerse günlük sayılar salon sahibinin gördüğü
-// gerçekle uyuşmaz. Geçersiz bir bölge adı Intl'de RangeError fırlatır; bunu
-// açılışta yakalayıp anlaşılır hata veriyoruz.
+// A report "day" is the gym's local day, not the UTC day: if a 01:00 entry
+// lands in yesterday's bucket, daily counts will not match what the gym owner
+// sees. Intl throws RangeError for an invalid zone name; catch that at startup
+// and return a clear error.
 const timeZone = z.string().refine(
   (value) => {
     try {
@@ -28,11 +28,11 @@ const timeZone = z.string().refine(
       return false;
     }
   },
-  { message: "geçerli bir IANA saat dilimi olmalı (ör. Europe/Istanbul)" },
+  { message: "must be a valid IANA time zone (for example Europe/Istanbul)" },
 );
 
-// Production'da zayıf varsayılanlar kabul edilmez: BETTER_AUTH_SECRET
-// verilmemişse süreç açılışta düşmeli, sessizce dev anahtarına inmemeli.
+// Weak defaults are not accepted in production: when BETTER_AUTH_SECRET is
+// absent, the process must fail at startup instead of silently using the dev key.
 const betterAuthSecret = isProduction
   ? z.string().min(32)
   : z.string().min(1).default("dev-only-secret-do-not-use-in-prod");
@@ -45,8 +45,8 @@ const envSchema = z.object({
   REDIS_URL: z.string().min(1).default("redis://localhost:6379"),
   BETTER_AUTH_SECRET: betterAuthSecret,
   BETTER_AUTH_URL: z.url().default("http://localhost:3000"),
-  // prefault (default değil): varsayılan da transform+doğrulamadan geçmeli,
-  // aksi halde zod çıkış tarafında kısa devre yapıp ham string bırakır.
+  // prefault (not default): the fallback must also pass through transformation
+  // and validation; otherwise Zod short-circuits on output and leaves a raw string.
   TRUSTED_ORIGINS: originList.prefault("http://localhost:5173"),
   R2_ACCOUNT_ID: z.string().optional(),
   R2_ACCESS_KEY_ID: z.string().optional(),
@@ -58,14 +58,14 @@ const envSchema = z.object({
   SMTP_USER: z.string().optional(),
   SMTP_PASS: z.string().optional(),
   SMTP_FROM: z.string().default("OpenGym <noreply@opengym.local>"),
-  // prefault: varsayılan da refine'dan geçmeli (bkz. TRUSTED_ORIGINS notu).
+  // prefault: the fallback must also pass through refine (see TRUSTED_ORIGINS).
   REPORTS_TIME_ZONE: timeZone.prefault("Europe/Istanbul"),
 });
 
-// Boş string "tanımsız" demektir. docker compose'daki `${VAR:-}` yazımı
-// değişkeni BOŞ DEĞERLE gönderir, hiç göndermemiş olmaz; bunu ayıklamazsak
-// isteğe bağlı bir URL alanı (ör. R2_PUBLIC_BASE_URL) boş geldiğinde şema
-// hata verir ve R2 kullanmayan her kurulum açılışta crash-loop'a girer.
+// An empty string means "undefined." Docker Compose syntax `${VAR:-}` passes
+// the variable WITH AN EMPTY VALUE rather than omitting it; without filtering
+// this out, an empty optional URL such as R2_PUBLIC_BASE_URL fails validation
+// and every installation without R2 enters a startup crash loop.
 const presentEnv = Object.fromEntries(
   Object.entries(process.env).filter(([, value]) => value !== ""),
 );
@@ -73,12 +73,12 @@ const presentEnv = Object.fromEntries(
 const parsed = envSchema.safeParse(presentEnv);
 
 if (!parsed.success) {
-  // Yapılandırma hatası çalışma anına ertelenmemeli: hangi değişkenin neden
-  // reddedildiğini tek seferde yazıp süreci sonlandırıyoruz.
+  // Configuration errors must not be deferred until runtime: print every
+  // rejected variable and its reason at once, then terminate the process.
   const issues = parsed.error.issues
-    .map((issue) => `  ${issue.path.join(".") || "(kök)"}: ${issue.message}`)
+    .map((issue) => `  ${issue.path.join(".") || "(root)"}: ${issue.message}`)
     .join("\n");
-  console.error(`Geçersiz ortam yapılandırması:\n${issues}`);
+  console.error(`Invalid environment configuration:\n${issues}`);
   process.exit(1);
 }
 

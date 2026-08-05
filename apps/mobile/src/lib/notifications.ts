@@ -10,15 +10,15 @@ const PREFS_STORAGE_KEY = "opengym.notifications.prefs";
 export type NotificationTone = "info" | "success" | "warning" | "error";
 
 /**
- * Bildirim tanımı.
+ * Notification descriptor.
  *
- * Metinler burada değil ekranda çevrilir: anahtarlar zaten Türkçe cümleler ve
- * i18n katmanı tek yerde kalsın.
+ * Text is translated on the screen rather than here: the keys are already
+ * English sentences, keeping the i18n layer in one place.
  */
 export interface NotificationDescriptor {
   id: string;
   tone: NotificationTone;
-  /** ISO tarih — sıralama ve göreli zaman için. */
+  /** ISO date—for sorting and relative time. */
   at: string;
   titleKey: MobileTranslationKey;
   bodyKey: MobileTranslationKey;
@@ -27,12 +27,12 @@ export interface NotificationDescriptor {
 }
 
 /**
- * Sunucu tarafı bildirim akışı.
+ * Server-side notification feed.
  *
- * API'de üyeye bildirim döndüren bir uç nokta yok. Eklendiğinde değişmesi
- * gereken tek yer burası: `GET /api/me/notifications` çağırıp
- * `NotificationDescriptor[]` üret, `connected: true` döndür. Ekranın geri
- * kalanı aynı kalır.
+ * The API has no endpoint that returns member notifications. When added, this
+ * is the only place that needs to change: call `GET /api/me/notifications`,
+ * produce `NotificationDescriptor[]`, and return `connected: true`. The rest
+ * of the screen remains unchanged.
  */
 export async function fetchServerNotifications(): Promise<{
   items: Omit<NotificationDescriptor, "read">[];
@@ -44,10 +44,10 @@ export async function fetchServerNotifications(): Promise<{
 const EXPIRY_WARNING_DAYS = 7;
 
 /**
- * Gerçek abonelik ve silme talebi verisinden türetilen yerel uyarılar.
+ * Local alerts derived from real subscription and deletion-request data.
  *
- * Uydurma içerik değil: hepsi API'den gelen alanların yeniden ifadesi. Sunucu
- * akışı bağlandığında bu üretici olduğu gibi kalabilir ya da kaldırılabilir.
+ * This is not fabricated content: every alert restates fields from the API.
+ * When the server feed is connected, this generator can remain as-is or be removed.
  */
 export function deriveLocalNotifications({
   subscription,
@@ -66,18 +66,17 @@ export function deriveLocalNotifications({
         id: "local:membership-inactive",
         tone: "error",
         at: subscription.endsAt ?? now,
-        titleKey: "Üyeliğin aktif değil",
-        bodyKey:
-          "Salona giriş yapabilmek için resepsiyondan üyeliğini yenilemen gerekiyor.",
+        titleKey: "Your membership is not active",
+        bodyKey: "Renew your membership at reception to enter the gym.",
       });
     } else if (remaining <= EXPIRY_WARNING_DAYS) {
       items.push({
-        // Bitiş tarihi kimliğin parçası: yenileme sonrası uyarı yeniden okunmamış sayılır.
+        // The end date is part of the ID, so a renewed alert is unread again.
         id: `local:membership-expiring:${subscription.endsAt ?? ""}`,
         tone: "warning",
         at: now,
-        titleKey: "Üyeliğin yakında bitiyor",
-        bodyKey: "Üyeliğinin bitmesine {{n}} gün kaldı.",
+        titleKey: "Your membership expires soon",
+        bodyKey: "{{n}} days left until your membership expires.",
         params: { n: remaining },
       });
     }
@@ -88,17 +87,17 @@ export function deriveLocalNotifications({
       id: "local:deletion-pending",
       tone: "warning",
       at: deletion.requestedAt ?? now,
-      titleKey: "Hesap silme talebin inceleniyor",
+      titleKey: "Your account deletion request is under review",
       bodyKey:
-        "Talebin salon personeline iletildi. Onaylanana kadar hesabın açık kalır.",
+        "Your request was sent to gym staff. Your account stays active until it is approved.",
     });
   } else if (deletion?.status === "rejected") {
     items.push({
       id: "local:deletion-rejected",
       tone: "info",
       at: deletion.requestedAt ?? now,
-      titleKey: "Hesap silme talebin reddedildi",
-      bodyKey: "Ayrıntı için salon resepsiyonuna başvurabilirsin.",
+      titleKey: "Your account deletion request was rejected",
+      bodyKey: "Contact gym reception for details.",
     });
   }
 
@@ -122,22 +121,22 @@ async function readStoredIds(): Promise<Set<string>> {
 
 async function writeStoredIds(ids: Set<string>): Promise<void> {
   try {
-    // Yalnızca son 100 kimlik saklanır; okundu listesi sınırsız büyümemeli.
+    // Store only the latest 100 IDs; the read list must not grow without limit.
     const trimmed = Array.from(ids).slice(-100);
     await SecureStore.setItemAsync(READ_STORAGE_KEY, JSON.stringify(trimmed));
   } catch {
-    // Yazma başarısız olursa okundu durumu yalnızca bu oturumda geçerli olur.
+    // If the write fails, read state applies only to this session.
   }
 }
 
 /**
- * Kullanıcının hangi uyarı türlerini görmek istediği. Push altyapısı yok;
- * bu tercihler uygulama içi listeyi ve rozeti gerçekten filtreler.
+ * Alert types the user wants to see. There is no push infrastructure; these
+ * preferences actually filter the in-app list and badge.
  */
 export interface NotificationPrefs {
-  /** Üyelik bitişi ve pasif üyelik uyarıları. */
+  /** Membership expiry and inactive-membership alerts. */
   membership: boolean;
-  /** Hesap silme talebi durum değişiklikleri. */
+  /** Account-deletion request status changes. */
   account: boolean;
 }
 
@@ -175,9 +174,9 @@ export interface NotificationCenter {
   items: NotificationDescriptor[];
   unreadCount: number;
   loading: boolean;
-  /** Çeviri anahtarı; ekran `t()` ile gösterir. */
+  /** Translation key displayed by the screen using `t()`. */
   error: MobileTranslationKey | null;
-  /** Sunucu akışı bağlı mı — boş liste ile bağlanmamış katmanı ayırt eder. */
+  /** Whether the server feed is connected—distinguishes an empty list from an unconnected layer. */
   serverConnected: boolean;
   refresh: () => Promise<void>;
   markAllRead: () => void;
@@ -186,8 +185,8 @@ export interface NotificationCenter {
 }
 
 /**
- * Bildirim merkezi. App bir kez kurar; rozet sayısını Ana Sayfa'ya, listeyi
- * Bildirimler ekranına aynı kaynaktan verir.
+ * Notification center. App creates it once and supplies the Home badge count
+ * and Notifications list from the same source.
  */
 export function useNotificationCenter(enabled: boolean): NotificationCenter {
   const [descriptors, setDescriptors] = useState<
@@ -249,10 +248,10 @@ export function useNotificationCenter(enabled: boolean): NotificationCenter {
         ? serverResult.value
         : { items: [], connected: false };
 
-    // Abonelik okunamadıysa liste sessizce boşalmasın; kullanıcı nedenini görsün.
+    // If the subscription cannot be read, do not silently empty the list; show why.
     setError(
       subscriptionResult.status === "rejected"
-        ? "Bildirimler alınamadı."
+        ? "Could not load notifications."
         : null,
     );
     setServerConnected(server.connected);

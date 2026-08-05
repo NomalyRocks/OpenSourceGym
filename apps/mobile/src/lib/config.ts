@@ -1,10 +1,10 @@
 import Constants from "expo-constants";
 
 /**
- * API adresi çözümü:
- * 1. EXPO_PUBLIC_API_URL env değişkeni (öncelikli)
- * 2. Metro'nun çalıştığı makinenin adresi (hostUri) + API portu —
- *    LAN üzerindeki gerçek cihaz ve emülatör için çalışır
+ * API address resolution:
+ * 1. EXPO_PUBLIC_API_URL environment variable (takes precedence)
+ * 2. Address of the machine running Metro (hostUri) + API port—works for
+ *    physical devices and emulators on the LAN
  * 3. localhost (adb reverse tcp:3000 tcp:3000 gerektirir)
  */
 const devHost = Constants.expoConfig?.hostUri?.split(":")[0];
@@ -22,13 +22,13 @@ function resolveApiUrl(): string {
 
   if (!configuredUrl) {
     throw new Error(
-      "Production derlemesinde EXPO_PUBLIC_API_URL tanımlanmalıdır.",
+      "EXPO_PUBLIC_API_URL must be defined in production builds.",
     );
   }
 
   if (!configuredUrl.startsWith("https://")) {
     throw new Error(
-      "Production derlemesinde EXPO_PUBLIC_API_URL https:// ile başlamalıdır.",
+      "EXPO_PUBLIC_API_URL must start with https:// in production builds.",
     );
   }
 

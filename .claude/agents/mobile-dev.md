@@ -15,7 +15,8 @@ Project facts you can rely on (re-verify only if the code contradicts them):
 - `src/lib/auth.ts`: `createAuthClient` with `emailOTPClient()` and `expoClient({ scheme: "opengym", storage: SecureStore })`.
 - `src/lib/api.ts`: `api<T>()` wrapper that injects `Cookie: authClient.getCookie()` — use it for all API calls.
 - `src/lib/config.ts`: API URL resolution order: `EXPO_PUBLIC_API_URL` → Metro `hostUri` with port 3000 (LAN/emulator) → `localhost:3000`.
-- UI: `src/theme.ts` + primitives in `src/ui.tsx` (Button etc.), dark UI. Screens in `src/screens/` (Login, Register, VerifyOtp, Home). All UI text is Turkish.
+- UI: `src/theme.ts` + primitives in `src/ui.tsx` (Button etc.), dark UI. Screens in `src/screens/` (Login, Register, VerifyOtp, Home).
+- Everything you write in code is English — identifiers, comments, test titles, log lines. UI text goes through `t()` from react-i18next, and the key IS the English source string: `t("Home")`. Add every new key to the `tr` map in `src/i18n/resources.ts` with its Turkish copy. Never hardcode a Turkish literal in a screen.
 - KVKK + privacy consent are mandatory at registration — the API rejects signup without them. Never remove or bypass those checkboxes.
 - Workspace quirks: not ESM, own TypeScript ~6.0.3, tsconfig extends `expo/tsconfig.base` (not the repo base), no `build`/`dev` scripts so turbo skips this package.
 - Shared response types come from `@opengym/shared` (e.g. `MySubscription` in Home).

@@ -49,10 +49,10 @@ export function VerifyOtp({
     await runAuthAction(setBusy, showUnreachable, async () => {
       const { error } = await authClient.emailOtp.verifyEmail({ email, otp });
       if (error) {
-        setError(t("Kod hatalı veya süresi dolmuş."));
+        setError(t("The code is invalid or has expired."));
         return;
       }
-      // Doğrulama sonrası otomatik giriş — kayıt akışı kesintisiz tamamlanır
+      // Automatic sign-in after verification completes registration seamlessly.
       const fp = await getDeviceFingerprint();
       const signIn = await authClient.signIn.email({
         email,
@@ -63,7 +63,9 @@ export function VerifyOtp({
       });
       if (signIn.error) {
         setError(
-          t("Doğrulama tamam; giriş başarısız. Giriş ekranından deneyin."),
+          t(
+            "Verification is complete, but sign-in failed. Try again from the sign-in screen.",
+          ),
         );
         return;
       }
@@ -73,9 +75,7 @@ export function VerifyOtp({
 
   function showUnreachable() {
     setError(
-      t(
-        "Bağlantı kurulamadı. İnternet bağlantınızı kontrol edip tekrar deneyin.",
-      ),
+      t("Could not connect. Check your internet connection and try again."),
     );
   }
 
@@ -89,10 +89,10 @@ export function VerifyOtp({
         type: "email-verification",
       });
       if (error) {
-        setError(t("Kod gönderilemedi. Lütfen bir dakika bekleyin."));
+        setError(t("The code could not be sent. Please wait one minute."));
       } else {
         setOtp("");
-        setInfo(t("Yeni kod gönderildi."));
+        setInfo(t("A new code was sent."));
         setSecondsLeft(RESEND_COOLDOWN_SECONDS);
       }
     });
@@ -103,8 +103,8 @@ export function VerifyOtp({
   return (
     <AuthShell onBack={onBack}>
       <AuthHeading
-        title={t("Doğrulama Kodu")}
-        subtitle={t("Gelen kutuna 6 haneli bir kod gönderdik.")}
+        title={t("Verification Code")}
+        subtitle={t("We sent a 6-digit code to your inbox.")}
       />
 
       <View style={styles.recipient}>
@@ -128,14 +128,14 @@ export function VerifyOtp({
       <Pressable
         accessibilityRole="button"
         accessibilityState={{ disabled: cooling || resending }}
-        accessibilityLabel={t("Kodu tekrar gönder")}
+        accessibilityLabel={t("Resend code")}
         onPress={() => void resend()}
         disabled={cooling || resending}
         hitSlop={8}
         style={({ pressed }) => [styles.resend, pressed && styles.pressed]}
       >
         <Text style={[styles.resendLabel, cooling && styles.resendLabelIdle]}>
-          {t("Kodu tekrar gönder")}
+          {t("Resend code")}
         </Text>
         {cooling ? (
           <Text style={styles.countdown}>
@@ -145,7 +145,7 @@ export function VerifyOtp({
       </Pressable>
 
       <Button
-        title={t("Doğrula")}
+        title={t("Verify")}
         onPress={submit}
         busy={busy}
         disabled={otp.length !== 6}

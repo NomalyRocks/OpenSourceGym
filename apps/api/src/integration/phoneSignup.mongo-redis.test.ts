@@ -6,12 +6,12 @@ const mongoUri = process.env.TEST_MONGODB_URI;
 const redisUri = process.env.TEST_REDIS_URL;
 
 test(
-  "kayıt hook'u eski onay anahtarını kabul eder, telefonu normalize eder ve farklı yazılmış mükerreri ayırır",
+  "signup hook accepts the legacy consent key, normalizes the phone, and identifies differently formatted duplicates",
   {
     skip:
       mongoUri && redisUri
         ? false
-        : "TEST_MONGODB_URI ve TEST_REDIS_URL tanımlı değil",
+        : "TEST_MONGODB_URI and TEST_REDIS_URL are not defined",
   },
   async () => {
     const databaseName = `opengym_signup_${randomUUID().replaceAll("-", "")}`;
@@ -173,7 +173,7 @@ test(
       );
       assert.equal(duplicate.status, 400);
       assert.equal(duplicate.body.code, "PHONE_ALREADY_EXISTS");
-      assert.match(duplicate.body.message ?? "", /telefon numarası/i);
+      assert.match(duplicate.body.message ?? "", /phone number/i);
       assert.equal(
         await db.collection("user").countDocuments({
           phoneE164: "+905321234567",
@@ -215,7 +215,7 @@ test(
       assert.equal(publicSeedAttempt.body.code, "INVALID_PHONE_NUMBER");
       assert.match(
         publicSeedAttempt.body.message ?? "",
-        /Geçerli bir telefon numarası/,
+        /Enter a valid phone number/,
       );
 
       await seedInitialAdmin();

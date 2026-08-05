@@ -10,7 +10,7 @@ export function LanguageSwitcher({ compact = false }: { compact?: boolean }) {
       <button
         type="button"
         className={active === "tr" ? "active" : ""}
-        aria-label={t("Dili Türkçe yap")}
+        aria-label={t("Switch language to Turkish")}
         aria-pressed={active === "tr"}
         onClick={() => void setLanguage("tr")}
       >
@@ -20,7 +20,7 @@ export function LanguageSwitcher({ compact = false }: { compact?: boolean }) {
       <button
         type="button"
         className={active === "en" ? "active" : ""}
-        aria-label={t("Dili İngilizce yap")}
+        aria-label={t("Switch language to English")}
         aria-pressed={active === "en"}
         onClick={() => void setLanguage("en")}
       >

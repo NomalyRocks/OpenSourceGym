@@ -2,7 +2,7 @@ import { z } from "zod";
 
 export const LEGAL_DOCUMENT_URL_PATTERN = "^https?://";
 
-/** Operatörün hukuki belgeleri yalnızca web üzerinden açılabilmelidir. */
+/** The operator's legal documents must be accessible only over the web. */
 export const legalDocumentUrlSchema = z
   .url()
   .refine(
@@ -10,10 +10,10 @@ export const legalDocumentUrlSchema = z
       const { protocol } = new URL(value);
       return protocol === "http:" || protocol === "https:";
     },
-    { message: "Hukuki belge URL'si HTTP veya HTTPS kullanmalıdır." },
+    { message: "Legal document URL must use HTTP or HTTPS." },
   )
   .meta({
-    description: "Yalnızca HTTP(S) ile erişilebilen hukuki belge adresi",
+    description: "Legal document URL accessible only via HTTP(S)",
     override: {
       type: "string",
       format: "uri",

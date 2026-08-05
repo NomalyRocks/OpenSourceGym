@@ -89,10 +89,10 @@ function macroTarget(
 }
 
 /**
- * Mifflin–St Jeor denklemiyle bakım kalorisi ve hedefe göre makro tahmini.
+ * Estimates maintenance calories and goal-based macros using the Mifflin–St Jeor equation.
  *
- * Fonksiyon yalnızca doğrulanmış yetişkin girdileri kabul eder; kullanıcıya
- * gösterilecek hata metinleri ekran katmanında yerelleştirilir.
+ * The function accepts only validated adult inputs; user-facing error messages
+ * are localized in the screen layer.
  */
 export function calculateCaloriePlan(input: CalorieInput): CalorieResult {
   assertRange("age", input.age, CALORIE_LIMITS.age);
@@ -127,7 +127,7 @@ export function calculateCaloriePlan(input: CalorieInput): CalorieResult {
   };
 }
 
-/** Virgül veya noktalı, pozitif ondalık kullanıcı girişini güvenle çözer. */
+/** Safely parses positive decimal input using either a comma or a period. */
 export function parseLocalizedNumber(value: string): number | null {
   const normalized = value.trim().replace(",", ".");
   if (!/^\d+(?:\.\d+)?$/.test(normalized)) return null;
@@ -135,7 +135,7 @@ export function parseLocalizedNumber(value: string): number | null {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
-/** Bir sayıyı, gereksiz ondalık sıfırı atarak düzenlenebilir metin alanı için biçimler. */
+/** Formats a number for an editable text field, omitting unnecessary decimal zeros. */
 export function formatEditable(
   value: number,
   language: string | undefined,

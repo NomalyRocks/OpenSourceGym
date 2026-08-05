@@ -7,8 +7,8 @@ import { renameLegacyConsentFields } from "../consentFieldRename.js";
 const mongoUri = process.env.TEST_MONGODB_URI;
 
 test(
-  "Onay alanı taşıması: eski kvkk* alanları nötr adlara taşınır ve ikinci koşum no-op'tur",
-  { skip: mongoUri ? false : "TEST_MONGODB_URI tanımlı değil" },
+  "Consent field migration moves legacy kvkk* fields to neutral names and the second run is a no-op",
+  { skip: mongoUri ? false : "TEST_MONGODB_URI is not defined" },
   async () => {
     const client = new MongoClient(mongoUri!);
     const database = client.db(
@@ -31,7 +31,7 @@ test(
         kvkkAcceptedAt: acceptedAt,
         privacyAccepted: true,
       });
-      // Yeni adlarla kaydedilmiş üye taşımadan etkilenmemeli
+      // A member saved with the new names must not be affected by the migration.
       const modernId = new ObjectId();
       await users.insertOne({
         _id: modernId,
@@ -57,7 +57,7 @@ test(
       const marker = await markers.findOne({ _id: "consent-field-rename-v1" });
       assert.equal(marker?.renamedCount, 1);
 
-      // Marker yazıldıktan sonra ikinci koşum tarama yapmadan atlar
+      // After the marker is written, the second run skips without scanning.
       const second = await renameLegacyConsentFields(database);
       assert.equal(second.skipped, true);
       assert.equal(second.renamedCount, 1);

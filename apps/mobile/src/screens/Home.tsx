@@ -33,10 +33,10 @@ import { errorMessage } from "../i18n/errors";
 import { dateLocale } from "../i18n/format";
 
 /**
- * Bilet perforasyonu: kimlik bloğunu tarih rayından ayırır.
+ * Ticket perforation: separates the identity block from the date rail.
  *
- * `borderStyle: "dashed"` Android'de tek kenarda güvenilir çizilmiyor; sabit
- * sayıda nokta `space-between` ile dağıtılınca her genişlikte aynı görünür.
+ * `borderStyle: "dashed"` is unreliable on a single edge on Android; distributing
+ * a fixed number of dots with `space-between` looks consistent at every width.
  */
 function Perforation() {
   const styles = useThemedStyles(homeStyles);
@@ -129,8 +129,8 @@ export function Home({
         : Promise.resolve({ days: [], timeZone: "" }),
     ]);
 
-    // Profil yalnızca başlıktaki görseli besler; okunamazsa Avatar baş
-    // harflere düşer, bu yüzden ayrı bir hata mesajı göstermiyoruz.
+    // The profile only supplies the header image; if unavailable, Avatar falls
+    // back to initials, so no separate error message is shown.
     if (profileResult.status === "fulfilled") setProfile(profileResult.value);
     setProfileLoaded(true);
 
@@ -139,7 +139,11 @@ export function Home({
       setSubscriptionError(null);
     } else {
       setSubscriptionError(
-        errorMessage(subscriptionResult.reason, t, "Üyelik bilgisi alınamadı."),
+        errorMessage(
+          subscriptionResult.reason,
+          t,
+          "Membership data could not be loaded.",
+        ),
       );
     }
     setSubscriptionLoaded(true);
@@ -149,13 +153,17 @@ export function Home({
       setOccupancyError(null);
     } else {
       setOccupancyError(
-        errorMessage(occupancyResult.reason, t, "Doluluk bilgisi alınamadı."),
+        errorMessage(
+          occupancyResult.reason,
+          t,
+          "Occupancy data could not be loaded.",
+        ),
       );
     }
     setOccupancyLoaded(true);
 
-    // Geliş şeridi ikincil bir gösterim: çekilemezse sessizce nötr kalır,
-    // Home'un geri kalanını hata banner'ıyla kirletmez.
+    // The attendance strip is secondary: if it cannot load, it remains neutral
+    // without cluttering the rest of Home with an error banner.
     if (attendanceResult.status === "fulfilled") {
       setAttendance(attendanceResult.value.days);
     }
@@ -194,14 +202,14 @@ export function Home({
           : theme.colors.textTertiary;
   const occupancyLabel =
     occupancyPercent == null
-      ? t("Bilinmiyor")
+      ? t("Unknown")
       : occupancyPercent > 90
-        ? t("Yoğun")
+        ? t("Busy")
         : occupancyPercent >= 70
-          ? t("Orta yoğunluk")
-          : t("Sakin");
+          ? t("Moderate")
+          : t("Quiet");
 
-  const firstName = userName.trim().split(/\s+/)[0] || t("Üye");
+  const firstName = userName.trim().split(/\s+/)[0] || t("Member");
   const formatDate = (value?: string | null) =>
     value
       ? new Date(value).toLocaleDateString(locale, {
@@ -219,8 +227,8 @@ export function Home({
 
   const active = subscription?.active === true;
   const remainingDays = subscription?.remainingDays ?? 0;
-  // Son bir haftaya girildiğinde üyelik plakası uyarı tonuna geçer: bilgi
-  // aynı yerde kalır, rengi değişir.
+  // During the final week, the membership plate switches to a warning tone:
+  // the information stays in place and only its color changes.
   const expiringSoon = active && remainingDays <= 7;
 
   return (
@@ -229,7 +237,7 @@ export function Home({
         {profileLoaded ? (
           <Pressable
             accessibilityRole="button"
-            accessibilityLabel={t("Profil")}
+            accessibilityLabel={t("Profile")}
             onPress={onOpenProfile}
             style={({ pressed }) => [
               styles.avatarButton,
@@ -253,14 +261,14 @@ export function Home({
 
         <View style={styles.headerCopy}>
           <Text style={styles.greeting} numberOfLines={1}>
-            {t("Merhaba, {{name}}", { name: firstName })}
+            {t("Hello, {{name}}", { name: firstName })}
           </Text>
           <Text accessibilityRole="header" style={styles.title}>
-            {t("Bugün salonda")}
+            {t("At the gym today")}
           </Text>
         </View>
         <IconButton
-          label={t("Bildirimler")}
+          label={t("Notifications")}
           onPress={onOpenNotifications}
           badgeCount={unreadCount}
           icon={(color) => <BellGlyph size={21} color={color} />}
@@ -277,8 +285,8 @@ export function Home({
         />
       </View>
 
-      {/* Üyelik kartı — geçiş kartı dili: üst kimlik bloğu, perfore ayraç,
-          alt tarih rayı. */}
+      {/* Membership card—access-pass language: upper identity block, perforated
+          divider, and lower date rail. */}
       {!subscriptionLoaded ? (
         <Plate>
           <Skeleton width="42%" height={16} />
@@ -289,7 +297,7 @@ export function Home({
         <Plate>
           <StatusMessage
             text={subscriptionError}
-            actionLabel={t("Tekrar dene")}
+            actionLabel={t("Try again")}
             onAction={() => void load()}
           />
         </Plate>
@@ -297,9 +305,9 @@ export function Home({
         <Plate padded={false}>
           <View style={styles.passTop}>
             <View style={styles.passTopRow}>
-              <Text style={styles.passKind}>{t("Üyelik")}</Text>
+              <Text style={styles.passKind}>{t("Membership")}</Text>
               <Badge
-                label={active ? t("Aktif") : t("Pasif")}
+                label={active ? t("Active") : t("Inactive")}
                 tone={active ? (expiringSoon ? "warning" : "success") : "error"}
               />
             </View>
@@ -310,12 +318,12 @@ export function Home({
             {active ? (
               <View style={styles.remainingRow}>
                 <Text style={styles.remainingValue}>{remainingDays}</Text>
-                <Text style={styles.remainingUnit}>{t("Kalan gün")}</Text>
+                <Text style={styles.remainingUnit}>{t("Days left")}</Text>
               </View>
             ) : (
               <Text style={styles.passInactive}>
                 {t(
-                  "Aktif üyeliğin bulunmuyor. Salon resepsiyonundan destek alabilirsin.",
+                  "You do not have an active membership. Contact gym reception for help.",
                 )}
               </Text>
             )}
@@ -325,13 +333,13 @@ export function Home({
 
           <View style={styles.passBottom}>
             <View style={styles.passDate}>
-              <Text style={styles.passDateLabel}>{t("Başlangıç")}</Text>
+              <Text style={styles.passDateLabel}>{t("Start")}</Text>
               <Text style={styles.passDateValue}>
                 {formatDate(subscription?.startsAt)}
               </Text>
             </View>
             <View style={styles.passDate}>
-              <Text style={styles.passDateLabel}>{t("Bitiş")}</Text>
+              <Text style={styles.passDateLabel}>{t("End")}</Text>
               <Text style={styles.passDateValue}>
                 {formatDate(subscription?.endsAt)}
               </Text>
@@ -344,13 +352,15 @@ export function Home({
         <StatusMessage
           tone="warning"
           style={styles.expiryNote}
-          text={t("Üyeliğin yakında bitiyor; yenilemek için resepsiyona uğra.")}
+          text={t(
+            "Your membership expires soon — visit reception to renew it.",
+          )}
         />
       ) : null}
 
       <View style={styles.primaryAction}>
         <Button
-          title={t("Turnike QR kodunu tara")}
+          title={t("Scan turnstile QR code")}
           onPress={onOpenQr}
           icon={(color) => <QrGlyph size={20} color={color} />}
         />
@@ -358,7 +368,7 @@ export function Home({
 
       <View style={styles.occupancy}>
         <SectionHeading
-          title={t("Salon doluluğu")}
+          title={t("Gym occupancy")}
           trailing={
             occupancyLoaded && !occupancyError ? (
               <Badge label={occupancyLabel} tone={occupancyTone} />
@@ -375,7 +385,7 @@ export function Home({
         ) : occupancyError ? (
           <StatusMessage
             text={occupancyError}
-            actionLabel={t("Tekrar dene")}
+            actionLabel={t("Try again")}
             onAction={() => void load()}
           />
         ) : (
@@ -389,11 +399,11 @@ export function Home({
               </Text>
               <Text style={styles.occupancyPeople}>
                 {occupancy?.capacity != null
-                  ? t("{{inside}} / {{capacity}} kişi içeride", {
+                  ? t("{{inside}} of {{capacity}} people inside", {
                       inside: occupancy.inside,
                       capacity: occupancy.capacity,
                     })
-                  : t("{{inside}} kişi içeride", {
+                  : t("{{inside}} people inside", {
                       inside: occupancy?.inside ?? 0,
                     })}
               </Text>
@@ -401,7 +411,7 @@ export function Home({
             <Meter
               ratio={occupancyPercent == null ? null : occupancyPercent / 100}
               color={occupancyColor}
-              label={t("Salon doluluğu")}
+              label={t("Gym occupancy")}
               valueText={occupancyLabel}
             />
           </>
@@ -419,7 +429,7 @@ const homeStyles = (theme: Theme) =>
       gap: theme.spacing.sm,
       marginBottom: theme.spacing.lg,
     },
-    // Görsele dokunmak Profil sekmesine geçirir — başlıktaki tek kısayol.
+    // Tapping the image opens the Profile tab—the header's only shortcut.
     avatarButton: { borderRadius: HEADER_AVATAR / 2 },
     pressed: { opacity: 0.7 },
     headerCopy: { flex: 1, minWidth: 0 },

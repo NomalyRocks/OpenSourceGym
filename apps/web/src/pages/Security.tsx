@@ -34,7 +34,7 @@ export function Security() {
       setPassword("");
       setCopied(false);
     } catch {
-      setMsg({ kind: "error", text: t("Şifre hatalı.") });
+      setMsg({ kind: "error", text: t("The password is incorrect.") });
     } finally {
       setBusy(false);
     }
@@ -48,12 +48,12 @@ export function Security() {
       await authApi("/two-factor/verify-totp", { code });
       setSetup(null);
       setCode("");
-      setMsg({ kind: "success", text: t("MFA etkinleştirildi.") });
+      setMsg({ kind: "success", text: t("MFA was enabled.") });
       await refresh();
     } catch {
       setMsg({
         kind: "error",
-        text: t("Kod geçersiz veya süresi dolmuş."),
+        text: t("The code is invalid or has expired."),
       });
     } finally {
       setBusy(false);
@@ -67,10 +67,10 @@ export function Security() {
     try {
       await authApi("/two-factor/disable", { password: disablePassword });
       setDisablePassword("");
-      setMsg({ kind: "success", text: t("MFA devre dışı bırakıldı.") });
+      setMsg({ kind: "success", text: t("MFA was disabled.") });
       await refresh();
     } catch {
-      setMsg({ kind: "error", text: t("Şifre hatalı.") });
+      setMsg({ kind: "error", text: t("The password is incorrect.") });
     } finally {
       setBusy(false);
     }
@@ -88,14 +88,14 @@ export function Security() {
 
   return (
     <div className="stagger">
-      <h1>{t("Güvenlik")}</h1>
+      <h1>{t("Security")}</h1>
       <div className="panel" style={{ maxWidth: 560 }}>
-        <h2>{t("İki aşamalı doğrulama (MFA)")}</h2>
+        <h2>{t("Two-factor authentication (MFA)")}</h2>
         <p style={{ marginBottom: 16 }}>
           {profile?.twoFactorEnabled ? (
-            <span className="badge ok">{t("MFA etkin")}</span>
+            <span className="badge ok">{t("MFA enabled")}</span>
           ) : (
-            <span className="badge member">{t("MFA kapalı")}</span>
+            <span className="badge member">{t("MFA disabled")}</span>
           )}
         </p>
         {msg && <div className={`msg ${msg.kind}`}>{msg.text}</div>}
@@ -103,7 +103,7 @@ export function Security() {
         {!profile?.twoFactorEnabled && !setup && (
           <form className="row" onSubmit={enable}>
             <div className="field">
-              <label htmlFor="enablePassword">{t("Şifre")}</label>
+              <label htmlFor="enablePassword">{t("Password")}</label>
               <input
                 id="enablePassword"
                 type="password"
@@ -114,7 +114,7 @@ export function Security() {
               />
             </div>
             <button type="submit" disabled={busy}>
-              {busy ? t("İşleniyor…") : t("MFA'yı etkinleştir")}
+              {busy ? t("Processing…") : t("Enable MFA")}
             </button>
           </form>
         )}
@@ -122,14 +122,14 @@ export function Security() {
         {setup && (
           <div>
             <div className="qr-box">
-              <img src={setup.qr} alt={t("MFA QR kodu")} />
+              <img src={setup.qr} alt={t("MFA QR code")} />
             </div>
             <p className="hint" style={{ marginBottom: 16 }}>
               {t(
-                "Authenticator uygulamanızla (Google Authenticator, Authy vb.) yukarıdaki QR kodu okutun.",
+                "Scan the QR code above with your authenticator app (Google Authenticator, Authy, etc.).",
               )}
             </p>
-            <h3 style={{ marginBottom: 8 }}>{t("Yedek kodlar")}</h3>
+            <h3 style={{ marginBottom: 8 }}>{t("Backup codes")}</h3>
             <div className="code-block">{setup.backupCodes.join("\n")}</div>
             <div className="row" style={{ marginBottom: 14 }}>
               <button
@@ -137,17 +137,15 @@ export function Security() {
                 className="ghost"
                 onClick={() => void copyBackupCodes()}
               >
-                {copied ? t("Kopyalandı") : t("Kopyala")}
+                {copied ? t("Copied") : t("Copy")}
               </button>
             </div>
             <div className="msg warn">
-              {t(
-                "Yedek kodlar yalnızca şimdi görüntülenir; güvenli bir yere kaydedin.",
-              )}
+              {t("Backup codes are shown only once; store them securely.")}
             </div>
             <form onSubmit={verify} className="row" style={{ marginTop: 6 }}>
               <div className="field">
-                <label htmlFor="totpCode">{t("Doğrulama kodu")}</label>
+                <label htmlFor="totpCode">{t("Verification code")}</label>
                 <input
                   id="totpCode"
                   value={code}
@@ -157,7 +155,7 @@ export function Security() {
                 />
               </div>
               <button type="submit" disabled={busy}>
-                {busy ? t("Doğrulanıyor…") : t("Doğrula")}
+                {busy ? t("Verifying…") : t("Verify")}
               </button>
             </form>
           </div>
@@ -166,7 +164,7 @@ export function Security() {
         {profile?.twoFactorEnabled && (
           <form className="row" onSubmit={disable}>
             <div className="field">
-              <label htmlFor="disablePassword">{t("Şifre")}</label>
+              <label htmlFor="disablePassword">{t("Password")}</label>
               <input
                 id="disablePassword"
                 type="password"
@@ -177,7 +175,7 @@ export function Security() {
               />
             </div>
             <button type="submit" className="ghost" disabled={busy}>
-              {busy ? t("İşleniyor…") : t("MFA'yı devre dışı bırak")}
+              {busy ? t("Processing…") : t("Disable MFA")}
             </button>
           </form>
         )}

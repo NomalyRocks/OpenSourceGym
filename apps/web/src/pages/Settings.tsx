@@ -26,8 +26,8 @@ const defaultLegal: LegalConfig = {
 };
 
 /**
- * "7, 1" gibi bir girdiyi eşik listesine çevirir. Geçersiz veya boş girdi
- * mevcut eşikleri silmemeli; sunucu şeması en az bir eşik ister.
+ * Converts input such as "7, 1" into a threshold list. Invalid or empty input
+ * must not erase existing thresholds; the server schema requires at least one.
  */
 function parseDaysBefore(raw: string, fallback: number[]): number[] {
   const parsed = raw
@@ -48,23 +48,22 @@ export function Settings() {
   const [sharing, setSharing] = useState<SharingConfig>(defaultSharing);
   const [reminders, setReminders] = useState<ReminderConfig>(defaultReminders);
   const [legal, setLegal] = useState<LegalConfig>(defaultLegal);
-  // Eşikler serbest metin olarak düzenlenir; yazarken "7," gibi ara durumlar
-  // listeye çevrilemediği için ham metin ayrı tutulur.
+  // Thresholds are edited as free text; intermediate states such as "7," cannot
+  // be converted to a list while typing, so the raw text is kept separately.
   const [daysBeforeText, setDaysBeforeText] = useState(
     defaultReminders.daysBefore.join(", "),
   );
   const [msg, setMsg] = useState<{ kind: string; text: string } | null>(null);
   const [busy, setBusy] = useState(false);
-  // Mevcut ayarlar yüklenmeden kaydetmeye izin verilmez — aksi halde erken
-  // bir kayıt, sunucudaki yapılandırılmış değerleri form varsayılanlarıyla
-  // sessizce ezer
+  // Saving is disabled until the current settings load — otherwise an early save
+  // would silently overwrite configured server values with form defaults
   const [loaded, setLoaded] = useState(false);
 
   useEffect(() => {
     const controller = new AbortController();
-    // Hata yolu şart: yükleme başarısız olursa `loaded` false kalır ve Kaydet
-    // düğmesi kalıcı olarak devre dışı kalırdı — kullanıcı nedenini
-    // göremeden formun çalışmadığını sanardı.
+    // The error path is essential: if loading fails, `loaded` remains false and
+    // the Save button stays disabled — without seeing why, the user would think
+    // the form was broken.
     void (async () => {
       try {
         const s = await api<GymSettings>("/api/admin/settings", {
@@ -85,7 +84,10 @@ export function Settings() {
         setLoaded(true);
       } catch (err) {
         if (isAbortError(err)) return;
-        setMsg({ kind: "error", text: errorMessage(err, t, "Yüklenemedi.") });
+        setMsg({
+          kind: "error",
+          text: errorMessage(err, t, "Could not load data."),
+        });
       }
     })();
     return () => controller.abort();
@@ -109,19 +111,19 @@ export function Settings() {
           sharing,
           reminders: {
             enabled: reminders.enabled,
-            // Geri düşüş sabit varsayılan DEĞİL, sunucudan gelen mevcut
-            // eşiklerdir: alanı temizleyip başka bir ayarı kaydeden yönetici,
-            // salonun [30, 14] eşiklerini sessizce [7, 1] yapmamalı.
+            // The fallback is NOT a fixed default; it is the current thresholds
+            // from the server. An administrator who clears the field and saves
+            // another setting must not silently change the gym's [30, 14] to [7, 1].
             daysBefore: parseDaysBefore(daysBeforeText, reminders.daysBefore),
           },
           legal,
         },
       });
-      setMsg({ kind: "success", text: t("Ayarlar kaydedildi.") });
+      setMsg({ kind: "success", text: t("Settings saved.") });
     } catch (err) {
       setMsg({
         kind: "error",
-        text: errorMessage(err, t, "Kaydedilemedi."),
+        text: errorMessage(err, t, "Could not save changes."),
       });
     } finally {
       setBusy(false);
@@ -130,11 +132,11 @@ export function Settings() {
 
   return (
     <div className="stagger">
-      <h1>{t("Salon ayarları")}</h1>
+      <h1>{t("Gym settings")}</h1>
       <form className="panel" onSubmit={save} style={{ maxWidth: 560 }}>
         {msg && <div className={`msg ${msg.kind}`}>{msg.text}</div>}
         <div className="field">
-          <label htmlFor="gymName">{t("Salon adı")}</label>
+          <label htmlFor="gymName">{t("Gym name")}</label>
           <input
             id="gymName"
             value={gymName}
@@ -144,7 +146,7 @@ export function Settings() {
         </div>
         <div className="row" style={{ marginBottom: 14 }}>
           <div className="field">
-            <label htmlFor="lat">{t("Enlem")}</label>
+            <label htmlFor="lat">{t("Latitude")}</label>
             <input
               id="lat"
               value={lat}
@@ -153,7 +155,7 @@ export function Settings() {
             />
           </div>
           <div className="field">
-            <label htmlFor="lng">{t("Boylam")}</label>
+            <label htmlFor="lng">{t("Longitude")}</label>
             <input
               id="lng"
               value={lng}
@@ -162,7 +164,7 @@ export function Settings() {
             />
           </div>
           <div className="field">
-            <label htmlFor="radiusM">{t("Yarıçap (m)")}</label>
+            <label htmlFor="radiusM">{t("Radius (m)")}</label>
             <input
               id="radiusM"
               value={radiusM}
@@ -173,7 +175,7 @@ export function Settings() {
         </div>
         <div className="row" style={{ marginBottom: 14 }}>
           <div className="field" style={{ maxWidth: 180 }}>
-            <label htmlFor="capacity">{t("Kapasite (kişi)")}</label>
+            <label htmlFor="capacity">{t("Capacity (people)")}</label>
             <input
               id="capacity"
               value={capacity}
@@ -183,7 +185,7 @@ export function Settings() {
           </div>
           <div className="field" style={{ maxWidth: 260 }}>
             <label htmlFor="autoExitHours">
-              {t("Otomatik çıkış süresi (saat)")}
+              {t("Automatic exit time (hours)")}
             </label>
             <input
               id="autoExitHours"
@@ -195,15 +197,17 @@ export function Settings() {
               required
             />
             <span className="hint">
-              {t("Çıkış turnikesi yoksa üye bu süre sonunda içeride sayılmaz.")}
+              {t(
+                "Without an exit turnstile, a member is no longer counted inside after this time.",
+              )}
             </span>
           </div>
         </div>
-        <h2>{t("Hesap paylaşımı tespiti")}</h2>
+        <h2>{t("Account sharing detection")}</h2>
         <div className="row" style={{ marginBottom: 14 }}>
           <div className="field">
             <label htmlFor="memberMaxSessions">
-              {t("Üye başına eşzamanlı oturum sınırı")}
+              {t("Concurrent session limit per member")}
             </label>
             <input
               id="memberMaxSessions"
@@ -220,12 +224,14 @@ export function Settings() {
               required
             />
             <span className="hint">
-              {t("Bu sınır aşıldığında en eski oturum otomatik kapatılır.")}
+              {t(
+                "When this limit is exceeded, the oldest session is closed automatically.",
+              )}
             </span>
           </div>
           <div className="field">
             <label htmlFor="staffMaxSessions">
-              {t("Personel/admin başına eşzamanlı oturum sınırı")}
+              {t("Concurrent session limit per staff/admin")}
             </label>
             <input
               id="staffMaxSessions"
@@ -242,12 +248,12 @@ export function Settings() {
               required
             />
             <span className="hint">
-              {t("Personel ve adminler için eşzamanlı oturum üst sınırı.")}
+              {t("Maximum concurrent sessions for staff and administrators.")}
             </span>
           </div>
           <div className="field">
             <label htmlFor="signalThreshold">
-              {t("Otomatik engel için sinyal eşiği")}
+              {t("Signal threshold for automatic block")}
             </label>
             <input
               id="signalThreshold"
@@ -265,7 +271,7 @@ export function Settings() {
             />
             <span className="hint">
               {t(
-                "Bu sayıda şüpheli sinyal birikince hesap otomatik engellenir.",
+                "The account is blocked automatically after this many suspicious signals.",
               )}
             </span>
           </div>
@@ -273,7 +279,7 @@ export function Settings() {
         <div className="row" style={{ marginBottom: 14 }}>
           <div className="field">
             <label htmlFor="signalWindowHours">
-              {t("Sinyal penceresi (saat)")}
+              {t("Signal window (hours)")}
             </label>
             <input
               id="signalWindowHours"
@@ -290,11 +296,13 @@ export function Settings() {
               required
             />
             <span className="hint">
-              {t("Sinyallerin sayıldığı zaman aralığı.")}
+              {t("Time range in which signals are counted.")}
             </span>
           </div>
           <div className="field">
-            <label htmlFor="qrBlockHours">{t("QR engeli süresi (saat)")}</label>
+            <label htmlFor="qrBlockHours">
+              {t("QR block duration (hours)")}
+            </label>
             <input
               id="qrBlockHours"
               type="number"
@@ -310,20 +318,20 @@ export function Settings() {
               required
             />
             <span className="hint">
-              {t("Otomatik engelin ne kadar süreceği.")}
+              {t("How long the automatic block remains active.")}
             </span>
           </div>
         </div>
 
-        <h2 style={{ marginTop: 28 }}>{t("Yenileme Hatırlatmaları")}</h2>
+        <h2 style={{ marginTop: 28 }}>{t("Renewal reminders")}</h2>
         <p className="hint" style={{ marginBottom: 14 }}>
           {t(
-            "Hatırlatmalar SMTP üzerinden gönderilir; açmadan önce SMTP ayarlarının yapılandırıldığından emin olun.",
+            "Reminders are sent over SMTP; make sure SMTP is configured before enabling them.",
           )}
         </p>
         <div className="field">
           <label htmlFor="remindersEnabled">
-            {t("Otomatik hatırlatma e-postalarını gönder")}
+            {t("Send automatic reminder e-mails")}
           </label>
           <input
             id="remindersEnabled"
@@ -337,7 +345,7 @@ export function Settings() {
         </div>
         <div className="field">
           <label htmlFor="daysBefore">
-            {t("Kaç gün kala (virgülle ayırın)")}
+            {t("Days before expiry (comma separated)")}
           </label>
           <input
             id="daysBefore"
@@ -347,16 +355,16 @@ export function Settings() {
           />
         </div>
 
-        <h2 style={{ marginTop: 28 }}>{t("Hukuki belgeler")}</h2>
+        <h2 style={{ marginTop: 28 }}>{t("Legal documents")}</h2>
         <p className="hint" style={{ marginBottom: 14 }}>
           {t(
-            "Bu metinleri OpenGym sağlamaz; işletmeci kendi mevzuatına (KVKK, GDPR, CCPA vb.) göre yayımladığı belgelerin adresini burada tanımlar. Adres boş bırakılırsa mobil kayıt ekranındaki onay kutusu linksiz gösterilir.",
+            "OpenGym does not provide these texts; the operator defines the address of the documents it publishes under its own regulations (e.g. GDPR, CCPA). If left blank, the consent checkbox on the mobile signup screen is shown without a link.",
           )}
         </p>
         <div className="row" style={{ marginBottom: 14 }}>
           <div className="field">
             <label htmlFor="dataProcessingUrl">
-              {t("Veri işleme bildirimi adresi")}
+              {t("Data processing notice URL")}
             </label>
             <input
               id="dataProcessingUrl"
@@ -368,9 +376,7 @@ export function Settings() {
             />
           </div>
           <div className="field">
-            <label htmlFor="privacyUrl">
-              {t("Gizlilik sözleşmesi adresi")}
-            </label>
+            <label htmlFor="privacyUrl">{t("Privacy policy URL")}</label>
             <input
               id="privacyUrl"
               value={legal.privacyUrl ?? ""}
@@ -381,7 +387,7 @@ export function Settings() {
             />
           </div>
           <div className="field" style={{ maxWidth: 160 }}>
-            <label htmlFor="legalVersion">{t("Metin sürümü")}</label>
+            <label htmlFor="legalVersion">{t("Document version")}</label>
             <input
               id="legalVersion"
               type="number"
@@ -396,7 +402,7 @@ export function Settings() {
         </div>
 
         <button type="submit" disabled={busy || !loaded}>
-          {busy ? t("Kaydediliyor…") : t("Kaydet")}
+          {busy ? t("Saving…") : t("Save")}
         </button>
       </form>
     </div>

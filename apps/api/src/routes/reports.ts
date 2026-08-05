@@ -45,8 +45,8 @@ interface ResolvedRange {
 }
 
 /**
- * Aralığı çözer ve sınırlar. Üst sınır şart: aralık serbest bırakılırsa tek
- * istek yıllarca veriyi tarar ve günlük kova sayısı grafiği kilitler.
+ * Resolves and bounds the range. The upper bound is required: without it, one
+ * request scans years of data and the number of daily buckets locks the chart.
  */
 function resolveRange(from?: Date, to?: Date): ResolvedRange | null {
   const end = to ?? new Date();
@@ -142,7 +142,7 @@ reportsRouter.get(
   },
 );
 
-// Personelin tek bir üyeye elle hatırlatma göndermesi
+// Staff manually sends a reminder to one member.
 reportsRouter.post(
   "/renewals/:userId/remind",
   requireRole("admin", "staff"),
@@ -166,8 +166,8 @@ reportsRouter.post(
     }
 
     const settings = await findGymSettings();
-    // Bekleme süresi kontrolü gönderimle aynı kilidin altında yapılır; burada
-    // ayrıca kontrol etmek yarışı kapatmaz, yalnızca tekrarlardı.
+    // The cooldown check runs under the same lock as sending; checking again
+    // here would only duplicate work without closing the race.
     const outcome = await sendRenewalReminder({
       userId: target.userId,
       subscriptionId: target.subscriptionId,
@@ -181,8 +181,8 @@ reportsRouter.post(
       now,
     });
 
-    // "busy" ve "already-sent" de istemci için aynı anlama gelir: şu an posta
-    // gönderilmedi çünkü bu abonelik az önce ele alındı.
+    // "busy" and "already-sent" mean the same to the client: no email was sent
+    // now because this subscription was handled moments ago.
     if (outcome.status !== "sent") {
       sendApiError(
         res,
@@ -302,9 +302,8 @@ const EXPORTS: Record<ExportDataset, ExportSpec> = {
 };
 
 /**
- * Yavaş istemcide belleğin şişmemesi için akış geri basıncına uyar. İstemci
- * bağlantıyı koparırsa `drain` hiç gelmez; bu yüzden bekleme 'close' olayında
- * iptal edilir.
+ * Honors stream backpressure to avoid memory growth with slow clients. If the
+ * client disconnects, `drain` never arrives, so waiting is aborted on `close`.
  */
 async function writeChunk(
   res: Response,
@@ -315,8 +314,7 @@ async function writeChunk(
   await once(res, "drain", { signal });
 }
 
-// Dışa aktarma toplu KİŞİSEL VERİ üretir: yalnızca admin, her indirme
-// denetim kaydına yazılır.
+// Exports produce bulk PERSONAL DATA: admin only, with every download audited.
 reportsRouter.get(
   "/export",
   requireRole("admin"),
@@ -352,7 +350,7 @@ reportsRouter.get(
       "Content-Disposition",
       `attachment; filename="opengym-${dataset}-${stamp}.csv"`,
     );
-    // Dışa aktarma anlık veridir; ara belleklerde tutulmamalı.
+    // An export is a snapshot and must not be cached.
     res.setHeader("Cache-Control", "no-store");
 
     const controller = new AbortController();
@@ -370,10 +368,10 @@ reportsRouter.get(
       res.end();
     } catch (err) {
       await cursor.close().catch(() => {});
-      // Başlıklar gönderildikten sonra JSON hata gövdesi yazılamaz; bağlantıyı
-      // koparmak istemciye dosyanın eksik olduğunu bildiren tek yoldur.
+      // A JSON error body cannot be written after headers are sent; closing the
+      // connection is the only way to tell the client the file is incomplete.
       if (controller.signal.aborted) return;
-      console.error("dışa aktarma akışı başarısız:", err);
+      console.error("Export stream failed:", err);
       res.destroy();
     }
   }),

@@ -3,11 +3,11 @@ import { Image, StyleSheet, Text, View } from "react-native";
 import { useThemedStyles, type Theme } from "../theme";
 
 /**
- * Profil görseli. Fotoğraf yoksa ya da yüklenemezse baş harflere düşer —
- * boş bir daire hiçbir zaman görünmez.
+ * Profile image. Falls back to initials when no photo exists or loading fails—
+ * an empty circle is never shown.
  *
- * Ana Sayfa başlığı ile Profil ekranı aynı bileşeni kullanır; aynı kişi iki
- * ekranda farklı görünmemeli.
+ * The Home header and Profile screen use the same component; the same person
+ * should not look different on two screens.
  */
 export function Avatar({
   size,
@@ -18,13 +18,13 @@ export function Avatar({
   size: number;
   name: string;
   photoUrl: string | null;
-  /** Baş harflerin doğru büyütülmesi için (ör. "i" → "İ"). */
+  /** Used to capitalize initials correctly, including locale-specific dotted I. */
   locale: string;
 }) {
   const styles = useThemedStyles(avatarStyles);
   const [failed, setFailed] = useState(false);
 
-  // Yeni fotoğraf yüklendiğinde önceki hata durumu takılı kalmasın.
+  // Clear the previous error state when a new photo is loaded.
   useEffect(() => {
     setFailed(false);
   }, [photoUrl]);

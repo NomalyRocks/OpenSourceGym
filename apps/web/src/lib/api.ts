@@ -8,7 +8,7 @@ export class ApiError extends Error {
   }
 }
 
-/** İptal edilen isteği normal hatadan ayırmak için. */
+/** Distinguishes a canceled request from a regular error. */
 export function isAbortError(error: unknown): boolean {
   return error instanceof DOMException && error.name === "AbortError";
 }
@@ -39,10 +39,10 @@ export async function api<T>(
 }
 
 /**
- * BetterAuth uç noktaları (`/api/auth/*`) için yardımcı. `api()`'den farklı
- * olarak bunlar app'in kendi REST sözleşmesinde değil, BetterAuth'un kendi
- * endpoint şemasında; yine de aynı çerez tabanlı oturum ve hata biçimini
- * kullanır (Faz 5: MFA girişi/kurulumu).
+ * Helper for BetterAuth endpoints (`/api/auth/*`). Unlike `api()`, these use
+ * BetterAuth's own endpoint schema rather than the app's REST contract, while
+ * still using the same cookie-based session and error format (Phase 5: MFA
+ * sign-in/setup).
  */
 export async function authApi<T>(path: string, body?: unknown): Promise<T> {
   const res = await fetch(`/api/auth${path}`, {

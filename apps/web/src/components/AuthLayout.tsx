@@ -26,14 +26,14 @@ export function AuthLayout({ children }: { children: ReactNode }) {
           </div>
           <div>
             <div className="auth-masthead-eyebrow">
-              {t("TESİS YÖNETİM SİSTEMİ")}
+              {t("FACILITY MANAGEMENT SYSTEM")}
             </div>
             <div className="auth-masthead-title">
-              {t("AYARLA.")}
+              {t("SET.")}
               <br />
-              {t("TEKRARLA.")}
+              {t("REP.")}
               <br />
-              {t("ÇALIŞ.")}
+              {t("RUN.")}
             </div>
           </div>
           <div />
@@ -54,7 +54,7 @@ export function AuthLayout({ children }: { children: ReactNode }) {
             <span className="corner-mark corner-mark--br" aria-hidden="true">
               +
             </span>
-            <div className="auth-eyebrow">{t("TERMİNAL ERİŞİMİ")}</div>
+            <div className="auth-eyebrow">{t("TERMINAL ACCESS")}</div>
             {children}
           </div>
         </div>

@@ -8,26 +8,26 @@ describe("resolveWeightForDay", () => {
     { weightKg: 78, at: "2026-08-01T08:00:00.000Z" },
   ];
 
-  it("kaydı olmayan gün, kendinden önceki en son kaydı taşır", () => {
-    // 29 Temmuz'da giriş var, 30'da yok — 30 seçilince 29'un değeri geçerli.
+  it("carries the latest prior entry into a day without an entry", () => {
+    // July 29 has an entry and July 30 does not—the July 29 value applies on July 30.
     assert.equal(resolveWeightForDay(entries, "2026-07-30"), 80);
   });
 
-  it("tam kayıt günü kendi değerini döner", () => {
+  it("returns the entry's own value on its exact day", () => {
     assert.equal(resolveWeightForDay(entries, "2026-07-29"), 80);
     assert.equal(resolveWeightForDay(entries, "2026-08-01"), 78);
   });
 
-  it("sonraki bir kayıt geçmişe taşınmaz", () => {
-    // 31 Temmuz'da hâlâ 29'un değeri geçerli, 1 Ağustos'un değeri değil.
+  it("does not carry a later entry backward", () => {
+    // July 29 still applies on July 31, not the August 1 value.
     assert.equal(resolveWeightForDay(entries, "2026-07-31"), 80);
   });
 
-  it("ilk kayıttan önceki gün için veri yoktur", () => {
+  it("has no data for a day before the first entry", () => {
     assert.equal(resolveWeightForDay(entries, "2026-07-01"), null);
   });
 
-  it("boş geçmişte her zaman null döner", () => {
+  it("always returns null for empty history", () => {
     assert.equal(resolveWeightForDay([], "2026-08-02"), null);
   });
 });

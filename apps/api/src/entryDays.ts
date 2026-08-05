@@ -1,24 +1,24 @@
 import type { MyEntryDay } from "@opengym/shared";
 
 /**
- * Takvimin geliş katmanı için gün etiketi (`YYYY-MM-DD`) yardımcıları.
+ * Day-label (`YYYY-MM-DD`) helpers for the calendar's attendance layer.
  *
- * Gün sınırı salonun yerel günüdür (`REPORTS_TIME_ZONE`): UTC'ye göre
- * gruplanınca gece yarısına yakın geçişler komşu güne kayardı.
+ * The day boundary is the gym's local day (`REPORTS_TIME_ZONE`): grouping by
+ * UTC would move entries near midnight to an adjacent day.
  */
 
-/** Sorgu parametrelerinde kabul edilen gün etiketi biçimi. */
+/** Day-label format accepted in query parameters. */
 export const DAY_LABEL_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 
-/** Tek istekte istenebilecek azami gün sayısı — takvim bir ay çeker. */
+/** Maximum days requested at once—the calendar fetches one month. */
 export const MAX_ENTRY_RANGE_DAYS = 92;
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 /**
- * Yerel gün sınırının UTC'den sapabileceği azami süre (UTC-12 … UTC+14).
- * Sorgu penceresi bu kadar geniş tutulur; pencereye giren fazla günler
- * gruplama sonrası etikete göre elenir.
+ * Maximum offset of a local day boundary from UTC (UTC-12 … UTC+14).
+ * The query window is widened by this amount; extra days included in the
+ * window are removed by label after grouping.
  */
 const MAX_TZ_OFFSET_MS = 14 * 60 * 60 * 1000;
 
@@ -26,15 +26,15 @@ function labelToUtc(label: string): number {
   return Date.parse(`${label}T00:00:00Z`);
 }
 
-/** İki gün etiketi arasındaki gün farkı; `to` daha eskiyse negatif. */
+/** Day difference between two day labels; negative when `to` is earlier. */
 export function dayLabelSpan(from: string, to: string): number {
   return (labelToUtc(to) - labelToUtc(from)) / DAY_MS;
 }
 
 /**
- * Aralığın `at` üzerinden taranacağı UTC penceresi. Saat dilimi sapması
- * kadar geniştir: yerel `from` gününün ilk geçişi UTC'de bir önceki güne,
- * yerel `to` gününün son geçişi bir sonrakine düşebilir.
+ * UTC window used to scan the range by `at`. It is widened by the time-zone
+ * offset: the first entry of the local `from` day may fall on the previous UTC
+ * day, and the last entry of the local `to` day may fall on the next one.
  */
 export function entryQueryWindow(
   from: string,
@@ -47,9 +47,9 @@ export function entryQueryWindow(
 }
 
 /**
- * Gruplama sonucunu yanıt biçimine indirger: pencereden taşan günler elenir,
- * kalanlar tarihe göre sıralanır. Boş günler yanıtta yer almaz — istemci
- * "geliş yok"u eksik anahtardan okur.
+ * Reduces the grouping result to the response shape: days outside the window
+ * are removed and the rest are sorted by date. Empty days are omitted—the
+ * client interprets a missing key as "no attendance."
  */
 export function toEntryDays(
   rows: { _id: string; entries: number }[],

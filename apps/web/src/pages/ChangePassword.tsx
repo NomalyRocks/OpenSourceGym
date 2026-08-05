@@ -15,11 +15,11 @@ export function ChangePassword({ onDone }: { onDone: () => void }) {
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     if (next !== confirm) {
-      setError(t("Yeni şifreler eşleşmiyor."));
+      setError(t("The new passwords do not match."));
       return;
     }
     if (next.length < 8) {
-      setError(t("Yeni şifre en az 8 karakter olmalı."));
+      setError(t("The new password must be at least 8 characters."));
       return;
     }
     setBusy(true);
@@ -31,7 +31,7 @@ export function ChangePassword({ onDone }: { onDone: () => void }) {
       });
       onDone();
     } catch (err) {
-      setError(errorMessage(err, t, "İşlem başarısız."));
+      setError(errorMessage(err, t, "The operation failed."));
     } finally {
       setBusy(false);
     }
@@ -40,15 +40,15 @@ export function ChangePassword({ onDone }: { onDone: () => void }) {
   return (
     <AuthLayout>
       <form onSubmit={submit}>
-        <h1>{t("Şifre değiştir")}</h1>
+        <h1>{t("Change password")}</h1>
         <p className="sub">
           {t(
-            "Güvenlik gereği devam etmeden önce varsayılan şifrenizi değiştirmelisiniz.",
+            "For security, you must change the default password before continuing.",
           )}
         </p>
         {error && <div className="msg error">{error}</div>}
         <div className="field">
-          <label htmlFor="current">{t("Mevcut şifre")}</label>
+          <label htmlFor="current">{t("Current password")}</label>
           <input
             id="current"
             type="password"
@@ -59,7 +59,7 @@ export function ChangePassword({ onDone }: { onDone: () => void }) {
           />
         </div>
         <div className="field">
-          <label htmlFor="next">{t("Yeni şifre")}</label>
+          <label htmlFor="next">{t("New password")}</label>
           <input
             id="next"
             type="password"
@@ -70,7 +70,7 @@ export function ChangePassword({ onDone }: { onDone: () => void }) {
           />
         </div>
         <div className="field">
-          <label htmlFor="confirm">{t("Yeni şifre (tekrar)")}</label>
+          <label htmlFor="confirm">{t("Confirm new password")}</label>
           <input
             id="confirm"
             type="password"
@@ -81,7 +81,7 @@ export function ChangePassword({ onDone }: { onDone: () => void }) {
           />
         </div>
         <button type="submit" disabled={busy} style={{ width: "100%" }}>
-          {busy ? t("Kaydediliyor…") : t("Şifreyi değiştir")}
+          {busy ? t("Saving…") : t("Change password")}
         </button>
       </form>
     </AuthLayout>

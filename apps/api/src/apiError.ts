@@ -1,7 +1,7 @@
 import type { ApiErrorCode, ApiErrorResponse } from "@opengym/shared";
 import type { Response } from "express";
 
-/** Tüm uygulama API hatalarında istemciler için kararlı bir code alanı üretir. */
+/** Produces a stable code field for clients in all application API errors. */
 export function sendApiError(
   res: Response,
   status: number,

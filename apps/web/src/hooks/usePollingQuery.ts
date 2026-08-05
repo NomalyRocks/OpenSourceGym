@@ -1,30 +1,30 @@
 import { useEffect, useRef } from "react";
 
 /**
- * Belirli aralıkla veri tazeleyen ekranlar için ortak yükleme döngüsü.
+ * Shared loading loop for screens that refresh data at regular intervals.
  *
- * Elle kurulan `setInterval` desenlerinin üç sorunu vardı ve bu hook üçünü de
- * kapatır:
- * - istek bitmeden bir sonraki tik başlıyordu (yavaş ağda istekler üst üste binerdi),
- * - unmount sonrası uçuşan istek iptal edilmiyordu,
- * - geç dönen eski yanıt yeni state'i ezebiliyordu.
+ * Manually configured `setInterval` patterns had three problems, all addressed
+ * by this hook:
+ * - the next tick started before the request finished (requests overlapped on slow networks),
+ * - in-flight requests were not canceled after unmount,
+ * - a late stale response could overwrite the new state.
  *
- * `load` kendi hatalarını kendisi ele almalıdır (kullanıcıya mesaj göstermek
- * çağıranın işi). İptal edilen istekler `AbortError` fırlatır; çağıran bunu
- * `isAbortError` ile ayıklamalıdır.
+ * `load` must handle its own errors (showing a message to the user is the
+ * caller's responsibility). Canceled requests throw `AbortError`; the caller
+ * must filter them with `isAbortError`.
  */
 export function usePollingQuery(
   load: (signal: AbortSignal) => Promise<void>,
   intervalMs: number,
   /**
-   * Değişince uçuşan istek iptal edilir, veri hemen yeniden yüklenir ve
-   * zamanlayıcı sıfırdan kurulur. Filtre değişiminde bir sonraki tiki
-   * beklememek için kullanılır.
+   * When it changes, the in-flight request is canceled, data reloads immediately,
+   * and the timer restarts. This avoids waiting for the next tick after a filter
+   * change.
    */
   resetKey?: string,
 ): void {
-  // `load` her render'da yeniden oluşur; ref olmadan effect her render'da
-  // yeniden kurulur ve zamanlayıcı sıfırlanırdı.
+  // `load` is recreated on every render; without the ref, the effect would be
+  // recreated and the timer reset on every render.
   const loadRef = useRef(load);
   useEffect(() => {
     loadRef.current = load;
@@ -41,9 +41,9 @@ export function usePollingQuery(
       try {
         await loadRef.current(controller.signal);
       } catch (err) {
-        // Buraya yalnızca çağıranın yakalamadığı hatalar düşer; sessizce
-        // yutmak yerine logla, yoksa unhandled rejection olur.
-        console.error("polling yüklemesi başarısız:", err);
+        // Only errors not caught by the caller reach here; log them instead of
+        // silently swallowing them to avoid an unhandled rejection.
+        console.error("Polling load failed:", err);
       } finally {
         inFlight = false;
       }

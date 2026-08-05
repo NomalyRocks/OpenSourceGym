@@ -75,28 +75,28 @@ const ACTIVITY_OPTIONS: ReadonlyArray<{
 }> = [
   {
     value: "sedentary",
-    title: "Hareketsiz",
-    body: "Çok az hareket ediyorum veya egzersiz yapmıyorum.",
+    title: "Sedentary",
+    body: "I move very little or do not exercise.",
   },
   {
     value: "light",
-    title: "Az hareketli",
-    body: "Hafif hareketli bir yaşamım var; haftada 1–3 gün egzersiz yapıyorum.",
+    title: "Lightly active",
+    body: "I have a lightly active routine and exercise 1–3 days a week.",
   },
   {
     value: "moderate",
-    title: "Orta hareketli",
-    body: "Hareketli bir yaşamım var; haftada 3–5 gün egzersiz yapıyorum.",
+    title: "Moderately active",
+    body: "I have an active routine and exercise 3–5 days a week.",
   },
   {
     value: "active",
-    title: "Çok hareketli",
-    body: "Çok hareketliyim; haftada 6–7 gün egzersiz yapıyorum.",
+    title: "Very active",
+    body: "I am very active and exercise 6–7 days a week.",
   },
   {
     value: "veryActive",
-    title: "Aşırı hareketli",
-    body: "Yoğun antrenman yapıyorum veya fiziksel bir işte çalışıyorum.",
+    title: "Extremely active",
+    body: "I train intensely or work in a physically demanding job.",
   },
 ];
 
@@ -107,18 +107,18 @@ const GOAL_OPTIONS: ReadonlyArray<{
 }> = [
   {
     value: "loseFat",
-    title: "Yağ kaybet",
-    body: "Bakım kalorinden yüzde 15 daha düşük bir hedef oluşturur.",
+    title: "Lose fat",
+    body: "Sets a target 15 percent below your maintenance calories.",
   },
   {
     value: "maintain",
-    title: "Kiloyu koru",
-    body: "Tahmini günlük enerji harcamanı hedef olarak kullanır.",
+    title: "Maintain weight",
+    body: "Uses your estimated daily energy expenditure as the target.",
   },
   {
     value: "gainMuscle",
-    title: "Kas kazan",
-    body: "Bakım kalorinden yüzde 10 daha yüksek bir hedef oluşturur.",
+    title: "Gain muscle",
+    body: "Sets a target 10 percent above your maintenance calories.",
   },
 ];
 
@@ -255,7 +255,7 @@ function MacroRow({
       <View style={[styles.macroDot, { backgroundColor: color }]} />
       <Text style={styles.macroLabel}>{label}</Text>
       <Text style={styles.macroValue}>
-        {t("{{grams}} g · %{{percent}}", {
+        {t("{{grams}} g · {{percent}}%", {
           grams: target.grams,
           percent: target.percent,
         })}
@@ -282,7 +282,7 @@ export function CalorieCalculator({ onClose }: { onClose: () => void }) {
   const [weightLb, setWeightLb] = useState("");
   const [activity, setActivity] = useState<ActivityLevel | null>(null);
   const [goal, setGoal] = useState<CalorieGoal | null>(null);
-  // Cihaz cache'inin anahtarı üyeye özeldir; kimlik profil okumasından gelir.
+  // The device cache key is member-specific; the ID comes from the profile request.
   const [userId, setUserId] = useState<string | null>(null);
   const [profileSyncFailed, setProfileSyncFailed] = useState(false);
 
@@ -340,20 +340,20 @@ export function CalorieCalculator({ onClose }: { onClose: () => void }) {
         })
       : null;
 
-  // Bu cihazda daha önce tamamlanmış bir akış varsa alanları önceden
-  // doldurur; yoksa üyenin profiline kaydettiği boy/kilo (varsa) yalnızca o
-  // iki alanı doldurur. Kullanıcıya sadece onaylamak/düzeltmek düşer.
+  // If a flow was previously completed on this device, prefill its fields;
+  // otherwise, the height and weight saved to the member's profile (if present)
+  // fill only those two fields. The user only needs to confirm or correct them.
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      // Cihaz cache'i üyeye özel anahtar altında saklanır, bu yüzden önce
-      // kimlik gerekir: profil okunamazsa akış boş başlar.
+      // Device cache uses a member-specific key, so the ID is needed first: if
+      // the profile cannot be read, the flow starts empty.
       let profile: MyProfile | null = null;
       try {
         profile = await api<MyProfile>("/api/me/profile");
       } catch {
-        // Kimlik alınamadıysa ne cihaza ne profile yazabiliriz; sonuç
-        // ekranındaki uyarı bunu üyeye söyler, akış boş başlar.
+        // Without an ID, nothing can be written to the device or profile; the
+        // result-screen warning explains this to the member, and the flow starts empty.
         if (!cancelled) setProfileSyncFailed(true);
         return;
       }
@@ -383,8 +383,8 @@ export function CalorieCalculator({ onClose }: { onClose: () => void }) {
         setGoal(cached.goal);
         return;
       }
-      // Cihazda kayıt yoksa üyenin profiline yazdığı değerler o alanları
-      // doldurur; kullanıcıya sadece onaylamak/düzeltmek düşer.
+      // If the device has no saved state, values in the member's profile fill
+      // those fields; the user only needs to confirm or correct them.
       if (typeof profile.age === "number") {
         setAge(String(profile.age));
       }
@@ -398,12 +398,12 @@ export function CalorieCalculator({ onClose }: { onClose: () => void }) {
     return () => {
       cancelled = true;
     };
-    // Yalnızca ilk montajda çalışır: bir dahaki hesaplamayı önceden doldurmak
-    // için, akış zaten sürerken dil değişiminde alanları ezmemeli.
+    // Runs only on the initial mount: it prefills the next calculation without
+    // overwriting fields when the language changes during an active flow.
   }, []);
 
-  // Sonuç ekranına ulaşılınca girdiler bu cihaza kaydedilir; yaş/boy/kilo
-  // ayrıca üyenin profiline de yazılır (bir dahaki hesaplamayı otomatik doldursun).
+  // Upon reaching the result screen, inputs are saved on this device; age,
+  // height, and weight are also written to the member's profile for next time.
   useEffect(() => {
     if (
       stage !== "result" ||
@@ -416,8 +416,8 @@ export function CalorieCalculator({ onClose }: { onClose: () => void }) {
     ) {
       return;
     }
-    // Cihaz cache'i üyeye özel anahtar altında; kimlik bilinmiyorsa yazılmaz
-    // ve bu durum sonuç ekranında uyarı olarak görünür.
+    // Device cache uses a member-specific key; nothing is written if the ID is
+    // unknown, and the result screen shows a warning.
     if (userId == null) {
       setProfileSyncFailed(true);
       return;
@@ -433,8 +433,8 @@ export function CalorieCalculator({ onClose }: { onClose: () => void }) {
       heightUnit,
       weightUnit,
     });
-    // Profile yazım sessizce yutulamaz: başarısız olursa üye bir dahaki sefere
-    // alanların neden boş geldiğini anlamalı. Hesaplama yine de gösterilir.
+    // A profile-write failure cannot be swallowed silently: the member should
+    // understand why fields may be empty next time. The calculation is still shown.
     void (async () => {
       try {
         await api<MyBodyMetrics>("/api/me/body-metrics", {
@@ -473,15 +473,15 @@ export function CalorieCalculator({ onClose }: { onClose: () => void }) {
       : weightLb.trim().length > 0;
   const ageError =
     age.length > 0 && !ageValid
-      ? t("18 ile 80 arasında tam bir yaş girin.")
+      ? t("Enter a whole-number age between 18 and 80.")
       : null;
   const heightError =
     heightHasValue && !heightValid
-      ? t("120–230 cm aralığında geçerli bir boy girin.")
+      ? t("Enter a valid height in the 120–230 cm range.")
       : null;
   const weightError =
     weightHasValue && !weightValid
-      ? t("35–300 kg aralığında geçerli bir kilo girin.")
+      ? t("Enter a valid weight in the 35–300 kg range.")
       : null;
 
   const currentStep = INPUT_STAGES.indexOf(
@@ -584,18 +584,18 @@ export function CalorieCalculator({ onClose }: { onClose: () => void }) {
               ]}
             />
             <Text accessibilityRole="header" style={styles.heroTitle}>
-              {t("Günlük enerjini birlikte bulalım")}
+              {t("Let's find your daily energy needs")}
             </Text>
             <Text style={styles.heroBody}>
               {t(
-                "Altı kısa soruyla günlük kalori hedefini ve makro dağılımını tahmin et.",
+                "Estimate your daily calorie target and macro split with six quick questions.",
               )}
             </Text>
             <View style={styles.privacyNote}>
               <StatusMessage
                 tone="neutral"
                 text={t(
-                  "Girdiğin bilgiler bu cihazda saklanır; boy ve kilon, bir dahaki sefere otomatik dolması için profiline de kaydedilir.",
+                  "Your answers are stored on this device; your height and weight are also saved to your profile so they auto-fill next time.",
                 )}
               />
             </View>
@@ -605,11 +605,11 @@ export function CalorieCalculator({ onClose }: { onClose: () => void }) {
         return (
           <View style={styles.stepContent}>
             <Text accessibilityRole="header" style={styles.stepTitle}>
-              {t("Hesaplamada hangi biyolojik parametre kullanılsın?")}
+              {t("Which biological parameter should the calculation use?")}
             </Text>
             <Text style={styles.stepBody}>
               {t(
-                "Mifflin–St Jeor denklemi kadın ve erkek için farklı sabitler kullanır.",
+                "The Mifflin–St Jeor equation uses different constants for female and male bodies.",
               )}
             </Text>
             <View
@@ -618,7 +618,7 @@ export function CalorieCalculator({ onClose }: { onClose: () => void }) {
             >
               <View style={styles.twoColumnChoice}>
                 <ChoiceCard
-                  title={t("Kadın")}
+                  title={t("Female")}
                   selected={sex === "female"}
                   onPress={() => setSex("female")}
                   compact
@@ -626,7 +626,7 @@ export function CalorieCalculator({ onClose }: { onClose: () => void }) {
               </View>
               <View style={styles.twoColumnChoice}>
                 <ChoiceCard
-                  title={t("Erkek")}
+                  title={t("Male")}
                   selected={sex === "male"}
                   onPress={() => setSex("male")}
                   compact
@@ -639,18 +639,18 @@ export function CalorieCalculator({ onClose }: { onClose: () => void }) {
         return (
           <View style={styles.stepContent}>
             <Text accessibilityRole="header" style={styles.stepTitle}>
-              {t("Kaç yaşındasın?")}
+              {t("How old are you?")}
             </Text>
             <Text style={styles.stepBody}>
-              {t("Bu araç 18–80 yaş arasındaki yetişkinler için tasarlandı.")}
+              {t("This tool is designed for adults aged 18–80.")}
             </Text>
             <NumberEntry
-              label={t("Yaş")}
+              label={t("Age")}
               value={age}
               onChangeText={setAge}
-              suffix={t("yaş")}
+              suffix={t("years")}
               error={ageError}
-              helper={t("18–80 yaş")}
+              helper={t("Ages 18–80")}
               integer
             />
           </View>
@@ -659,16 +659,14 @@ export function CalorieCalculator({ onClose }: { onClose: () => void }) {
         return (
           <View style={styles.stepContent}>
             <Text accessibilityRole="header" style={styles.stepTitle}>
-              {t("Boyun kaç?")}
+              {t("How tall are you?")}
             </Text>
             <Text style={styles.stepBody}>
-              {t(
-                "İstediğin birimi seçebilir, değeri daha sonra değiştirebilirsin.",
-              )}
+              {t("Choose the unit you prefer; you can change the value later.")}
             </Text>
             <View style={styles.unitSwitch}>
               <Segmented
-                accessibilityLabel={t("Boy birimi")}
+                accessibilityLabel={t("Height unit")}
                 value={heightUnit}
                 onChange={changeHeightUnit}
                 options={[
@@ -679,7 +677,7 @@ export function CalorieCalculator({ onClose }: { onClose: () => void }) {
             </View>
             {heightUnit === "metric" ? (
               <NumberEntry
-                label={t("Boy")}
+                label={t("Height")}
                 value={heightCm}
                 onChangeText={setHeightCm}
                 suffix="cm"
@@ -690,7 +688,7 @@ export function CalorieCalculator({ onClose }: { onClose: () => void }) {
               <View>
                 <View style={styles.imperialRow}>
                   <NumberEntry
-                    label={t("Fit")}
+                    label={t("Feet")}
                     value={heightFeet}
                     onChangeText={setHeightFeet}
                     suffix="ft"
@@ -698,7 +696,7 @@ export function CalorieCalculator({ onClose }: { onClose: () => void }) {
                     compact
                   />
                   <NumberEntry
-                    label={t("İnç")}
+                    label={t("Inches")}
                     value={heightInches}
                     onChangeText={setHeightInches}
                     suffix="in"
@@ -720,16 +718,14 @@ export function CalorieCalculator({ onClose }: { onClose: () => void }) {
         return (
           <View style={styles.stepContent}>
             <Text accessibilityRole="header" style={styles.stepTitle}>
-              {t("Güncel kilon kaç?")}
+              {t("What is your current weight?")}
             </Text>
             <Text style={styles.stepBody}>
-              {t(
-                "Yaklaşık bir değer girebilirsin; ondalık değerler desteklenir.",
-              )}
+              {t("An estimate is fine; decimal values are supported.")}
             </Text>
             <View style={styles.unitSwitch}>
               <Segmented
-                accessibilityLabel={t("Kilo birimi")}
+                accessibilityLabel={t("Weight unit")}
                 value={weightUnit}
                 onChange={changeWeightUnit}
                 options={[
@@ -739,7 +735,7 @@ export function CalorieCalculator({ onClose }: { onClose: () => void }) {
               />
             </View>
             <NumberEntry
-              label={t("Kilo")}
+              label={t("Weight")}
               value={weightUnit === "metric" ? weightKg : weightLb}
               onChangeText={weightUnit === "metric" ? setWeightKg : setWeightLb}
               suffix={weightUnit === "metric" ? "kg" : "lb"}
@@ -752,10 +748,10 @@ export function CalorieCalculator({ onClose }: { onClose: () => void }) {
         return (
           <View style={styles.stepContent}>
             <Text accessibilityRole="header" style={styles.stepTitle}>
-              {t("Gün içinde ne kadar hareketlisin?")}
+              {t("How active are you during the day?")}
             </Text>
             <Text style={styles.stepBody}>
-              {t("Son birkaç haftadaki ortalama düzenini düşün.")}
+              {t("Think about your average routine over the last few weeks.")}
             </Text>
             <View accessibilityRole="radiogroup" style={styles.choiceList}>
               {ACTIVITY_OPTIONS.map((option) => (
@@ -774,11 +770,11 @@ export function CalorieCalculator({ onClose }: { onClose: () => void }) {
         return (
           <View style={styles.stepContent}>
             <Text accessibilityRole="header" style={styles.stepTitle}>
-              {t("Hedefin nedir?")}
+              {t("What is your goal?")}
             </Text>
             <Text style={styles.stepBody}>
               {t(
-                "Hedef, bakım kalorine uygulanacak küçük ve sürdürülebilir farkı belirler.",
+                "Your goal sets a small, sustainable adjustment to maintenance calories.",
               )}
             </Text>
             <View accessibilityRole="radiogroup" style={styles.choiceList}>
@@ -805,16 +801,16 @@ export function CalorieCalculator({ onClose }: { onClose: () => void }) {
               style={styles.resultArtwork}
             />
             <Text accessibilityRole="header" style={styles.resultTitle}>
-              {t("Günlük hedefin hazır")}
+              {t("Your daily target is ready")}
             </Text>
             <View style={styles.calorieMetric}>
               <Text style={styles.calorieNumber}>
                 {new Intl.NumberFormat(language).format(result.targetCalories)}
               </Text>
-              <Text style={styles.calorieUnit}>{t("kcal / gün")}</Text>
+              <Text style={styles.calorieUnit}>{t("kcal / day")}</Text>
             </View>
             <Text style={styles.maintenanceText}>
-              {t("Bakım kalorisi: {{calories}} kcal", {
+              {t("Maintenance calories: {{calories}} kcal", {
                 calories: new Intl.NumberFormat(language).format(
                   result.maintenanceCalories,
                 ),
@@ -826,20 +822,18 @@ export function CalorieCalculator({ onClose }: { onClose: () => void }) {
                 <StatusMessage
                   tone="neutral"
                   text={t(
-                    "Bilgilerin profiline kaydedilemedi; bu hesaplama geçerli ama alanlar bir dahaki sefere otomatik dolmayabilir.",
+                    "Your details could not be saved to your profile; this calculation is still valid, but the fields may not auto-fill next time.",
                   )}
                 />
               </View>
             ) : null}
 
             <View style={styles.resultSection}>
-              <Text style={styles.resultSectionTitle}>
-                {t("Günlük makrolar")}
-              </Text>
+              <Text style={styles.resultSectionTitle}>{t("Daily macros")}</Text>
               <View
                 style={styles.macroBar}
                 accessibilityLabel={t(
-                  "Makro dağılımı: yüzde {{protein}} protein, yüzde {{carbohydrate}} karbonhidrat, yüzde {{fat}} yağ",
+                  "Macro split: {{protein}} percent protein, {{carbohydrate}} percent carbohydrate, {{fat}} percent fat",
                   {
                     protein: result.macros.protein.percent,
                     carbohydrate: result.macros.carbohydrate.percent,
@@ -883,27 +877,33 @@ export function CalorieCalculator({ onClose }: { onClose: () => void }) {
                 />
                 <MacroRow
                   color={theme.colors.warning}
-                  label={t("Karbonhidrat")}
+                  label={t("Carbohydrate")}
                   target={result.macros.carbohydrate}
                 />
                 <MacroRow
                   color={theme.colors.accent}
-                  label={t("Yağ")}
+                  label={t("Fat")}
                   target={result.macros.fat}
                 />
               </View>
             </View>
 
             <View style={styles.methodPanel}>
-              <Text style={styles.methodTitle}>{t("Nasıl hesaplandı?")}</Text>
+              <Text style={styles.methodTitle}>
+                {t("How was this calculated?")}
+              </Text>
               <View style={styles.methodRow}>
-                <Text style={styles.methodLabel}>{t("Bazal metabolizma")}</Text>
+                <Text style={styles.methodLabel}>
+                  {t("Basal metabolic rate")}
+                </Text>
                 <Text style={styles.methodValue}>
                   {new Intl.NumberFormat(language).format(result.bmr)} kcal
                 </Text>
               </View>
               <View style={styles.methodRow}>
-                <Text style={styles.methodLabel}>{t("Hareket çarpanı")}</Text>
+                <Text style={styles.methodLabel}>
+                  {t("Activity multiplier")}
+                </Text>
                 <Text style={styles.methodValue}>
                   ×
                   {new Intl.NumberFormat(language, {
@@ -912,7 +912,7 @@ export function CalorieCalculator({ onClose }: { onClose: () => void }) {
                 </Text>
               </View>
               <View style={styles.methodRow}>
-                <Text style={styles.methodLabel}>{t("Hedef ayarı")}</Text>
+                <Text style={styles.methodLabel}>{t("Goal adjustment")}</Text>
                 <Text style={styles.methodValue}>
                   {formatGoalAdjustment(result.goalFactor, language)}
                 </Text>
@@ -922,7 +922,7 @@ export function CalorieCalculator({ onClose }: { onClose: () => void }) {
             <StatusMessage
               tone="warning"
               text={t(
-                "Bu sonuç genel yetişkinler için bir tahmindir. Hamilelik, emzirme, özel sağlık durumu veya profesyonel sporculukta bir sağlık uzmanına danışın.",
+                "This result is an estimate for the general adult population. Consult a health professional for pregnancy, breastfeeding, specific health conditions or professional athletics.",
               )}
             />
           </View>
@@ -945,7 +945,7 @@ export function CalorieCalculator({ onClose }: { onClose: () => void }) {
                 min: 1,
                 max: INPUT_STAGES.length,
                 now: progressStep,
-                text: t("{{current}} / {{total}} adım", {
+                text: t("Step {{current}} of {{total}}", {
                   current: progressStep,
                   total: INPUT_STAGES.length,
                 }),
@@ -956,7 +956,7 @@ export function CalorieCalculator({ onClose }: { onClose: () => void }) {
             </View>
             <Text style={styles.stepCounter}>
               {stage === "result"
-                ? t("Tamamlandı")
+                ? t("Complete")
                 : t("{{current}} / {{total}}", {
                     current: progressStep,
                     total: INPUT_STAGES.length,
@@ -990,20 +990,20 @@ export function CalorieCalculator({ onClose }: { onClose: () => void }) {
         {stage === "result" ? (
           <>
             <Button
-              title={t("Değerleri düzenle")}
+              title={t("Edit values")}
               variant="secondary"
               onPress={() => setStage("sex")}
               style={styles.footerButton}
             />
             <Button
-              title={t("Araçlara dön")}
+              title={t("Return to Tools")}
               onPress={onClose}
               style={styles.footerButton}
             />
           </>
         ) : (
           <Button
-            title={stage === "intro" ? t("Hesaplamaya başla") : t("Devam")}
+            title={stage === "intro" ? t("Start calculation") : t("Continue")}
             onPress={goNext}
             disabled={!canContinue}
             style={styles.footerButton}

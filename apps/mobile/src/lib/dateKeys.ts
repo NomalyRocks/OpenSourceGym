@@ -1,4 +1,4 @@
-/** Hafta pazartesi başlar — uygulamanın birincil yerelinin (tr) düzeni. */
+/** The week starts on Monday—the convention of the app's primary locale (`tr`). */
 export const WEEK_START = 1;
 
 export function dayKey(date: Date): string {
@@ -12,7 +12,7 @@ export interface WeekDay {
   key: string;
 }
 
-/** Referans tarihi içeren haftayı (Pazartesi başlangıçlı) 7 güne böler. */
+/** Splits the Monday-based week containing the reference date into seven days. */
 export function buildWeek(reference: Date): WeekDay[] {
   const diff = (reference.getDay() - WEEK_START + 7) % 7;
   const monday = new Date(

@@ -1,129 +1,129 @@
-# Raporlar, Yenileme Hatırlatmaları ve CSV Dışa Aktarma
+# Reports, Renewal Reminders, and CSV Export
 
-Bu doküman salon sahibi ile OpenGym sunucusunu işleten kişinin raporları,
-yenileme hatırlatmalarını ve veri dışa aktarmayı güvenli biçimde kullanması
-içindir.
+This document is for the gym owner and the person operating the OpenGym server
+to use reports, renewal reminders, and data exports safely.
 
-## Rapor uçları
+## Report endpoints
 
-Rapor uçları hem `admin` hem de `staff` rolüne açıktır:
+The report endpoints are available to both the `admin` and `staff` roles:
 
 - `GET /api/admin/reports/summary`
 - `GET /api/admin/reports/entry-trend`
 
-İki uç da isteğe bağlı `from` ve `to` sorgu parametrelerini kabul eder. Tarihleri
-ISO 8601 biçiminde gönderin; örneğin
-`?from=2026-07-01T00:00:00.000Z&to=2026-07-31T23:59:59.999Z`. Sınırlar
-dahildir. `to` verilmezse istek anı, `from` verilmezse `to` değerinden 30 gün
-öncesi kullanılır. `from`, `to` değerinden sonra olamaz ve aralık 366 günü
-aşamaz; aksi durumda API `400 INVALID_REPORT_RANGE` döndürür.
+Both endpoints accept optional `from` and `to` query parameters. Send dates in
+ISO 8601 format; for example,
+`?from=2026-07-01T00:00:00.000Z&to=2026-07-31T23:59:59.999Z`. The boundaries
+are inclusive. If `to` is omitted, the request time is used; if `from` is
+omitted, 30 days before `to` is used. `from` cannot be after `to`, and the range
+cannot exceed 366 days; otherwise, the API returns `400 INVALID_REPORT_RANGE`.
 
-### Özet raporu
+### Summary report
 
-`GET /api/admin/reports/summary` aşağıdaki alanları döndürür:
+`GET /api/admin/reports/summary` returns the following fields:
 
-| Alan                     | Anlamı                                                                                                                                                                                                                 |
-| ------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `range.from`, `range.to` | API'nin uyguladığı aralığın ISO zamanlarıdır.                                                                                                                                                                          |
-| `timeZone`               | Günlük rapor kovalarında kullanılan IANA saat dilimidir.                                                                                                                                                               |
-| `activeMembers`          | İstek anında aktif aboneliği olan benzersiz üye sayısıdır; seçilen aralıktan bağımsızdır.                                                                                                                              |
-| `newMembers`             | Aralıkta oluşturulmuş ve rolü `member` olan kullanıcı sayısıdır.                                                                                                                                                       |
-| `newSubscriptions`       | Aralıkta oluşturulan abonelik kaydı sayısıdır.                                                                                                                                                                         |
-| `lapsedMembers`          | En geç aboneliğinin bitişi aralıkta kalan, daha sonraki bir abonelikle yenileme yapmamış benzersiz üye sayısıdır. Eski bir paketi aralıkta bitmiş olsa bile daha ileri bitişli aboneliği bulunan üye bu sayıya girmez. |
-| `renewalsDue`            | En geç aboneliği istek anından başlayarak önümüzdeki 7 gün içinde bitecek benzersiz üye sayısıdır; seçilen aralıktan bağımsızdır.                                                                                      |
-| `entries.total`          | Aralıktaki tüm geçiş denemeleridir.                                                                                                                                                                                    |
-| `entries.allowed`        | Aralıkta izin verilen geçişlerdir.                                                                                                                                                                                     |
-| `entries.denied`         | Aralıkta reddedilen geçişlerdir.                                                                                                                                                                                       |
-| `entries.uniqueMembers`  | Aralıkta en az bir geçiş olayıyla ilişkilendirilen benzersiz üye sayısıdır.                                                                                                                                            |
+| Field                    | Meaning                                                                                                                                                                                                                                  |
+| ------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `range.from`, `range.to` | ISO timestamps for the range applied by the API.                                                                                                                                                                                         |
+| `timeZone`               | IANA time zone used for daily report buckets.                                                                                                                                                                                            |
+| `activeMembers`          | Number of unique members with an active subscription at the time of the request; independent of the selected range.                                                                                                                      |
+| `newMembers`             | Number of users created within the range whose role is `member`.                                                                                                                                                                         |
+| `newSubscriptions`       | Number of subscription records created within the range.                                                                                                                                                                                 |
+| `lapsedMembers`          | Number of unique members whose latest subscription ended within the range and who did not renew with a later subscription. A member with a subscription that ends later is not included even if an older package ended within the range. |
+| `renewalsDue`            | Number of unique members whose latest subscription will end within the next 7 days from the request time; independent of the selected range.                                                                                             |
+| `entries.total`          | All entry attempts within the range.                                                                                                                                                                                                     |
+| `entries.allowed`        | Allowed entries within the range.                                                                                                                                                                                                        |
+| `entries.denied`         | Denied entries within the range.                                                                                                                                                                                                         |
+| `entries.uniqueMembers`  | Number of unique members associated with at least one entry event within the range.                                                                                                                                                      |
 
-### Günlük giriş trendi
+### Daily entry trend
 
-`GET /api/admin/reports/entry-trend` yanıtındaki `range` ve `timeZone` alanları
-yukarıdaki anlamdadır. `points`, aralıktaki her yerel gün için bir kayıt içerir;
-geçiş olmayan günler de sıfırlarla döner.
+The `range` and `timeZone` fields in the
+`GET /api/admin/reports/entry-trend` response have the meanings above. `points`
+contains one record for each local day in the range; days with no entries are
+also returned with zeros.
 
-| `points[]` alanı | Anlamı                                              |
+| `points[]` field | Meaning                                             |
 | ---------------- | --------------------------------------------------- |
-| `date`           | Salon saat dilimindeki gün, `YYYY-MM-DD` biçiminde. |
-| `total`          | O gündeki tüm geçiş denemeleri.                     |
-| `allowed`        | O gündeki izin verilen geçişler.                    |
-| `denied`         | O gündeki reddedilen geçişler.                      |
+| `date`           | Day in the gym's time zone, in `YYYY-MM-DD` format. |
+| `total`          | All entry attempts on that day.                     |
+| `allowed`        | Allowed entries on that day.                        |
+| `denied`         | Denied entries on that day.                         |
 
 ## REPORTS_TIME_ZONE
 
-`REPORTS_TIME_ZONE`, günlük giriş trendindeki gün sınırlarını belirler. Böylece
-gece yarısına yakın bir geçiş UTC gününe göre değil, salonun yerel takvim gününe
-göre gruplanır. Varsayılan değer `Europe/Istanbul` değeridir.
+`REPORTS_TIME_ZONE` determines the day boundaries in the daily entry trend. As
+a result, an entry near midnight is grouped by the gym's local calendar day
+rather than by the UTC day. The default is `Europe/Istanbul`.
 
-Değer geçerli bir IANA saat dilimi olmalıdır; örneğin `Europe/Istanbul`.
-Geçersiz bir değer yapılandırma hatasıdır ve API açılışta sonlanır. Değişkeni
-değiştirdikten sonra API sürecini yeniden başlatın.
+The value must be a valid IANA time zone, such as `Europe/Istanbul`. An invalid
+value is a configuration error, and the API exits during startup. Restart the
+API process after changing the variable.
 
-## Yenileme hatırlatmaları
+## Renewal reminders
 
-Salon ayarlarındaki `reminders.enabled` varsayılan olarak `false` değerindedir.
-Bu güvenli varsayılan, yeni kurulumun veya sürüm yükselten mevcut kurulumun
-yönetici açıkça izin vermeden üyelere toplu e-posta göndermesini önler.
+`reminders.enabled` in the gym settings defaults to `false`. This safe default
+prevents a new installation or an existing installation being upgraded from
+sending bulk email to members without explicit administrator approval.
 
-Hatırlatmaları açmadan önce gerçek e-posta teslimatı için `SMTP_HOST`
-yapılandırılmalıdır. Üretimde bu değişken yoksa gönderim başarısız olur.
-Geliştirme ortamında ise e-posta teslim edilmez, API konsoluna yazılır.
+Before enabling reminders, `SMTP_HOST` must be configured for actual email
+delivery. In production, delivery fails if this variable is missing. In
+development, the email is not delivered and is written to the API console.
 
-`reminders.daysBefore`, aboneliğin bitmesine kaç gün kala otomatik hatırlatma
-gönderileceğini belirler. Varsayılan eşikler `[7, 1]` değeridir. Ayar 1–5 adet,
-`0` ile `90` arasında tam sayı kabul eder; `0`, aboneliğin bittiği günü ifade
-eder. Bir süpürmede birden fazla eşik uygunsa kalan güne en yakın, en dar eşik
-kullanılır.
+`reminders.daysBefore` determines how many days before a subscription ends an
+automatic reminder is sent. The default thresholds are `[7, 1]`. The setting
+accepts 1–5 integers from `0` to `90`; `0` represents the day the subscription
+ends. If multiple thresholds apply in one sweep, the narrowest threshold,
+closest to the remaining number of days, is used.
 
-API saatlik bir süpürme çalıştırır ve her üyenin yalnızca en geç aboneliğini
-değerlendirir. Aynı abonelik ve aynı eşik için en fazla bir otomatik e-posta
-gönderilir. Bunu `renewal_reminders_threshold_unique` adlı kısmi unique MongoDB
-indeksi garanti eder. Gönderim başarısız olursa hatırlatma kaydı geri alınır ve
-sonraki süpürmede yeniden denenebilir.
+The API runs an hourly sweep and evaluates only each member's latest
+subscription. At most one automatic email is sent for the same subscription
+and threshold. The partial unique MongoDB index named
+`renewal_reminders_threshold_unique` guarantees this. If delivery fails, the
+reminder record is rolled back and can be retried in the next sweep.
 
-Yaklaşan yenilemeler `GET /api/admin/reports/renewals` ile listelenebilir.
-Tek üyeye elle gönderim
-`POST /api/admin/reports/renewals/:userId/remind` yoluyla yapılır. Bu iki işlem
-`admin` ve `staff` rollerine açıktır.
+Upcoming renewals can be listed with `GET /api/admin/reports/renewals`.
+A manual reminder to a single member is sent through
+`POST /api/admin/reports/renewals/:userId/remind`. Both operations are
+available to the `admin` and `staff` roles.
 
-Aynı abonelik için son gönderimin (otomatik ya da elle) üzerinden 24 saat
-geçmeden ikinci bir hatırlatma gitmez. Elle denendiğinde API `429` ve
-`recently-reminded` nedeni döndürür; saatlik süpürme ise o üyeyi sessizce
-atlar (`cooledDown`). Bekleme süresi dolduğunda eşik yeniden değerlendirilir,
-yani atlanan hatırlatma kaybolmaz.
+A second reminder is not sent until 24 hours have passed since the last
+delivery, automatic or manual, for the same subscription. For a manual attempt,
+the API returns `429` with the reason `recently-reminded`; the hourly sweep
+silently skips that member (`cooledDown`). When the cooldown expires, the
+threshold is evaluated again, so the skipped reminder is not lost.
 
-## CSV dışa aktarma
+## CSV export
 
-Yalnızca `admin` rolü şu uçtan CSV indirebilir:
+Only the `admin` role can download CSV from this endpoint:
 
 `GET /api/admin/reports/export?dataset=members|subscriptions|entries&from&to`
 
-`from` ve `to`, raporlarla aynı varsayılan ve 366 günlük üst sınıra tabidir.
-`members` kullanıcıları `createdAt`, `subscriptions` abonelikleri `createdAt`,
-`entries` ise geçişleri `at` alanına göre seçilen aralıkta dışa aktarır.
+`from` and `to` use the same defaults and 366-day upper bound as the reports.
+`members` exports users by `createdAt`, `subscriptions` exports subscriptions by
+`createdAt`, and `entries` exports entries by `at` within the selected range.
 
-Her indirme `audit_logs` koleksiyonuna `data-exported` eylemiyle; veri kümesi,
-uygulanan `from` ve `to` değerleriyle birlikte yazılır. CSV dosyaları toplu
-kişisel veri içerir. Veri koruma mevzuatınız kapsamında yalnızca iş amacıyla indirin, erişimi
-sınırlandırın ve gereğinden uzun saklamayın.
+Each download is written to the `audit_logs` collection with the `data-exported`
+action, along with the dataset and the applied `from` and `to` values. CSV files
+contain bulk personal data. Under your data protection laws, download them only
+for business purposes, restrict access, and do not retain them longer than necessary.
 
-Dosya, Türkçe karakterlerin Excel'de doğru açılması için UTF-8 BOM ile başlar.
-Formül enjeksiyonunu önlemek amacıyla `=`, `+`, `-` veya `@` ile başlayan hücre
-değerlerinin başına tek tırnak eklenerek değer metin olarak etkisizleştirilir.
+The file begins with a UTF-8 BOM so non-ASCII characters open correctly in
+Excel. To prevent formula injection, cell values beginning with `=`, `+`, `-`,
+or `@` are neutralized as text by prefixing them with a single quote.
 
-## Sorun giderme
+## Troubleshooting
 
-Hatırlatma e-postası gitmiyorsa şu sırayla kontrol edin:
+If a reminder email is not delivered, check the following in order:
 
-1. Salon ayarlarında `reminders.enabled` açık mı?
-2. `reminders.daysBefore` boş olmayan, geçerli eşikler içeriyor mu?
-3. `SMTP_HOST` tanımlı mı ve SMTP sunucusuna API sunucusundan erişilebiliyor mu?
-4. Üyenin en geç aboneliği henüz bitmemiş ve yapılandırılan eşik penceresinde mi?
-5. Aynı abonelik ve eşik için otomatik posta daha önce gönderilmiş mi?
-6. Son otomatik veya elle hatırlatmanın üzerinden 24 saat geçti mi? (Geçmediyse
-   hem elle gönderim hem süpürme atlar.)
-7. API günlüğünde `yenileme hatırlatması gönderilemedi` veya SMTP hatası var mı?
+1. Is `reminders.enabled` enabled in the gym settings?
+2. Does `reminders.daysBefore` contain valid, non-empty thresholds?
+3. Is `SMTP_HOST` defined, and can the API server reach the SMTP server?
+4. Has the member's latest subscription not yet expired, and is it within the configured threshold window?
+5. Has an automatic email already been sent for the same subscription and threshold?
+6. Have 24 hours passed since the last automatic or manual reminder? (If not,
+   both manual delivery and the sweep skip it.)
+7. Does the API log contain `renewal reminder delivery failed` or an SMTP error?
 
-Hatırlatma ayarını veya SMTP ortam değişkenlerini düzelttikten sonra SMTP
-değişikliği için API'yi yeniden başlatın. Otomatik gönderim bir sonraki saatlik
-süpürmede yeniden denenecektir.
+After correcting the reminder setting or SMTP environment variables, restart
+the API for an SMTP change. Automatic delivery will be retried during the next
+hourly sweep.

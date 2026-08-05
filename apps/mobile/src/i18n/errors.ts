@@ -4,37 +4,41 @@ import { ApiError } from "../lib/api";
 import type { MobileTranslationKey } from "./resources";
 
 const codeMessages = {
-  AUTH_REQUIRED: "Oturum gerekli.",
-  FORBIDDEN: "Bu işlem için yetkiniz yok.",
-  INTERNAL_ERROR: "Beklenmeyen bir hata oluştu. Lütfen tekrar deneyin.",
-  PASSWORD_CHANGE_REQUIRED: "Devam etmeden önce şifrenizi değiştirmelisiniz.",
-  PAYLOAD_TOO_LARGE: "Fotoğraf en fazla 10 MB olabilir.",
-  PROFILE_PHOTO_MISSING: "Fotoğraf verisi gönderilmedi.",
-  PROFILE_PHOTO_INVALID: "Seçilen dosya geçerli bir fotoğraf değil.",
-  PROFILE_PHOTO_BUSY: "Fotoğraf işlemi sürüyor. Lütfen tekrar deneyin.",
+  AUTH_REQUIRED: "A session is required.",
+  FORBIDDEN: "You are not authorized for this operation.",
+  INTERNAL_ERROR: "An unexpected error occurred. Please try again.",
+  PASSWORD_CHANGE_REQUIRED: "You must change your password before continuing.",
+  PAYLOAD_TOO_LARGE: "The photo can be up to 10 MB.",
+  PROFILE_PHOTO_MISSING: "No photo data was provided.",
+  PROFILE_PHOTO_INVALID: "The selected file is not a valid photo.",
+  PROFILE_PHOTO_BUSY: "A photo operation is in progress. Please try again.",
   PROFILE_PHOTO_RATE_LIMITED:
-    "Çok fazla fotoğraf işlemi yaptınız. Lütfen biraz bekleyin.",
-  PROFILE_PHOTO_UNAVAILABLE: "Profil fotoğrafı hizmeti şu anda kullanılamıyor.",
-  INVALID_REQUEST: "Geçersiz istek.",
-  RATE_LIMITED: "Çok fazla istek. Lütfen biraz bekleyin.",
-  INVALID_QR: "Geçersiz QR kodu. Turnikedeki kodu tekrar okutun.",
+    "You have made too many photo requests. Please wait a moment.",
+  PROFILE_PHOTO_UNAVAILABLE:
+    "The profile photo service is currently unavailable.",
+  INVALID_REQUEST: "Invalid request.",
+  RATE_LIMITED: "Too many requests. Please wait a moment.",
+  INVALID_QR: "Invalid QR code. Scan the code on the turnstile again.",
   SHARING_BLOCKED:
-    "Hesabınızda olağan dışı kullanım tespit edildi. Geçiş geçici olarak kapatıldı. Lütfen resepsiyona başvurun.",
+    "Unusual activity was detected on your account. Entry is temporarily blocked. Please contact reception.",
   MOCK_LOCATION:
-    "Sahte konum tespit edildi. Gerçek konumunuzu kullanarak tekrar deneyin.",
-  UNKNOWN_DEVICE: "Bu turnike artık kayıtlı değil. Resepsiyona başvurun.",
+    "A mock location was detected. Try again using your real location.",
+  UNKNOWN_DEVICE:
+    "This turnstile is no longer registered. Please contact reception.",
   NO_ACTIVE_SUBSCRIPTION:
-    "Aktif aboneliğiniz yok. Salon resepsiyonuna başvurun.",
-  LOCATION_REQUIRED: "Konumunuz alınamadı. Konum izni verip tekrar deneyin.",
+    "You do not have an active subscription. Please contact gym reception.",
+  LOCATION_REQUIRED:
+    "Your location could not be obtained. Grant location permission and try again.",
   OUT_OF_RANGE:
-    "Salon konumunda görünmüyorsunuz. Geçiş yalnızca salonda yapılabilir.",
-  DEVICE_OFFLINE: "Turnike bağlantısı yok. Lütfen resepsiyona başvurun.",
-  LOCAL_FILE_READ_FAILED: "Seçilen fotoğraf okunamadı.",
-  DELETION_MEMBER_ONLY: "Yalnızca üye hesapları silme talebi oluşturabilir.",
-  DELETION_ALREADY_PENDING: "Zaten bekleyen bir silme talebiniz var.",
-  DELETION_NOT_PENDING: "Bekleyen bir silme talebi bulunamadı.",
-  INVALID_PHONE_NUMBER: "Geçerli bir telefon numarası girin.",
-  PHONE_ALREADY_EXISTS: "Bu telefon numarası ile kayıtlı hesap var.",
+    "You do not appear to be at the gym. Entry is only available at the gym.",
+  DEVICE_OFFLINE: "The turnstile is offline. Please contact reception.",
+  LOCAL_FILE_READ_FAILED: "The selected photo could not be read.",
+  DELETION_MEMBER_ONLY: "Only member accounts can create a deletion request.",
+  DELETION_ALREADY_PENDING: "You already have a pending deletion request.",
+  DELETION_NOT_PENDING: "No pending deletion request was found.",
+  INVALID_PHONE_NUMBER: "Enter a valid phone number.",
+  PHONE_ALREADY_EXISTS:
+    "An account is already registered with this phone number.",
 } satisfies Partial<
   Record<ApiErrorCode | "LOCAL_FILE_READ_FAILED", MobileTranslationKey>
 >;

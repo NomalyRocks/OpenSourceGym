@@ -15,16 +15,16 @@ import {
 
 export type AppTab = "home" | "calendar" | "scan" | "tools" | "profile";
 
-/** Çubuğun kendi yüksekliği (iç boşluk + öğe yüksekliği). */
+/** The bar's own height (padding + item height). */
 const BAR_HEIGHT = 72;
-/** Çubuk ile ekranın alt kenarı arasındaki asgari boşluk. */
+/** Minimum gap between the bar and the bottom edge of the screen. */
 const FLOAT_GAP = 12;
 
 /**
- * Yüzen çubuğun içerikten çalacağı dikey pay.
+ * Vertical space reserved for the floating bar.
  *
- * `BottomInsetProvider`'a verilir; `Screen` ve `ScrollScreen` bunu alt boşluğa
- * ekler, böylece son satır camın ardında kalmaz.
+ * Passed to `BottomInsetProvider`; `Screen` and `ScrollScreen` add it to their
+ * bottom spacing so the last row does not remain behind the glass.
  */
 export function useTabBarSpace(): number {
   const insets = useSafeAreaInsets();
@@ -36,23 +36,27 @@ const tabs: ReadonlyArray<{
   label: MobileTranslationKey;
   icon: (color: string) => ReactNode;
 }> = [
-  { id: "home", label: "Ana Sayfa", icon: (c) => <HomeGlyph color={c} /> },
-  { id: "calendar", label: "Takvim", icon: (c) => <CalendarGlyph color={c} /> },
-  { id: "scan", label: "QR Tara", icon: (c) => <QrGlyph color={c} /> },
-  { id: "tools", label: "Araçlar", icon: (c) => <ToolsGlyph color={c} /> },
-  { id: "profile", label: "Profil", icon: (c) => <PersonGlyph color={c} /> },
+  { id: "home", label: "Home", icon: (c) => <HomeGlyph color={c} /> },
+  {
+    id: "calendar",
+    label: "Calendar",
+    icon: (c) => <CalendarGlyph color={c} />,
+  },
+  { id: "scan", label: "Scan QR", icon: (c) => <QrGlyph color={c} /> },
+  { id: "tools", label: "Tools", icon: (c) => <ToolsGlyph color={c} /> },
+  { id: "profile", label: "Profile", icon: (c) => <PersonGlyph color={c} /> },
 ];
 
 /**
- * Yüzen, yumuşak köşeli, yarı saydam sekme çubuğu.
+ * Floating, softly rounded, translucent tab bar.
  *
- * Gerçek arka plan bulanıklığı (`backdrop-filter`) React Native 0.86'da yok —
- * `filter` yalnızca elemanın kendi içeriğine uygulanır. Cam etkisi bu yüzden
- * katmanla kuruluyor: yarı saydam yüzey + üst kenarda ışık çizgisi + gölge.
- * İçerik altından geçtiği için yüzey ölü bir levha gibi durmuyor.
+ * True background blur (`backdrop-filter`) is unavailable in React Native 0.86—
+ * `filter` applies only to the element's own content. The glass effect therefore
+ * uses layers: a translucent surface, a highlight along the top edge, and a shadow.
+ * Content passing underneath keeps the surface from looking like a lifeless slab.
  *
- * `expo-blur` eklenirse tek değişiklik: dıştaki `View`'ı
- * `<BlurView intensity={…} tint={theme.name}>` ile sarmak (native rebuild ister).
+ * If `expo-blur` is added, the only change is wrapping the outer `View` with
+ * `<BlurView intensity={…} tint={theme.name}>` (requires a native rebuild).
  */
 export function BottomTabBar({
   activeTab,
@@ -88,7 +92,7 @@ export function BottomTabBar({
     return () => animation.stop();
   }, [activeIndex, indicator, reduced, theme.motion.standard]);
 
-  // Gösterge hapı 4px'lik iç boşluğun içinde kayar.
+  // The indicator pill slides within the 4 px inset.
   const cellWidth = barWidth > 0 ? (barWidth - 8) / tabs.length : 0;
 
   return (
@@ -97,7 +101,7 @@ export function BottomTabBar({
       style={[styles.bar, { bottom: Math.max(insets.bottom, FLOAT_GAP) }]}
       onLayout={(event) => setBarWidth(event.nativeEvent.layout.width)}
     >
-      {/* Cam kenarı: üstte içeriden geçen ince ışık çizgisi. */}
+      {/* Glass edge: a thin internal highlight across the top. */}
       <View style={styles.rim} pointerEvents="none" />
 
       {cellWidth > 0 ? (
@@ -164,12 +168,12 @@ const tabBarStyles = (theme: Theme) =>
       alignItems: "stretch",
       padding: 4,
       borderRadius: 24,
-      // Yarı saydam ama etiketler okunur kalsın diye opaklık yüksek.
+      // Translucent, but opaque enough to keep labels readable.
       backgroundColor: withAlpha(
         theme.colors.surface,
         theme.name === "dark" ? 0.9 : 0.88,
       ),
-      // Koyuda kenarlık, açıkta gölge — ikisi birden "hayalet kart" olurdu.
+      // Border in dark mode, shadow in light mode—both would look like a ghost card.
       borderWidth: theme.name === "dark" ? StyleSheet.hairlineWidth : 0,
       borderColor: withAlpha(theme.colors.textPrimary, 0.12),
       ...theme.shadows.raised,
@@ -186,7 +190,7 @@ const tabBarStyles = (theme: Theme) =>
         theme.name === "dark" ? 0.14 : 0.06,
       ),
     },
-    // Seçili sekmenin ardında kayan yumuşak hap.
+    // Soft pill that slides behind the selected tab.
     indicator: {
       position: "absolute",
       top: 4,

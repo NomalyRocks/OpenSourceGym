@@ -1,21 +1,21 @@
 import { findGymSettings } from "./db.js";
 import { redis } from "./redis.js";
 
-// İçerideki üyeler: field = userId, value = giriş anı (epoch ms, string)
+// Members inside: field = userId, value = entry time (epoch ms, string)
 const INSIDE_KEY = "og:inside";
 
-// Üyeyi "içeride" olarak işaretler (giriş turnikesi geçişi izin verildiğinde)
+// Marks a member as "inside" (when entry through the turnstile is allowed)
 export async function markInside(userId: string): Promise<void> {
   await redis.hSet(INSIDE_KEY, userId, String(Date.now()));
 }
 
-// Üyeyi "dışarıda" olarak işaretler (çıkış turnikesi geçişi veya hesap silme temizliği)
+// Marks a member as "outside" (exit turnstile event or account deletion cleanup)
 export async function markOutside(userId: string): Promise<void> {
   await redis.hDel(INSIDE_KEY, userId);
 }
 
-// Anlık salon doluluğu: autoExitHours'tan daha eski giriş kayıtları (çıkış
-// turnikesi geçilmemiş/arızalı senaryosu) süresi dolmuş sayılıp düşülür
+// Current gym occupancy: entry records older than autoExitHours (when the exit
+// turnstile was skipped or faulty) are treated as expired and removed
 export async function getOccupancy(): Promise<number> {
   const entries = await redis.hGetAll(INSIDE_KEY);
   const settings = await findGymSettings();

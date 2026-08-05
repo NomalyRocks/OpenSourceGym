@@ -2,10 +2,10 @@ import { ObjectId } from "mongodb";
 import { sessionCollection } from "./db.js";
 import { redis } from "./redis.js";
 
-// Bir kullanıcının TÜM oturumlarını iptal eder: Redis'te önbelleğe alınmış
-// BetterAuth oturumları (secondary storage, anahtar = oturum token'ı) TTL
-// beklemeden açıkça silinir, ardından Mongo'daki oturum kayıtları temizlenir.
-// Uygulama rotaları zaten middleware'in Mongo re-read'iyle 401'e düşer.
+// Revokes ALL sessions for a user: explicitly deletes BetterAuth sessions cached
+// in Redis (secondary storage, key = session token) without waiting for TTL,
+// then removes Mongo session records. Application routes already return 401
+// through the middleware's Mongo reread.
 export async function revokeUserSessions(userId: string): Promise<number> {
   const targetId = new ObjectId(userId);
   const sessionDocs = await sessionCollection()

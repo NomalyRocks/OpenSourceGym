@@ -15,13 +15,13 @@ async function computeFingerprint(): Promise<string | null> {
     } else if (Platform.OS === "ios") {
       stableId = await Application.getIosIdForVendorAsync();
     } else {
-      // Diğer platformlarda (web vb.) parmak izi desteklenmiyor.
+      // Fingerprinting is unsupported on other platforms such as web.
       return null;
     }
     if (!stableId) return null;
 
     const raw = `${Platform.OS}:${stableId}:${Device.modelId ?? Device.modelName ?? ""}`;
-    // Ham cihaz kimlikleri bu fonksiyonun dışına asla çıkmaz; sadece hash gönderilir.
+    // Raw device identifiers never leave this function; only the hash is sent.
     const digest = await Crypto.digestStringAsync(
       Crypto.CryptoDigestAlgorithm.SHA256,
       raw,
@@ -29,16 +29,16 @@ async function computeFingerprint(): Promise<string | null> {
     const hex = digest.toLowerCase();
     return FINGERPRINT_RE.test(hex) ? hex : null;
   } catch {
-    // Parmak izi çıkarma başarısız olursa uygulamayı asla engelleme.
+    // Never block the app if fingerprint generation fails.
     return null;
   }
 }
 
 /**
- * Cihaza özgü, geri döndürülemez bir parmak izi (SHA-256 hex) üretir.
- * Başarılı sonuç uygulama oturumu boyunca önbelleğe alınır; `null` (geçici
- * hata, izin vb.) önbelleğe ALINMAZ — sonraki çağrı yeniden dener.
- * Hata durumunda `null` döner (fail-open) — çağıranlar bunu opsiyonel kabul etmeli.
+ * Generates a device-specific, irreversible fingerprint (SHA-256 hex).
+ * A successful result is cached for the app session; `null` (temporary error,
+ * permission issue, etc.) is NOT cached, so the next call retries.
+ * Returns `null` on failure (fail-open); callers must treat it as optional.
  */
 export function getDeviceFingerprint(): Promise<string | null> {
   if (!fingerprintPromise) {

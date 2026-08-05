@@ -22,7 +22,7 @@ export async function sendMail(options: {
     if (env.nodeEnv === "production") {
       throw new Error("SMTP is not configured (SMTP_HOST missing)");
     }
-    // Dev ortamında SMTP yoksa e-posta konsola düşer
+    // In development, email goes to the console when SMTP is unavailable
     console.log(
       `[mail:dev] to=${options.to} subject="${options.subject}"\n${options.text}`,
     );

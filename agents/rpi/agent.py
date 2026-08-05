@@ -1,22 +1,23 @@
 #!/usr/bin/env python3
-# OpenGym turnike ajanı — Raspberry Pi referans uygulaması.
+# OpenGym turnstile agent — Raspberry Pi reference implementation.
 #
-# Gereksinimler:
+# Requirements:
 #   pip install websockets gpiozero
 #
-# Donanım varsayımı:
-#   - Röle modülü GPIO pinine bağlı (varsayılan BCM 17), turnike tetik girişini sürer.
-#   - QR taraması artık cihazda değil, üyenin telefon uygulamasında yapılır;
-#     bu ajan yalnızca kimlik doğrular ve sunucudan gelen "open" komutuyla röleyi tetikler.
+# Hardware assumptions:
+#   - The relay module is connected to a GPIO pin (default: BCM 17) and drives the
+#     turnstile trigger input.
+#   - QR scanning now happens in the member's phone app, not on the device;
+#     this agent only authenticates and triggers the relay with the server's "open" command.
 #
-# Ortam değişkenleri:
-#   GATEWAY_URL   varsayılan: ws://127.0.0.1:3000/api/device-gateway
-#   DEVICE_ID     panelden eklenen cihazın id'si
-#   DEVICE_TOKEN  cihaz eklenirken yalnızca bir kez gösterilen "og_" önekli token
-#   RELAY_GPIO    varsayılan: 17 (BCM)
+# Environment variables:
+#   GATEWAY_URL   default: ws://127.0.0.1:3000/api/device-gateway
+#   DEVICE_ID     ID of the device added from the panel
+#   DEVICE_TOKEN  "og_"-prefixed token shown only once when the device is added
+#   RELAY_GPIO    default: 17 (BCM)
 #
-# Fail-closed: röle varsayılan olarak KAPALI; yalnızca sunucudan "open" geldiğinde
-# openMs süresince açılır. Bağlantı yokken hiçbir komut kapı açmaz.
+# Fail-closed: the relay is OFF by default and turns on for openMs only when an
+# "open" command arrives from the server. No command opens the gate while disconnected.
 
 import asyncio
 import json
@@ -26,7 +27,7 @@ import sys
 try:
     import websockets
 except ImportError:
-    sys.exit("websockets paketi gerekli: pip install websockets")
+    sys.exit("The websockets package is required: pip install websockets")
 
 GATEWAY_URL = os.environ.get("GATEWAY_URL", "ws://127.0.0.1:3000/api/device-gateway")
 DEVICE_ID = os.environ.get("DEVICE_ID")
@@ -34,30 +35,30 @@ DEVICE_TOKEN = os.environ.get("DEVICE_TOKEN")
 RELAY_GPIO = int(os.environ.get("RELAY_GPIO", "17"))
 
 if not DEVICE_ID or not DEVICE_TOKEN:
-    sys.exit("DEVICE_ID ve DEVICE_TOKEN ortam değişkenleri zorunlu.")
+    sys.exit("The DEVICE_ID and DEVICE_TOKEN environment variables are required.")
 
 
 class DummyRelay:
-    """GPIO olmayan ortamda (geliştirme makinesi) simülasyon."""
+    """Simulate the relay in an environment without GPIO, such as a development machine."""
 
     def on(self):
-        print("[röle] AÇIK (simülasyon)")
+        print("[relay] OPEN (simulation)")
 
     def off(self):
-        print("[röle] KAPALI (simülasyon)")
+        print("[relay] CLOSED (simulation)")
 
 
 try:
     from gpiozero import OutputDevice
 
-    # initial_value=False → açılışta röle kapalı (fail-closed)
+    # initial_value=False → relay is off at startup (fail-closed)
     relay = OutputDevice(RELAY_GPIO, active_high=True, initial_value=False)
 except Exception:
     relay = DummyRelay()
 
 
 async def pulse_relay(open_ms: int) -> None:
-    # Röle yalnızca süreli açılır; her durumda finally ile kapanır.
+    # The relay opens only for a fixed duration and always closes in finally.
     relay.on()
     try:
         await asyncio.sleep(open_ms / 1000)
@@ -72,7 +73,7 @@ async def handle_messages(ws) -> None:
         except json.JSONDecodeError:
             continue
         if msg.get("type") == "open":
-            print("AÇIK")
+            print("OPEN")
             asyncio.create_task(pulse_relay(int(msg.get("openMs", 500))))
 
 
@@ -80,7 +81,7 @@ async def run() -> None:
     delay = 1
     while True:
         try:
-            # websockets kütüphanesi sunucu ping'lerini otomatik yanıtlar (keepalive).
+            # The websockets library automatically responds to server pings (keepalive).
             async with websockets.connect(GATEWAY_URL) as ws:
                 await ws.send(
                     json.dumps(
@@ -89,14 +90,14 @@ async def run() -> None:
                 )
                 first = json.loads(await ws.recv())
                 if first.get("type") != "auth_ok":
-                    # Token yanlışsa yeniden denemenin anlamı yok — çık.
-                    sys.exit(f"[kimlik hatası] {first.get('message', '?')}")
-                print(f"[bağlı] cihaz: {first.get('deviceName')} — açılma komutu bekleniyor…")
+                    # Retrying with an invalid token is pointless — exit.
+                    sys.exit(f"[authentication error] {first.get('message', '?')}")
+                print(f"[connected] device: {first.get('deviceName')} — waiting for an open command…")
                 delay = 1
 
-                await handle_messages(ws)  # bağlantı kopunca döner
+                await handle_messages(ws)  # returns when the connection drops
         except (OSError, websockets.WebSocketException) as exc:
-            print(f"[koptu] {exc} — {delay} sn sonra yeniden bağlanılacak...")
+            print(f"[disconnected] {exc} — reconnecting in {delay} seconds...")
 
         await asyncio.sleep(delay)
         delay = min(delay * 2, 30)
@@ -108,4 +109,4 @@ if __name__ == "__main__":
     except KeyboardInterrupt:
         pass
     finally:
-        relay.off()  # her çıkışta fail-closed
+        relay.off()  # fail-closed on every exit

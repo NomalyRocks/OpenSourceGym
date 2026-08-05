@@ -4,16 +4,16 @@ export interface HealthResponse {
   timestamp: string;
 }
 
-/** Tek bir alt bileşenin readiness sonucu. */
+/** Readiness result for a single subcomponent. */
 export interface ReadinessCheck {
   status: "up" | "down";
-  /** Yalnızca "down" durumunda doldurulur. */
+  /** Populated only when the status is "down". */
   error?: string;
 }
 
 /**
- * /health/ready yanıtı. Liveness'ten (/health) ayrıdır: burada bağımlılıklar
- * gerçekten yoklanır, dolayısıyla süreç ayakta olsa da "down" dönebilir.
+ * The /health/ready response. Unlike liveness (/health), it actually checks
+ * dependencies, so it may return "down" even when the process is running.
  */
 export interface ReadinessResponse {
   status: "ok" | "degraded";
@@ -27,13 +27,13 @@ export interface ReadinessResponse {
 }
 
 /**
- * İmleç (keyset) tabanlı sayfalama zarfı. Offset yerine imleç kullanılır:
- * listeler zamana göre azalan sıradadır ve sürekli yeni kayıt eklenir, offset
- * ile sayfa atlarken kayıt tekrarlanır veya atlanırdı.
+ * Cursor-based (keyset) pagination envelope. A cursor is used instead of an
+ * offset because lists are ordered by descending time and receive new records
+ * continuously, so offset pagination could duplicate or skip records.
  */
 export interface Page<T> {
   items: T[];
-  /** Sonraki sayfa için `cursor` sorgu parametresine verilir; son sayfada null. */
+  /** Passed as the `cursor` query parameter for the next page; null on the last page. */
   nextCursor: string | null;
 }
 
@@ -48,7 +48,7 @@ export interface PublicUser {
   phone: string;
   role: Role;
   emailVerified: boolean;
-  /** MFA (iki aşamalı doğrulama) etkin mi — Faz 5 */
+  /** Whether MFA (two-factor authentication) is enabled — Phase 5 */
   twoFactorEnabled: boolean;
   profilePhotoUrl: string | null;
   createdAt: string;
@@ -62,11 +62,11 @@ export interface MyProfile {
   mustChangePassword: boolean;
   twoFactorEnabled: boolean;
   profilePhotoUrl: string | null;
-  /** Mobil kalori hesaplayıcının otomatik doldurması için üyenin kendi girdiği yaş */
+  /** Member-entered age used to prefill the mobile calorie calculator */
   age: number | null;
-  /** Mobil kalori hesaplayıcının otomatik doldurması için üyenin kendi girdiği boy (cm) */
+  /** Member-entered height (cm) used to prefill the mobile calorie calculator */
   heightCm: number | null;
-  /** Mobil kalori hesaplayıcının otomatik doldurması için üyenin kendi girdiği kilo (kg) */
+  /** Member-entered weight (kg) used to prefill the mobile calorie calculator */
   weightKg: number | null;
 }
 
@@ -107,28 +107,28 @@ export interface GymSettings {
     radiusM: number;
   } | null;
   capacity: number | null;
-  /** Çıkış turnikesi yoksa üyenin "içeride" sayılacağı azami süre (saat) — Faz 5 doluluk */
+  /** Maximum time (hours) a member is considered "inside" without an exit turnstile — Phase 5 occupancy */
   autoExitHours: number;
-  /** Hesap paylaşımı tespiti ayarları — Faz 6 */
+  /** Account-sharing detection settings — Phase 6 */
   sharing: SharingConfig;
-  /** Otomatik yenileme hatırlatmaları — Faz E */
+  /** Automatic renewal reminders — Phase E */
   reminders: ReminderConfig;
-  /** Operatörün kendi bölgesi için yayınladığı hukuki belgeler */
+  /** Legal documents published by the operator for their jurisdiction */
   legal: LegalConfig;
 }
 
 /**
- * OpenGym hiçbir hukuki metin içermez: aydınlatma/veri işleme bildirimi ve
- * gizlilik sözleşmesi, salonu işleten tarafın kendi mevzuatına (KVKK, GDPR,
- * CCPA vb.) göre hazırlayıp yayınladığı belgelerdir. Burada yalnızca bu
- * belgelerin adresi ve sürümü tutulur.
+ * OpenGym contains no legal text: the disclosure/data processing notice and
+ * privacy policy are documents prepared and published by the gym operator
+ * under their applicable laws (KVKK, GDPR, CCPA, etc.). Only the URLs and
+ * version of these documents are stored here.
  */
 export interface LegalConfig {
-  /** Veri işleme/aydınlatma bildirimi adresi — tanımsızsa onay kutusu linksiz gösterilir */
+  /** Data processing/disclosure notice URL — the checkbox is shown without a link when unset */
   dataProcessingUrl: string | null;
-  /** Gizlilik sözleşmesi adresi — tanımsızsa onay kutusu linksiz gösterilir */
+  /** Privacy policy URL — the checkbox is shown without a link when unset */
   privacyUrl: string | null;
-  /** Metinler değişince artırılır; yeniden onay akışının ileride dayanacağı sürüm */
+  /** Incremented when the texts change; the version a future re-consent flow will use */
   version: number;
 }
 
@@ -142,11 +142,11 @@ export interface AuditLogEntry {
   at: string;
 }
 
-// ---- Faz 4 (revize): Statik turnike QR + Device Gateway ----
-// Akış: turnikeye yapıştırılmış statik QR üye telefonuyla okutulur; sunucu
-// üyeyi doğrular ve cihaza WS üzerinden "open" komutu gönderir.
+// ---- Phase 4 (revised): Static turnstile QR + Device Gateway ----
+// Flow: the member scans the static QR attached to the turnstile with their phone;
+// the server verifies the member and sends the device an "open" command over WS.
 
-/** Tarama isteğinin reddedilme nedenleri (HTTP 403 body.code; entry_events.reason) */
+/** Reasons for rejecting a scan request (HTTP 403 body.code; entry_events.reason) */
 export type GateRejectCode =
   | "INVALID_QR"
   | "UNKNOWN_DEVICE"
@@ -157,13 +157,13 @@ export type GateRejectCode =
   | "MOCK_LOCATION"
   | "SHARING_BLOCKED";
 
-/** İstemcilerin sunucu mesajını ayrıştırmadan çevirebildiği kararlı hata kodları. */
+/** Stable error codes clients can translate without parsing the server message. */
 export type ApiErrorCode =
   | GateRejectCode
   | "AUTH_REQUIRED"
   | "FORBIDDEN"
   | "PASSWORD_CHANGE_REQUIRED"
-  /** Beklenmeyen sunucu hatası — ayrıntı istemciye sızdırılmaz */
+  /** Unexpected server error — details are not exposed to the client */
   | "INTERNAL_ERROR"
   | "PAYLOAD_TOO_LARGE"
   | "PROFILE_PHOTO_MISSING"
@@ -208,7 +208,7 @@ export type ApiErrorCode =
 
 export interface ApiErrorResponse {
   code: ApiErrorCode;
-  /** Loglar ve API istemcileri için İngilizce mesaj; UI kararları code ile verilir. */
+  /** English message for logs and API clients; UI decisions are based on code. */
   message: string;
 }
 
@@ -216,11 +216,11 @@ export interface GateScanResponse {
   ok: true;
   deviceName: string;
   direction: DeviceDirection;
-  /** Röle tetikleme süresi (ms) — bilgi amaçlı */
+  /** Relay activation duration (ms) — informational only */
   openMs: number;
 }
 
-/** Turnike yönü: "in" giriş (doluluk +1), "out" çıkış (doluluk -1, abonelik kontrolü atlanır) */
+/** Turnstile direction: "in" for entry (occupancy +1), "out" for exit (occupancy -1, subscription check skipped) */
 export type DeviceDirection = "in" | "out";
 
 export interface Device {
@@ -230,13 +230,13 @@ export interface Device {
   online: boolean;
   lastSeenAt: string | null;
   createdAt: string;
-  /** Son 24 saatte çevrimiçi kalma yüzdesi (0-100) — KPI-4 */
+  /** Percentage of time online in the last 24 hours (0-100) — KPI-4 */
   uptime24h: number;
-  /** Yazdırılabilir statik QR içeriği (OGGATE1.…) */
+  /** Printable static QR content (OGGATE1.…) */
   qrContent: string;
 }
 
-/** Cihaz oluşturma yanıtı — token yalnızca bu yanıtta bir kez görünür */
+/** Device creation response — the token appears only once in this response */
 export interface DeviceCreated {
   id: string;
   name: string;
@@ -256,26 +256,26 @@ export interface EntryEvent {
   at: string;
 }
 
-/** Üyenin kendi geliş günü (mobil takvim) — tek bir yerel takvim gününün özeti */
+/** Member's own visit day (mobile calendar) — summary of a single local calendar day */
 export interface MyEntryDay {
-  /** Salonun saat dilimindeki takvim günü, `YYYY-MM-DD` */
+  /** Calendar day in the gym's time zone, `YYYY-MM-DD` */
   date: string;
-  /** O gün gerçekleşen geliş (giriş yönü) sayısı; her zaman ≥ 1 */
+  /** Number of visits (inbound entries) on that day; always ≥ 1 */
   entries: number;
 }
 
-/** Üyenin kendi geliş geçmişi, gün gün (mobil takvim) */
+/** Member's own visit history by day (mobile calendar) */
 export interface MyEntriesResponse {
-  /** Yalnızca en az bir geliş olan günler; tarihe göre artan sırada */
+  /** Only days with at least one visit, in ascending date order */
   days: MyEntryDay[];
-  /** Günlerin hesaplandığı IANA saat dilimi (salon saati) */
+  /** IANA time zone used to calculate the days (gym time) */
   timeZone: string;
 }
 
 /**
- * Üyenin kendi yaş/boy/kilosu. PATCH /api/me/body-metrics gövdesinde alan
- * atlanırsa dokunulmaz, `null` gönderilirse temizlenir; yanıt her zaman
- * güncel tam durumu döner.
+ * The member's own age, height, and weight. In the PATCH /api/me/body-metrics
+ * body, an omitted field is left unchanged and `null` clears it; the response
+ * always returns the complete current state.
  */
 export interface MyBodyMetrics {
   age: number | null;
@@ -283,20 +283,20 @@ export interface MyBodyMetrics {
   weightKg: number | null;
 }
 
-/** Üyenin profildeki kilosunun bir andaki değeri (mobil takvim) */
+/** A point-in-time value of the member's profile weight (mobile calendar) */
 export interface MyWeightEntry {
   weightKg: number;
-  /** Kaydın oluşturulduğu an, ISO 8601 */
+  /** Time the record was created, ISO 8601 */
   at: string;
 }
 
-/** Üyenin kendi kilo geçmişi — weightKg her değiştiğinde eklenir, artan zamana göre sıralı */
+/** Member's own weight history — appended whenever weightKg changes, ordered by ascending time */
 export interface MyWeightHistoryResponse {
   entries: MyWeightEntry[];
 }
 
-// Device Gateway WS protokolü (JSON text frame, cihaz ↔ sunucu)
-// Cihaz artık "dumb client": yalnızca kimlik doğrular ve open komutu dinler
+// Device Gateway WS protocol (JSON text frame, device ↔ server)
+// The device is now a "dumb client": it only authenticates and listens for open commands
 export type DeviceClientMessage = {
   type: "auth";
   deviceId: string;
@@ -308,33 +308,33 @@ export type DeviceServerMessage =
   | { type: "auth_error"; message: string }
   | {
       type: "open";
-      /** Röle tetikleme süresi (ms) — cihaz bu süre kadar açar */
+      /** Relay activation duration (ms) — the device opens for this long */
       openMs: number;
     };
 
-// ---- Faz 5: MFA / Doluluk / Veri koruma ----
+// ---- Phase 5: MFA / Occupancy / Data protection ----
 
-/** Hassas işlem (rol atama) MFA doğrulama yöntemi */
+/** MFA verification method for a sensitive operation (role assignment) */
 export type MfaMethod = "totp" | "otp";
 
-/** Anlık salon doluluğu (US-4) */
+/** Current gym occupancy (US-4) */
 export interface OccupancyResponse {
-  /** İçerideki üye sayısı (giriş turnikesi sayacı, autoExitHours ile eskiyenler düşülür) */
+  /** Number of members inside (entry turnstile count, excluding entries expired by autoExitHours) */
   inside: number;
   capacity: number | null;
-  /** inside/capacity oranı (0-1); kapasite tanımsızsa null */
+  /** inside/capacity ratio (0-1); null when capacity is unset */
   ratio: number | null;
 }
 
-/** Yönetim paneli genel bakış KPI'ları */
+/** Admin panel overview KPIs */
 export interface AdminStats {
-  /** Şu an aktif aboneliği olan benzersiz üye sayısı */
+  /** Number of unique members with an active subscription */
   activeMembers: number;
-  /** Aboneliği önümüzdeki 7 gün içinde sona erecek benzersiz üye sayısı */
+  /** Number of unique members whose subscriptions expire within the next 7 days */
   renewalsDue: number;
 }
 
-/** Hesap silme (veri silme) talebi (panel listesi) */
+/** Account deletion (data deletion) request (panel list) */
 export interface DeletionRequest {
   id: string;
   userId: string;
@@ -346,122 +346,122 @@ export interface DeletionRequest {
   resolvedBy: string | null;
 }
 
-/** Üyenin kendi silme talebi durumu (mobil) */
+/** Status of the member's own deletion request (mobile) */
 export interface MyDeletionRequest {
   status: "none" | "pending" | "rejected";
   requestedAt: string | null;
 }
 
-// ---- Faz 6: Hesap Paylaşımı Tespiti / Anti-Debug / Anti-Spoof ----
+// ---- Phase 6: Account-sharing detection / Anti-debug / Anti-spoof ----
 
-/** Hesap paylaşımı şüphesi sinyal türleri */
+/** Signal types for suspected account sharing */
 export type SharingSignalKind =
   "fingerprint-churn" | "location-inconsistency" | "mock-location";
 
-/** Hesap paylaşımı tespiti eşik/pencere ayarları (salon ayarlarında düzenlenebilir) */
+/** Account-sharing detection threshold/window settings (editable in gym settings) */
 export interface SharingConfig {
-  /** Üye rolü için eşzamanlı oturum üst sınırı */
+  /** Maximum concurrent sessions for the member role */
   memberMaxSessions: number;
-  /** Personel/admin rolü için eşzamanlı oturum üst sınırı */
+  /** Maximum concurrent sessions for the staff/admin roles */
   staffMaxSessions: number;
-  /** Bu sayıda sinyal birikince otomatik engelleme tetiklenir */
+  /** Automatic blocking is triggered when this many signals accumulate */
   signalThreshold: number;
-  /** Sinyallerin sayıldığı zaman penceresi (saat) */
+  /** Time window in which signals are counted (hours) */
   signalWindowHours: number;
-  /** Otomatik QR engelinin süresi (saat) */
+  /** Duration of the automatic QR block (hours) */
   qrBlockHours: number;
 }
 
-// ---- Faz E: Raporlama, yenileme hatırlatmaları, dışa aktarma ----
+// ---- Phase E: Reporting, renewal reminders, export ----
 
-/** Otomatik yenileme hatırlatması ayarları (salon ayarlarında düzenlenebilir) */
+/** Automatic renewal reminder settings (editable in gym settings) */
 export interface ReminderConfig {
   /**
-   * Kapalıyken hiçbir otomatik e-posta gönderilmez. Varsayılan kapalıdır:
-   * sürüm yükselten bir kurulum, haberi olmadan üyelerine posta atmamalı.
+   * No automatic email is sent when disabled. It is disabled by default so an
+   * upgraded installation does not email its members without the operator's knowledge.
    */
   enabled: boolean;
   /**
-   * Aboneliğin bitmesine bu kadar gün kala hatırlatma gönderilir. Her eşik
-   * abonelik başına bir kez tetiklenir.
+   * A reminder is sent this many days before the subscription expires. Each
+   * threshold is triggered once per subscription.
    */
   daysBefore: number[];
 }
 
-/** Rapor sorgusunun kapsadığı aralık (sunucunun uyguladığı hâliyle) */
+/** Range covered by the report query (as applied by the server) */
 export interface ReportRange {
   from: string;
   to: string;
 }
 
-/** Tarih aralıklı yönetim raporu özeti */
+/** Summary of the date-ranged admin report */
 export interface ReportSummary {
   range: ReportRange;
-  /** Günlük kova sınırlarının hesaplandığı IANA saat dilimi */
+  /** IANA time zone used to calculate daily bucket boundaries */
   timeZone: string;
-  /** Şu an aktif aboneliği olan benzersiz üye sayısı (aralıktan bağımsız) */
+  /** Number of unique members with an active subscription (independent of the range) */
   activeMembers: number;
-  /** Aralıkta kaydolan üye sayısı */
+  /** Number of members registered within the range */
   newMembers: number;
-  /** Aralıkta oluşturulan abonelik sayısı */
+  /** Number of subscriptions created within the range */
   newSubscriptions: number;
   /**
-   * Aralıkta aboneliği biten ve aralık sonuna kadar yenilemeyen üye sayısı
-   * (en geç aboneliği bu aralıkta sona erenler).
+   * Number of members whose subscription expired within the range and who did
+   * not renew by the end of the range (their latest subscription ended in this range).
    */
   lapsedMembers: number;
-  /** Aboneliği önümüzdeki 7 gün içinde bitecek üye sayısı (aralıktan bağımsız) */
+  /** Number of members whose subscriptions expire within the next 7 days (independent of the range) */
   renewalsDue: number;
   entries: {
     total: number;
     allowed: number;
     denied: number;
-    /** Aralıkta en az bir kez geçiş yapan benzersiz üye sayısı */
+    /** Number of unique members who passed through at least once within the range */
     uniqueMembers: number;
   };
 }
 
-/** Giriş trendinin tek günlük kovası */
+/** Single-day bucket in the entry trend */
 export interface EntryTrendPoint {
-  /** Kovanın salon saat dilimindeki günü (YYYY-MM-DD) */
+  /** Bucket day in the gym's time zone (YYYY-MM-DD) */
   date: string;
   total: number;
   allowed: number;
   denied: number;
 }
 
-/** Günlük giriş trendi (grafik verisi) */
+/** Daily entry trend (chart data) */
 export interface EntryTrend {
   range: ReportRange;
   timeZone: string;
   points: EntryTrendPoint[];
 }
 
-/** Aboneliği yakında bitecek üye (yenileme listesi satırı) */
+/** Member whose subscription expires soon (renewal list row) */
 export interface RenewalDueMember {
   userId: string;
   firstName: string;
   lastName: string;
   email: string;
   phone: string;
-  /** Üyenin en geç aboneliğinin bitiş tarihi */
+  /** End date of the member's latest subscription */
   endsAt: string;
-  /** Bitişe kalan tam gün sayısı (bugün bitiyorsa 0) */
+  /** Number of full days remaining until expiration (0 if it expires today) */
   remainingDays: number;
-  /** Bu abonelik için en son gönderilen hatırlatma; hiç gönderilmediyse null */
+  /** Latest reminder sent for this subscription; null if none has been sent */
   lastReminderAt: string | null;
 }
 
 /**
- * Elle hatırlatma gönderme sonucu (yalnızca 200 yanıtında).
- * Gönderilemeyen durumlar normal hata sözleşmesiyle döner:
- * `REMINDER_RECENTLY_SENT` (429) veya `NO_UPCOMING_RENEWAL` (404).
+ * Result of sending a manual reminder (only in a 200 response).
+ * Cases where it cannot be sent use the standard error contract:
+ * `REMINDER_RECENTLY_SENT` (429) or `NO_UPCOMING_RENEWAL` (404).
  */
 export interface RenewalReminderResult {
   sent: boolean;
-  /** Hatırlatmanın kaydedildiği zaman */
+  /** Time the reminder was recorded */
   sentAt: string | null;
 }
 
-/** CSV dışa aktarma veri kümeleri */
+/** CSV export datasets */
 export type ExportDataset = "members" | "subscriptions" | "entries";

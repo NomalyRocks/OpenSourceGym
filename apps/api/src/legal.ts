@@ -3,13 +3,13 @@ import type { LegalConfig } from "@opengym/shared";
 import { findGymSettings } from "./db.js";
 
 /**
- * OpenGym hiçbir bölgeye ait hukuki metin içermez. Aydınlatma/veri işleme
- * bildirimi ve gizlilik sözleşmesi, salonu işleten tarafın kendi mevzuatına
- * (KVKK, GDPR, CCPA...) göre hazırlayıp yayımladığı belgelerdir; ürün yalnızca
- * bu belgelerin adresini ve sürümünü taşır (bkz. docs/legal/README.md).
+ * OpenGym contains no region-specific legal text. The disclosure/data
+ * processing notice and privacy policy are documents prepared and published by
+ * the gym operator under its applicable law (KVKK, GDPR, CCPA...); the product
+ * stores only the document URLs and version (see docs/legal/README.md).
  *
- * Varsayılan adresler `null`: kurulum yapılmadan da kayıt akışı çalışır,
- * onay kutuları yalnızca linksiz gösterilir.
+ * Default URLs are `null`: registration still works before configuration, and
+ * consent checkboxes are simply shown without links.
  */
 export const LEGAL_DEFAULTS: LegalConfig = {
   dataProcessingUrl: null,
@@ -18,7 +18,7 @@ export const LEGAL_DEFAULTS: LegalConfig = {
 };
 
 // settings._id: "gym" tekil belgesindeki opsiyonel "legal" alt nesnesi,
-// varsayılanların üzerine sığ (shallow) olarak birleştirilir
+// Shallow-merged over the defaults
 export async function getLegalConfig(database?: Db): Promise<LegalConfig> {
   const doc = await (database ? findGymSettings(database) : findGymSettings());
   return { ...LEGAL_DEFAULTS, ...(doc?.legal ?? {}) };

@@ -52,16 +52,16 @@ export function ResetPassword({
     setPasswordError(null);
     setConfirmError(null);
     if (otp.length !== 6) {
-      setOtpError(t("6 haneli doğrulama kodunu girin."));
+      setOtpError(t("Enter the 6-digit verification code."));
       return;
     }
     if (password.length < 8) {
-      setPasswordError(t("Şifre en az 8 karakter olmalı."));
+      setPasswordError(t("The password must be at least 8 characters."));
       passwordRef.current?.focus();
       return;
     }
     if (password !== confirm) {
-      setConfirmError(t("Şifreler eşleşmiyor."));
+      setConfirmError(t("Passwords do not match."));
       confirmRef.current?.focus();
       return;
     }
@@ -73,30 +73,31 @@ export function ResetPassword({
       });
       if (error) {
         if (error.status === 429) {
-          setError(t("Çok fazla deneme. Lütfen bir dakika bekleyin."));
+          setError(t("Too many attempts. Please wait one minute."));
         } else if (error.code === "INVALID_OTP") {
-          setError(t("Kod hatalı."));
+          setError(t("The code is invalid."));
         } else if (error.code === "OTP_EXPIRED") {
-          setError(t("Kodun süresi dolmuş."));
+          setError(t("The code has expired."));
         } else if (error.code === "TOO_MANY_ATTEMPTS") {
-          setError(t("Çok fazla hatalı deneme yapıldı. Yeni kod isteyin."));
+          setError(t("Too many invalid attempts. Request a new code."));
         } else if (error.code === "PASSWORD_TOO_SHORT") {
-          setError(t("Şifre en az 8 karakter olmalı."));
+          setError(t("The password must be at least 8 characters."));
         } else {
-          setError(t("Şifre sıfırlanamadı. Lütfen tekrar deneyin."));
+          setError(t("The password could not be reset. Please try again."));
         }
         return;
       }
-      Alert.alert(t("Şifreniz güncellendi"), t("Yeni şifrenizle giriş yapın."));
+      Alert.alert(
+        t("Your password was updated"),
+        t("Sign in with your new password."),
+      );
       onDone();
     });
   }
 
   function showUnreachable() {
     setError(
-      t(
-        "Bağlantı kurulamadı. İnternet bağlantınızı kontrol edip tekrar deneyin.",
-      ),
+      t("Could not connect. Check your internet connection and try again."),
     );
   }
 
@@ -110,26 +111,23 @@ export function ResetPassword({
       if (error) {
         setError(
           error.status === 429
-            ? t("Çok fazla deneme. Lütfen bir dakika bekleyin.")
-            : t("İstek gönderilemedi. Lütfen tekrar deneyin."),
+            ? t("Too many attempts. Please wait one minute.")
+            : t("The request could not be sent. Please try again."),
         );
         return;
       }
       setOtp("");
-      setInfo(t("Yeni kod gönderildi."));
+      setInfo(t("A new code was sent."));
     });
   }
 
   return (
     <AuthShell onBack={onBack}>
       <AuthHeading
-        title={t("Yeni şifre oluştur")}
-        subtitle={t(
-          "{{email}} adresine gönderilen kodu ve yeni şifrenizi girin.",
-          {
-            email,
-          },
-        )}
+        title={t("Create a new password")}
+        subtitle={t("Enter the code sent to {{email}} and your new password.", {
+          email,
+        })}
       />
 
       {error || info ? (
@@ -150,10 +148,10 @@ export function ResetPassword({
         />
         <PasswordField
           inputRef={passwordRef}
-          label={t("Yeni şifre (min. 8 karakter)")}
+          label={t("New password (min. 8 characters)")}
           value={password}
           error={passwordError}
-          helperText={t("En az 8 karakter kullanın.")}
+          helperText={t("Use at least 8 characters.")}
           onChangeText={(value) => {
             setPassword(value);
             if (passwordError) setPasswordError(null);
@@ -164,7 +162,7 @@ export function ResetPassword({
         />
         <PasswordField
           inputRef={confirmRef}
-          label={t("Yeni şifre (tekrar)")}
+          label={t("Confirm new password")}
           value={confirm}
           error={confirmError}
           onChangeText={(value) => {
@@ -177,7 +175,7 @@ export function ResetPassword({
         />
       </View>
 
-      <Button title={t("Şifreyi sıfırla")} onPress={submit} busy={busy} />
+      <Button title={t("Reset password")} onPress={submit} busy={busy} />
 
       <Pressable
         accessibilityRole="button"
@@ -188,7 +186,7 @@ export function ResetPassword({
         style={({ pressed }) => [styles.resend, pressed && styles.pressed]}
       >
         <Text style={styles.resendLabel}>
-          {resending ? t("Kod gönderiliyor...") : t("Kodu tekrar gönder")}
+          {resending ? t("Sending code...") : t("Resend code")}
         </Text>
       </Pressable>
     </AuthShell>

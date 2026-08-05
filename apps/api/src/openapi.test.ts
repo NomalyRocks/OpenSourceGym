@@ -3,7 +3,7 @@ import test from "node:test";
 import { LEGAL_DOCUMENT_URL_PATTERN } from "./legalUrl.js";
 import { openApiDocument } from "./openapi/spec.js";
 
-test("OpenAPI, public hukuki belge endpoint'ini ve HTTP(S) URL kısıtını yayımlar", () => {
+test("OpenAPI publishes the public legal document endpoint and HTTP(S) URL restriction", () => {
   const document = openApiDocument as unknown as {
     paths: Record<
       string,

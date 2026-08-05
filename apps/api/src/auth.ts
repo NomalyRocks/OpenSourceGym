@@ -30,7 +30,7 @@ import {
   InvalidBodyMetricError,
 } from "./bodyMetrics.js";
 
-/** Vücut ölçüsü doğrulama hatasını BetterAuth'un 400 yanıtına çevirir. */
+/** Converts a body-metric validation error into a BetterAuth 400 response. */
 function assertBodyMetricsOrBadRequest(input: {
   age?: unknown;
   heightCm?: unknown;
@@ -79,7 +79,7 @@ function bypassableRateLimit(window: number, max: number) {
           return false as const;
         }
       } catch {
-        // JSON olmayan/boş body — normal kuralı uygula
+        // Non-JSON or empty body—apply the normal rule
       }
     }
     return { window, max };
@@ -102,9 +102,9 @@ function isPhoneIdentityDuplicateKey(error: unknown): boolean {
   );
 }
 
-// Hook ön kontrolü kullanıcı dostu hata üretir; bu adapter sarmalayıcısı ise
-// iki yazım aynı anda ön kontrolden geçtiğinde Mongo'nun atomik E11000
-// sonucunu aynı PHONE_ALREADY_EXISTS sözleşmesine çevirir.
+// The hook precheck produces a user-friendly error; this adapter wrapper converts
+// Mongo's atomic E11000 result to the same PHONE_ALREADY_EXISTS contract when
+// two writes pass the precheck concurrently.
 const baseDatabaseAdapter = mongodbAdapter(db);
 const databaseAdapter: typeof baseDatabaseAdapter = (options) => {
   const adapter = baseDatabaseAdapter(options);
@@ -144,8 +144,8 @@ async function assertPhoneAvailable(phoneE164: string): Promise<void> {
 export const auth = betterAuth({
   baseURL: env.betterAuthUrl,
   secret: env.betterAuthSecret,
-  // "opengym://" mobil uygulamanın deep-link scheme'i (@better-auth/expo).
-  // "exp://" yalnızca geliştirmede: Expo Go istemcisi exp://<lan-ip>:8081 origin'i gönderir.
+  // "opengym://" is the mobile app's deep-link scheme (@better-auth/expo).
+  // "exp://" is development-only: Expo Go sends an exp://<lan-ip>:8081 origin.
   trustedOrigins: [
     ...env.trustedOrigins,
     "opengym://",
@@ -174,31 +174,26 @@ export const auth = betterAuth({
     requireEmailVerification: true,
     minPasswordLength: 8,
     revokeSessionsOnPasswordReset: true,
-    // BetterAuth'un kendi revokeSessionsOnPasswordReset'i yalnızca Redis
-    // "active-sessions-<userId>" listesindeki token'ları siler; Faz 6'nın
-    // enforceSessionPolicy eviction'ı (sharing.ts) o listeyi hayatta kalan
-    // oturumları yeniden yazmadan tamamen siler, bu yüzden liste zaten
-    // boşalmış kullanıcılarda hayatta kalan Redis oturum blob'ları asla
-    // silinmez ve findSession Mongo'ya hiç bakmadan onları geçerli kabul
-    // eder. revokeUserSessions() token'ları Mongo'dan (referans doğruluk)
-    // okuduğundan bu listeye bağımlı değildir. mustChangePassword'a
-    // dokunmaz — yalnızca oturum iptali için eklenmiştir.
-    // BetterAuth bu hook'u parola hash'i Mongo'ya yazıldıktan SONRA, kendi
-    // revokeSessionsOnPasswordReset fallback'inden (internalAdapter.
-    // deleteUserSessions) ÖNCE çalıştırır. revokeUserSessions() burada
-    // hata fırlatırsa tüm route iptal olur: kullanıcıya parola değişmedi
-    // izlenimi verilir (oysa hash zaten güncellendi) ve BetterAuth'un
-    // kendi fallback oturum iptali de hiç çalışmaz. Bu yüzden hatayı
-    // yutup yalnızca logluyoruz; böylece istek başarıyla döner ve
-    // fallback devreye girip oturumları temizler.
+    // BetterAuth's own revokeSessionsOnPasswordReset only deletes tokens in the
+    // Redis "active-sessions-<userId>" list. Phase 6 enforceSessionPolicy
+    // eviction (sharing.ts) deletes that list completely without rewriting
+    // surviving sessions, so surviving Redis session blobs are never deleted
+    // for users whose list is already empty, and findSession accepts them as
+    // valid without consulting Mongo. revokeUserSessions() reads tokens from
+    // Mongo (the source of truth), so it does not depend on that list. It does
+    // not touch mustChangePassword—it was added only for session revocation.
+    // BetterAuth runs this hook AFTER writing the password hash to Mongo but
+    // BEFORE its own revokeSessionsOnPasswordReset fallback (internalAdapter.
+    // deleteUserSessions). If revokeUserSessions() throws here, the entire route
+    // aborts: the user is told the password did not change even though the hash
+    // was updated, and BetterAuth's fallback session revocation never runs.
+    // Therefore, swallow and only log the error so the request succeeds and the
+    // fallback can run and clear the sessions.
     onPasswordReset: async ({ user }) => {
       try {
         await revokeUserSessions(user.id);
       } catch (err) {
-        console.error(
-          "onPasswordReset: revokeUserSessions başarısız oldu",
-          err,
-        );
+        console.error("onPasswordReset: revokeUserSessions failed", err);
       }
     },
   },
@@ -226,18 +221,18 @@ export const auth = betterAuth({
         defaultValue: false,
         input: false,
       },
-      // Bölge-bağımsız onaylar: metinlerin içeriği operatörün mevzuatına göre
-      // değişir (KVKK, GDPR, CCPA...), alan adları bu yüzden nötrdür.
+      // Region-neutral consents: text varies with the operator's applicable law
+      // (KVKK, GDPR, CCPA...), so the field names are neutral.
       dataProcessingAccepted: { type: "boolean", required: true },
       privacyAccepted: { type: "boolean", required: true },
       dataProcessingAcceptedAt: { type: "date", required: false, input: false },
       privacyAcceptedAt: { type: "date", required: false, input: false },
-      // Mobil kalori hesaplayıcının otomatik doldurabilmesi için üyenin
-      // kendi girdiği yaş/boy/kilo. `input: false`: BetterAuth'un genel
-      // `update-user` ve `sign-up` uçlarından yazılamazlar, çünkü o uçlar
-      // yalnızca oturum middleware'inden geçer; `requireRole`'un
-      // mustChangePassword denetimi ve Mongo'dan yeniden okuma davranışı
-      // çalışmaz (bkz. AGENTS.md). Tek yazma yolu PATCH /api/me/body-metrics.
+      // Member-provided age, height, and weight for mobile calorie calculator
+      // defaults. `input: false`: BetterAuth's generic `update-user` and `sign-up`
+      // endpoints cannot write them because those endpoints pass only through
+      // session middleware; `requireRole`'s mustChangePassword check and Mongo
+      // reread do not run (see AGENTS.md). The only write path is
+      // PATCH /api/me/body-metrics.
       age: { type: "number", required: false, input: false },
       heightCm: { type: "number", required: false, input: false },
       weightKg: { type: "number", required: false, input: false },
@@ -245,21 +240,20 @@ export const auth = betterAuth({
   },
 
   session: {
-    // secondaryStorage (Redis) etkinken oturum belgeleri varsayılan olarak
-    // Mongo'ya YAZILMAZ (yalnızca Redis'te tutulur). Faz 6'nın eşzamanlı
-    // oturum sınırı / cihaz parmak izi churn tespiti Mongo'daki "session"
-    // koleksiyonunu sorguladığından bu açıkça etkinleştirilir; okumalar yine
-    // de Redis'ten yapılmaya devam eder (performans kaybı yok)
+    // With secondaryStorage (Redis), session documents are NOT WRITTEN to Mongo
+    // by default and live only in Redis. Phase 6 concurrent-session limits and
+    // device-fingerprint churn detection query Mongo's "session" collection, so
+    // this is enabled explicitly; reads still use Redis (no performance loss)
     storeSessionInDatabase: true,
     additionalFields: {
       deviceFingerprint: { type: "string", required: false, input: false },
     },
   },
 
-  // Mobil istemcinin önceki sürümü `kvkkAccepted` gönderir. BetterAuth ek
-  // alanların zorunluluğunu database hook'undan önce denetlediğinden, rollout
-  // süresince bu değeri istek aşamasında nötr alana taşırız. Eski alan şemada
-  // tanımlı değildir; böylece Mongo'ya yazılmaz veya kullanıcıya dönmez.
+  // The previous mobile client sends `kvkkAccepted`. Because BetterAuth checks
+  // required additional fields before the database hook, move this value to the
+  // neutral field at the request stage during rollout. The legacy field is not
+  // defined in the schema, so it is neither written to Mongo nor returned.
   hooks: {
     before: createAuthMiddleware(async (ctx) => {
       if (
@@ -288,12 +282,12 @@ export const auth = betterAuth({
           if (!candidate.dataProcessingAccepted || !candidate.privacyAccepted) {
             throw new APIError("BAD_REQUEST", {
               message:
-                "Veri işleme bildirimi ve gizlilik sözleşmesi onayları zorunludur.",
+                "Data processing notice and privacy policy consent are required.",
             });
           }
-          // `input: false` bu alanları kayıt gövdesinden zaten eler; doğrulama
-          // yine de burada duruyor ki alanlar ileride yazılabilir yapılırsa
-          // aralık dışı bir değer sessizce kalıcı olmasın.
+          // `input: false` already removes these fields from the registration
+          // body; validation remains here so an out-of-range value cannot be
+          // silently persisted if the fields become writable later.
           assertBodyMetricsOrBadRequest(candidate);
           const isInitialAdminSeed = isInitialAdminSeedInput(
             candidate.email,
@@ -344,9 +338,9 @@ export const auth = betterAuth({
         },
       },
     },
-    // Faz 6 — hesap paylaşımı tespiti: girişte cihaz parmak izini oturuma
-    // damgalar ve oturum oluşturulduktan sonra eşzamanlı oturum sınırı /
-    // parmak izi churn tespitini uygular
+    // Phase 6—account-sharing detection: stamps the device fingerprint onto the
+    // session at sign-in and applies the concurrent-session limit and fingerprint
+    // churn detection after session creation
     session: {
       create: {
         before: async (session, ctx) => {
@@ -388,7 +382,7 @@ export const auth = betterAuth({
       async sendVerificationOTP({ email, otp, type }) {
         if (isDevTestEmail(email)) {
           console.log(
-            `[mail:dev-test] to=${email} type=${type} otp=${otp} (SMTP atlandı, @test.com)`,
+            `[mail:dev-test] to=${email} type=${type} otp=${otp} (SMTP skipped, @test.com)`,
           );
           return;
         }
@@ -404,8 +398,8 @@ export const auth = betterAuth({
         });
       },
     }),
-    // Faz 5 — US-3: hassas admin işlemleri (rol atama) için MFA. Mongo adapter
-    // "twoFactor" koleksiyonunu göç (migration) gerektirmeden otomatik oluşturur
+    // Phase 5—US-3: MFA for sensitive admin operations (role assignment). The
+    // Mongo adapter creates the "twoFactor" collection without a migration
     twoFactor({
       issuer: "OpenGym",
       otpOptions: {

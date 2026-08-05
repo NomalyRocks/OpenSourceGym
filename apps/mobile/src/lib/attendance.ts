@@ -1,9 +1,9 @@
 /**
- * Takvimin geliş katmanı.
+ * Calendar attendance layer.
  *
- * Kaynak `GET /api/me/entries`: oturumdaki üyenin `entry_events` kayıtları,
- * salonun saat dilimine (`REPORTS_TIME_ZONE`) göre günlere indirgenmiş halde
- * döner. Yalnızca izin verilen ve giriş yönündeki taramalar sayılır.
+ * Source: `GET /api/me/entries`. It returns the signed-in member's `entry_events`
+ * records grouped into days according to the gym time zone (`REPORTS_TIME_ZONE`).
+ * Only allowed scans in the entry direction are counted.
  */
 
 import type { MyEntriesResponse, MyEntryDay } from "@opengym/shared";
@@ -12,16 +12,16 @@ import { api } from "./api";
 export type AttendanceDay = MyEntryDay;
 
 export interface AttendanceRange {
-  /** Aralığın ilk günü (yerel), `YYYY-MM-DD`. */
+  /** First day of the range (local), `YYYY-MM-DD`. */
   from: string;
-  /** Aralığın son günü (yerel), `YYYY-MM-DD`. */
+  /** Last day of the range (local), `YYYY-MM-DD`. */
   to: string;
 }
 
 export interface AttendanceResult {
-  /** Yalnızca en az bir geliş olan günler; tarihe göre artan sırada. */
+  /** Only days with at least one visit, sorted by ascending date. */
   days: AttendanceDay[];
-  /** Günlerin hesaplandığı salon saat dilimi. */
+  /** Gym time zone used to calculate the days. */
   timeZone: string;
 }
 

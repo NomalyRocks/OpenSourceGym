@@ -2,13 +2,13 @@ import type { Db } from "mongodb";
 import { db } from "./db.js";
 
 /**
- * Bölgeye özgü `kvkk*` onay alanlarını nötr `dataProcessing*` adlarına taşır.
- * OpenGym tek bir mevzuata bağlı olmadığından alan adları da bölgeden
- * bağımsızdır; metinlerin kendisi operatörün ayarlarındaki adreslerden gelir.
+ * Moves region-specific `kvkk*` consent fields to neutral `dataProcessing*`
+ * names. Because OpenGym is not tied to one legal framework, the field names
+ * are also region-neutral; the text itself comes from URLs in operator settings.
  *
- * `$rename` yalnızca eski alanı taşıyan belgelerde çalışır; ikinci koşumda
- * eşleşen belge kalmaz, yani işlem doğası gereği idempotenttir. Marker
- * yalnızca raporlama ve tekrar taramayı atlamak için tutulur.
+ * `$rename` operates only on documents containing the legacy field; no matching
+ * documents remain on the second run, so the operation is inherently
+ * idempotent. The marker is kept only for reporting and to skip rescanning.
  */
 const RENAME_MARKER_ID = "consent-field-rename-v1";
 
@@ -32,10 +32,10 @@ export async function renameLegacyConsentFields(
     return { skipped: true, renamedCount: existingMarker.renamedCount };
   }
 
-  // Eski ve yeni alan bir arada bulunursa `$rename` yeniyi eskinin değeriyle
-  // ezer: eski alan bu şemada tek yazma yolu olduğundan doğru olan odur.
-  // Koleksiyon kasıtlı olarak tipsiz alınır: eski alanlar `UserDocument`
-  // şemasında yok, migrasyon bittiğinde de geri gelmeyecekler.
+  // If the legacy and new fields coexist, `$rename` overwrites the new value
+  // with the legacy one: because the legacy field was the only write path in
+  // that schema, it is authoritative. The collection is intentionally untyped:
+  // legacy fields are absent from `UserDocument` and will not return after migration.
   const result = await database.collection("user").updateMany(
     {
       $or: [

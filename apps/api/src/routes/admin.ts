@@ -93,7 +93,7 @@ const initialPasswordSchema = z.object({
   newPassword: z.string().min(8),
 });
 
-// US-2: ilk giriş sonrası zorunlu şifre değişimi
+// US-2: mandatory password change after first sign-in
 adminRouter.post(
   "/initial-password",
   requireRole("admin", "staff", "member"),
@@ -132,7 +132,7 @@ adminRouter.post(
   }),
 );
 
-// US-3: telefon, e-posta, ad veya soyad ile üye arama (personel + admin)
+// US-3: member search by phone, email, first name, or last name (staff + admin)
 adminRouter.get("/users", requireRole("admin", "staff"), async (req, res) => {
   const query = parseUserSearchQuery(req.query.q);
   if (!query) {
@@ -162,7 +162,7 @@ const mfaSchema = z.object({
   mfaMethod: z.enum(["totp", "otp"]),
 });
 
-// US-3: rol atama (yalnızca admin) — çağıranın MFA'sı etkinse ek doğrulama gerekir
+// US-3: role assignment (admin only) — requires step-up verification when the caller has MFA enabled
 adminRouter.post(
   "/users/:id/role",
   requireRole("admin"),
@@ -175,8 +175,8 @@ adminRouter.post(
       return;
     }
     const { role } = parsedRole.data;
-    // ObjectId.equals ile karşılaştır: ham string eşitliği kanonik olmayan
-    // hex (ör. büyük harf) girdisinde kendi rolünü değiştirme korumasını atlatır
+    // Compare with ObjectId.equals: raw string equality lets non-canonical hex
+    // input (for example uppercase) bypass self-role-change protection.
     if (targetId.equals(req.user.id)) {
       sendApiError(
         res,
@@ -187,7 +187,7 @@ adminRouter.post(
       return;
     }
 
-    // MFA etkin adminler için rol atama, TOTP veya OTP ile ek doğrulama gerektirir
+    // Role assignment by MFA-enabled admins requires TOTP or OTP verification.
     let mfaVerified = false;
     if (req.user.twoFactorEnabled) {
       const parsedMfa = mfaSchema.safeParse(req.body);
@@ -202,8 +202,8 @@ adminRouter.post(
       }
       const { mfaCode, mfaMethod } = parsedMfa.data;
 
-      // Kaba kuvvet kilidi: BetterAuth'un HTTP hız sınırı doğrudan auth.api.*
-      // çağrılarını KAPSAMAZ — deneme sayacı burada tutulur (15 dk / 5 hatalı kod)
+      // Brute-force lock: BetterAuth's HTTP rate limiter does NOT cover direct
+      // auth.api.* calls, so attempts are counted here (15 min / 5 invalid codes).
       const mfaFailKey = `og:mfa-fail:${req.user.id}`;
       const failCount = Number((await redis.get(mfaFailKey)) ?? 0);
       if (failCount >= 5) {
@@ -268,7 +268,7 @@ const createSubscriptionSchema = z
   })
   .strict();
 
-// US-6: abonelik tanımlama/uzatma (personel + admin)
+// US-6: create or extend a subscription (staff + admin)
 adminRouter.post(
   "/subscriptions",
   requireRole("admin", "staff"),
@@ -347,7 +347,7 @@ adminRouter.get(
   },
 );
 
-// Kurulum sihirbazı: salon ayarları (yalnızca admin)
+// Setup wizard: gym settings (admin only)
 adminRouter.get("/settings", requireRole("admin"), async (_req, res) => {
   const doc = await findGymSettings();
   const settings: GymSettings = {
@@ -364,13 +364,13 @@ adminRouter.get("/settings", requireRole("admin"), async (_req, res) => {
 
 const reminderSchema = z.object({
   enabled: z.boolean(),
-  // Eşikler benzersizleştirilip sıralanmaz burada; süpürme zaten en dar eşiği
-  // seçiyor. Üst sınır 90: yenileme penceresinin ötesine hatırlatma anlamsız.
+  // Thresholds are not deduplicated or sorted here; the sweep already chooses
+  // the narrowest one. The upper bound is 90: reminders beyond it are pointless.
   daysBefore: z.array(z.number().int().min(0).max(90)).min(1).max(5),
 });
 
-// Boş string "temizle" demektir: panelde alan silinince URL null'a döner ve
-// onay kutusu linksiz gösterilmeye devam eder.
+// An empty string means clear: deleting the field in the panel resets the URL
+// to null while the consent checkbox remains visible without a link.
 const legalUrlSchema = z
   .union([legalDocumentUrlSchema, z.literal("")])
   .nullish()
@@ -390,8 +390,8 @@ const sharingSchema = z.object({
   qrBlockHours: z.number().int().min(1).max(168),
 });
 
-// Kurulum sihirbazı sayısal alanları form girdisi olarak (string) de gönderebilir;
-// coerce eski elle yazılmış Number() dönüşümüyle aynı davranışı korur.
+// The setup wizard may send numeric fields as string form inputs; coerce
+// preserves the behavior of the previous hand-written Number() conversion.
 const gymSettingsSchema = z.object({
   gymName: z.string().trim().min(1),
   location: z
@@ -403,16 +403,16 @@ const gymSettingsSchema = z.object({
     .nullish(),
   capacity: z.coerce.number().finite().positive().nullish(),
   autoExitHours: z.coerce.number().int().min(1).max(48).nullish(),
-  // Faz 6: paylaşım tespiti ayarları yalnızca istek gövdesinde mevcutsa
-  // güncellenir — mevcut ayarlanmış değerleri sessizce ezmemesi kritiktir
+  // Phase 6: sharing-detection settings are updated only when present in the
+  // request body; silently overwriting configured values must be avoided.
   sharing: sharingSchema.optional(),
-  // sharing ile aynı gerekçe: gövdede yoksa mevcut ayar korunur.
+  // Same rationale as sharing: preserve the existing setting when absent.
   reminders: reminderSchema.optional(),
-  // sharing ile aynı gerekçe: gövdede yoksa mevcut hukuki belge adresleri korunur.
+  // Same rationale as sharing: preserve existing legal document URLs when absent.
   legal: legalSchema.optional(),
 });
 
-// İstemciler mesajı değil code'u yorumlar; her alan kendi kararlı kodunu korur
+// Clients interpret the code, not the message; each field keeps its stable code.
 const SETTINGS_FIELD_ERRORS: Record<string, [ApiErrorCode, string]> = {
   gymName: ["GYM_NAME_REQUIRED", "Gym name is required."],
   location: ["INVALID_LOCATION", "Invalid location information."],
@@ -475,21 +475,20 @@ adminRouter.put(
       gymName,
       autoExitHours: setDoc.autoExitHours,
       ...(sharing !== undefined ? { sharing } : {}),
-      // Hatırlatmaların açılıp kapanması üyelere posta gitmesini belirler;
-      // denetim kaydında görünmesi şart.
+      // Enabling or disabling reminders determines whether members receive
+      // email, so it must appear in the audit log.
       ...(reminders !== undefined ? { reminders } : {}),
-      // Onay metinlerinin hangi sürümle sunulduğu hukuki uyuşmazlıkta
-      // kanıttır; değişiklik denetim kaydına düşmeli.
+      // The consent-text version presented is evidence in a legal dispute, so
+      // changes must be recorded in the audit log.
       ...(legal !== undefined ? { legal } : {}),
     });
     res.json({ ok: true });
   }),
 );
 
-// Genel bakış paneli KPI'ları (personel + admin)
-// Sayımlar rapor modülüyle aynı yardımcıları kullanır: Genel Bakış'taki
-// "Yenileme Bekleyen" ile Raporlar sayfasındaki sayı ayrışırsa hangisinin
-// doğru olduğu anlaşılmaz.
+// Overview dashboard KPIs (staff + admin)
+// Counts use the same helpers as the reports module: if Renewals Due in the
+// overview differs from the reports page, there is no clear source of truth.
 adminRouter.get("/stats", requireRole("admin", "staff"), async (_req, res) => {
   const now = new Date();
   const [activeMembers, renewalsDue] = await Promise.all([
@@ -501,9 +500,9 @@ adminRouter.get("/stats", requireRole("admin", "staff"), async (_req, res) => {
 });
 
 /**
- * findPage'in bozuk imleç hatasını 400'e çevirir, diğer hataları terminal hata
- * handler'ına bırakır. Express 5 async route'larda reddedilen promise'i kendisi
- * yakalar, bu yüzden yeniden fırlatmak güvenlidir.
+ * Converts findPage's malformed-cursor error to 400 and leaves other errors to
+ * the terminal error handler. Express 5 catches rejected promises in async
+ * routes, so rethrowing is safe.
  */
 function toInvalidCursorResponse(res: Response) {
   return (err: unknown): null => {
@@ -521,7 +520,7 @@ const auditQuerySchema = pageQuerySchema.extend({
   to: z.coerce.date().optional(),
 });
 
-// Audit log görüntüleme (yalnızca admin) — imleçli sayfalama + eylem/tarih filtresi
+// Audit log viewer (admin only) — cursor pagination + action/date filters
 adminRouter.get("/audit", requireRole("admin"), async (req, res) => {
   const query = auditQuerySchema.safeParse(req.query);
   if (!query.success) {
@@ -561,15 +560,15 @@ adminRouter.get("/audit", requireRole("admin"), async (req, res) => {
 const entryEventQuerySchema = pageQuerySchema.extend({
   deviceId: z.string().min(1).max(64).optional(),
   userId: z.string().min(1).max(64).optional(),
-  // Sorgu parametreleri her zaman string gelir; z.coerce.boolean() "false"ı da
-  // true'ya çevirdiği için açık enum kullanıyoruz.
+  // Query parameters always arrive as strings; z.coerce.boolean() also turns
+  // "false" into true, so use an explicit enum.
   allowed: z.enum(["true", "false"]).optional(),
   from: z.coerce.date().optional(),
   to: z.coerce.date().optional(),
 });
 
-// Faz 4: turnike geçiş olayları (izin/red) — personel + admin
-// İmleçli sayfalama + cihaz/üye/sonuç/tarih filtreleri
+// Phase 4: gate entry events (allow/deny) — staff + admin
+// Cursor pagination + device/member/result/date filters
 adminRouter.get(
   "/entry-events",
   requireRole("admin", "staff"),
@@ -622,8 +621,8 @@ const deletionRequestQuerySchema = pageQuerySchema.extend({
   status: z.enum(["pending", "approved", "rejected"]).optional(),
 });
 
-// Faz 5 — Veri koruma: hesap silme talepleri listesi (yalnızca admin)
-// İmleçli sayfalama + durum filtresi
+// Phase 5 — Data protection: account deletion request list (admin only)
+// Cursor pagination + status filter
 adminRouter.get(
   "/deletion-requests",
   requireRole("admin"),
@@ -665,7 +664,7 @@ adminRouter.get(
   },
 );
 
-// Veri koruma: silme talebini onaylar — üyeyi ve tüm ilişkili verilerini kalıcı olarak siler
+// Data protection: approve deletion — permanently deletes the member and all related data
 adminRouter.post(
   "/deletion-requests/:id/approve",
   requireRole("admin"),
@@ -680,9 +679,9 @@ adminRouter.post(
       );
       return;
     }
-    // TOCTOU koruması: talebi pending→approved atomik olarak sahiplen. İki
-    // admin aynı anda onaylarsa yalnızca biri eşleşir; diğeri 409 alır
-    // (mükerrer denetim kaydı ve işlem tekrarı önlenir).
+    // TOCTOU protection: atomically claim the request from pending to approved.
+    // If two admins approve concurrently, only one matches and the other gets
+    // 409, preventing duplicate audit records and repeated processing.
     const claimed = await db.collection("deletion_requests").findOneAndUpdate(
       { _id: requestId, status: "pending" },
       {
@@ -711,16 +710,19 @@ adminRouter.post(
     const targetId = claimed.userId as ObjectId;
     const targetIdStr = targetId.toString();
 
-    // Kullanıcının tüm oturumları (Redis + Mongo) iptal edilir; uygulama
-    // rotaları zaten middleware'in Mongo re-read'iyle 401'e düşer
+    // Revoke all user sessions (Redis + Mongo); application routes already
+    // return 401 because the middleware re-reads Mongo.
     await revokeUserSessions(targetIdStr);
 
     try {
       await deleteUserProfilePhotoForAccountDeletion(targetIdStr);
     } catch (error) {
-      console.error("Hesap silmede profil fotoğrafı silinemedi", error);
-      // Temizlik başarısız: talebi pending'e geri al ki yönetici yeniden
-      // deneyebilsin (fail-closed — kullanıcı verisi henüz silinmedi)
+      console.error(
+        "Failed to delete profile photo during account deletion",
+        error,
+      );
+      // Cleanup failed: restore the request to pending so an admin can retry
+      // (fail closed — user data has not yet been deleted).
       await db.collection("deletion_requests").updateOne(
         { _id: requestId },
         {
@@ -741,17 +743,17 @@ adminRouter.post(
     await db.collection("account").deleteMany({ userId: targetId });
     await db.collection("subscriptions").deleteMany({ userId: targetId });
     await db.collection("twoFactor").deleteMany({ userId: targetId });
-    // Hatırlatma kayıtları "bu üyeye şu tarihte e-posta gönderildi" bilgisidir
-    // ve abonelikleri silinen üyeye ait olarak kalamaz (unutulma hakkı).
-    // İstatistik değeri yok; anonimleştirmek yerine siliniyorlar.
+    // Reminder records reveal that an email was sent to this member on a date
+    // and cannot remain tied to a member whose subscriptions were deleted under
+    // the right to erasure. They have no statistical value, so delete them.
     await db.collection("renewal_reminders").deleteMany({ userId: targetId });
-    // Kilo geçmişi sağlık verisidir ve üye kimliğiyle birlikte anlamlıdır;
-    // anonimleştirilecek bir istatistik değeri yok, tamamen silinir.
-    // Not: weight_history.userId string tutulur, ObjectId değil.
+    // Weight history is health data meaningful only with the member identity;
+    // it has no statistical value to anonymize, so delete it completely.
+    // Note: weight_history.userId is stored as a string, not an ObjectId.
     await weightHistoryCollection().deleteMany({ userId: targetIdStr });
-    // Faz 6 paylaşım tespiti kayıtları da kişisel veridir (cihaz parmak izi,
-    // konum sapması). TTL ile 30 güne kadar beklemeleri unutulma hakkıyla
-    // bağdaşmaz; talep onaylanınca kalıcı depodan da Redis'ten de silinirler.
+    // Phase 6 sharing-detection records are also personal data (device
+    // fingerprint, location drift). Retaining them for up to 30 days via TTL
+    // conflicts with erasure, so approval removes them from storage and Redis.
     await db.collection("sharing_signals").deleteMany({ userId: targetId });
     await redis.del([
       QR_LOC_KEY(targetIdStr),
@@ -760,29 +762,29 @@ adminRouter.post(
       `og:mfa-fail:${targetIdStr}`,
     ]);
     await markOutside(targetIdStr);
-    // Geçmiş turnike kayıtları istatistik için tutulur, ancak kişisel veri
-    // (kişisel veri) taşımamalıdır
+    // Historical gate records are kept for statistics but must not contain
+    // personal data.
     await db
       .collection("entry_events")
       .updateMany(
         { userId: targetIdStr },
         { $set: { userId: null, memberName: null } },
       );
-    // Audit kayıtlarında da silinen üyenin e-postası kalmamalı (unutulma hakkı);
-    // eylem geçmişi actorId üzerinden anonim olarak korunur
+    // Audit records must not retain the deleted member's email under the right
+    // to erasure; action history remains anonymously linked through actorId.
     await db
       .collection("audit_logs")
       .updateMany({ actorId: targetIdStr }, { $set: { actorEmail: null } });
 
-    // Kullanıcının TÜM talepleri (önceki reddedilenler dahil) PII taşımamalı.
-    // Bu talebin status/resolvedAt/resolvedBy alanları başta atomik olarak
-    // sahiplenilirken zaten yazıldı; burada yalnızca PII temizlenir.
+    // ALL of the user's requests, including earlier rejected ones, must lose
+    // PII. This request's status/resolvedAt/resolvedBy fields were already set
+    // during the atomic claim; only PII is cleared here.
     await db
       .collection("deletion_requests")
       .updateMany({ userId: targetId }, { $set: { email: null, name: null } });
 
-    // Mükerrer telefon çatışma kayıtlarından silinen kullanıcının PII'sini
-    // kaldırır; tek hesap kaldıysa onu E.164'e taşıyıp çatışma kaydını siler.
+    // Remove the deleted user's PII from duplicate-phone conflict records; if
+    // one account remains, migrate it to E.164 and delete the conflict record.
     await reconcilePhoneConflictsAfterUserChange(targetIdStr);
 
     await logAudit(req.user, "account-deletion-approved", targetIdStr);
@@ -790,7 +792,7 @@ adminRouter.post(
   }),
 );
 
-// Veri koruma: silme talebini reddeder
+// Data protection: reject a deletion request
 adminRouter.post(
   "/deletion-requests/:id/reject",
   requireRole("admin"),

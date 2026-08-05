@@ -13,8 +13,8 @@ import { usePollingQuery } from "../hooks/usePollingQuery";
 import { errorMessage } from "../i18n/errors";
 import { dateLocale } from "../i18n/format";
 
-// Ödeme/gelir takibi kapsam dışı (PRD non-goal) — kart yalnızca görsel
-// tutarlılık için placeholder değerle blurlu gösterilir.
+// Payment/revenue tracking is out of scope (a PRD non-goal) — the card is blurred
+// with a placeholder value only for visual consistency.
 const MOCK_REVENUE = 4280;
 
 function KpiCard({
@@ -30,7 +30,7 @@ function KpiCard({
   delta?: string;
   color?: string;
   blurred?: boolean;
-  /** Verilirse kart tıklanabilir olur ve bu sayfaya götürür. */
+  /** When provided, the card becomes clickable and links to this page. */
   to?: string;
 }) {
   const body = (
@@ -46,8 +46,8 @@ function KpiCard({
     </>
   );
 
-  // Sayının kendisi bir aksiyona götürmüyorsa personel için işe yaramaz:
-  // "yenileme bekleyen 12" ancak o 12 kişiye ulaşılabiliyorsa değerli.
+  // The number is not useful to staff unless it leads to an action:
+  // "12 pending renewals" matters only if those 12 people can be reached.
   if (to) {
     return (
       <Link className="kpi-card kpi-card-link" to={to}>
@@ -74,7 +74,7 @@ export function Overview() {
       const [s, occ, ev] = await Promise.all([
         api<AdminStats>("/api/admin/stats", { signal }),
         api<OccupancyResponse>("/api/me/occupancy", { signal }),
-        // Genel bakış yalnızca son birkaç geçişi gösterir; sunucudan da az iste.
+        // The overview shows only the latest few entries, so request fewer from the server.
         api<Page<EntryEvent>>("/api/admin/entry-events?limit=6", { signal }),
       ]);
       setStats(s);
@@ -83,7 +83,7 @@ export function Overview() {
       setError(null);
     } catch (err) {
       if (isAbortError(err)) return;
-      setError(errorMessage(err, t, "Yüklenemedi."));
+      setError(errorMessage(err, t, "Could not load data."));
     }
   }
 
@@ -96,7 +96,7 @@ export function Overview() {
       setResults(null);
       return;
     }
-    // Önceki arama iptal edilir: aksi halde geç dönen eski yanıt yeni sonucu ezer.
+    // Cancel the previous search so a late stale response cannot overwrite the new result.
     searchAbort.current?.abort();
     const controller = new AbortController();
     searchAbort.current = controller;
@@ -109,7 +109,7 @@ export function Overview() {
     } catch (err) {
       if (isAbortError(err)) return;
       setResults(null);
-      setError(errorMessage(err, t, "Arama başarısız."));
+      setError(errorMessage(err, t, "Search failed."));
     }
   }
 
@@ -121,43 +121,43 @@ export function Overview() {
     occupancy == null
       ? undefined
       : occupancy.capacity != null
-        ? t("{{inside}}/{{capacity}} kişi içeride", {
+        ? t("{{inside}}/{{capacity}} people inside", {
             inside: occupancy.inside,
             capacity: occupancy.capacity,
           })
-        : t("{{inside}} kişi içeride", { inside: occupancy.inside });
+        : t("{{inside}} people inside", { inside: occupancy.inside });
 
   return (
     <div className="stagger">
-      <h1>{t("Genel Bakış")}</h1>
+      <h1>{t("Overview")}</h1>
       {error && <div className="msg error">{error}</div>}
 
       <div className="kpi-grid">
         <KpiCard
-          label={t("Bugünkü Gelir")}
+          label={t("Today's revenue")}
           value={new Intl.NumberFormat(locale, {
             style: "currency",
             currency: "TRY",
             maximumFractionDigits: 0,
           }).format(MOCK_REVENUE)}
-          delta={t("Ödeme takibi yakında")}
+          delta={t("Payment tracking coming soon")}
           color="var(--ok)"
           blurred
         />
         <KpiCard
-          label={t("Aktif Üye")}
+          label={t("Active members")}
           value={stats ? String(stats.activeMembers) : "—"}
-          delta={t("aktif abonelik")}
+          delta={t("active subscriptions")}
         />
         <KpiCard
-          label={t("Salon Doluluk Oranı")}
+          label={t("Gym occupancy")}
           value={occupancyValue}
           delta={occupancyDelta}
         />
         <KpiCard
-          label={t("Yenileme Bekleyen")}
+          label={t("Renewals due")}
           value={stats ? String(stats.renewalsDue) : "—"}
-          delta={t("7 gün içinde")}
+          delta={t("within 7 days")}
           color="var(--warn)"
           to="/renewals"
         />
@@ -169,12 +169,12 @@ export function Overview() {
             className="row"
             style={{ justifyContent: "space-between", marginBottom: 18 }}
           >
-            <h2 style={{ marginBottom: 0 }}>{t("Üyeler")}</h2>
+            <h2 style={{ marginBottom: 0 }}>{t("Members")}</h2>
             <form onSubmit={search}>
               <input
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
-                placeholder={t("Üye ara…")}
+                placeholder={t("Search members…")}
                 style={{ width: 220 }}
               />
             </form>
@@ -182,10 +182,10 @@ export function Overview() {
           <table>
             <thead>
               <tr>
-                <th>{t("Ad Soyad")}</th>
-                <th>{t("Telefon")}</th>
-                <th>{t("E-posta")}</th>
-                <th>{t("Rol")}</th>
+                <th>{t("Full name")}</th>
+                <th>{t("Phone")}</th>
+                <th>{t("Email")}</th>
+                <th>{t("Role")}</th>
               </tr>
             </thead>
             <tbody>
@@ -200,10 +200,10 @@ export function Overview() {
                     <span className={`badge ${u.role}`}>
                       {t(
                         u.role === "admin"
-                          ? "Yönetici"
+                          ? "Administrator"
                           : u.role === "staff"
-                            ? "Personel"
-                            : "Üye",
+                            ? "Staff"
+                            : "Member",
                       )}
                     </span>
                   </td>
@@ -211,13 +211,13 @@ export function Overview() {
               ))}
               {results !== null && results.length === 0 && (
                 <tr>
-                  <td colSpan={4}>{t("Eşleşen üye bulunamadı.")}</td>
+                  <td colSpan={4}>{t("No matching member found.")}</td>
                 </tr>
               )}
               {results === null && (
                 <tr>
                   <td colSpan={4}>
-                    {t("Aramak için en az iki karakter girin.")}
+                    {t("Enter at least two characters to search.")}
                   </td>
                 </tr>
               )}
@@ -226,7 +226,7 @@ export function Overview() {
         </div>
 
         <div className="panel">
-          <h2>{t("Son Geçişler")}</h2>
+          <h2>{t("Recent entries")}</h2>
           <div className="list">
             {entries.map((e) => (
               <div className="list-row" key={e.id}>
@@ -246,12 +246,12 @@ export function Overview() {
                   <div
                     className={e.allowed ? "list-row-ok" : "list-row-danger"}
                   >
-                    {e.allowed ? t("İzin verildi") : t("Reddedildi")}
+                    {e.allowed ? t("Allowed") : t("Denied")}
                   </div>
                 </div>
               </div>
             ))}
-            {entries.length === 0 && <p className="hint">{t("Kayıt yok.")}</p>}
+            {entries.length === 0 && <p className="hint">{t("No records.")}</p>}
           </div>
         </div>
       </div>

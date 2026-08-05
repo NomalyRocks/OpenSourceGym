@@ -147,8 +147,8 @@ async function withRedisLock<T>(
     renewalController.abort();
     await renewal;
     await releaseLock(key, token).catch((error: unknown) => {
-      // Redis erişilemezse lease kilidi kendiliğinden temizler; asıl Mongo
-      // işleminin sonucunu bir temizlik hatasıyla gölgelemeyiz.
+      // If Redis is unavailable, the lease clears the lock automatically; do
+      // not obscure the underlying Mongo operation with a cleanup error.
       console.error("subscription lock release failed:", error);
     });
   }
@@ -158,7 +158,7 @@ function subscriptionCollection(database: Db = db) {
   return database.collection<SubscriptionFields>("subscriptions");
 }
 
-/** Aynı üye için eş zamanlı paket eklemelerini Redis üzerinde sıraya alır. */
+/** Serializes concurrent package additions for the same member through Redis. */
 export async function createSequentialSubscription(
   input: CreateSequentialSubscriptionInput,
   database: Db = db,
@@ -204,7 +204,7 @@ export async function listUserSubscriptions(
     .toArray();
 }
 
-/** Kullanıcının şu an aktif bir abonelik aralığı var mı? (QR kontrolü) */
+/** Whether the user currently has an active subscription interval (QR check). */
 export async function hasActiveSubscription(userId: string): Promise<boolean> {
   if (!ObjectId.isValid(userId)) return false;
   const now = new Date();
@@ -216,7 +216,7 @@ export async function hasActiveSubscription(userId: string): Promise<boolean> {
   return doc !== null;
 }
 
-/** Aktif aboneliği bitişik gelecek paketlerle birlikte mobil özete dönüştürür. */
+/** Converts the active subscription and contiguous future packages to a mobile summary. */
 export async function getSubscriptionSummary(
   userId: string,
   now = new Date(),
@@ -254,9 +254,9 @@ function isValidSubscriptionDocument(
 }
 
 /**
- * Tarih tabanlı eski aboneliklerdeki çakışmaları bir kez onarır. Marker
- * yalnızca bütün güncellemeler bittikten sonra yazılır; yarıda kalan bir
- * çalışma sonraki açılışta güvenle devam eder.
+ * Repairs overlaps in legacy date-based subscriptions once. The marker is
+ * written only after all updates finish; an interrupted run safely resumes at
+ * the next startup.
  */
 export async function repairLegacySubscriptionOverlaps(
   database: Db = db,

@@ -13,23 +13,23 @@ export const mongoClient = new MongoClient(env.mongodbUri);
 export const db = mongoClient.db();
 
 /**
- * Mongo'nun atomik benzersizlik ihlali (E11000) hatası mı.
- * "Önce oku sonra yaz" desenlerinde yarışı yakalayan tek güvenilir sinyal budur.
+ * Whether this is Mongo's atomic uniqueness violation (E11000).
+ * This is the only reliable signal for catching races in read-then-write patterns.
  */
 export function isDuplicateKeyError(error: unknown): boolean {
   return error instanceof MongoServerError && error.code === 11000;
 }
 
-/** Yol/gövde parametresinden gelen kimliği güvenle ObjectId'ye çevirir. */
+/** Safely converts an ID from a path or body parameter into an ObjectId. */
 export function toObjectId(value: string): ObjectId | null {
   return ObjectId.isValid(value) ? new ObjectId(value) : null;
 }
 
-// Koleksiyon şemaları: sürücü tipli erişim sağlasın diye burada tanımlanır.
-// Belgeler BetterAuth ve uygulama kodu tarafından birlikte yazıldığından,
-// yalnızca her kayıtta bulunması garanti alanlar zorunlu işaretlenir.
+// Collection schemas are defined here to provide typed driver access.
+// Because documents are written by both BetterAuth and application code, only
+// fields guaranteed to exist on every record are marked as required.
 
-/** BetterAuth "user" belgesi + auth.ts'te tanımlı ek alanlar */
+/** BetterAuth "user" document plus the extra fields defined in auth.ts */
 export interface UserDocument {
   _id: ObjectId;
   email: string;
@@ -37,9 +37,9 @@ export interface UserDocument {
   emailVerified?: boolean;
   firstName?: string;
   lastName?: string;
-  /** Görünen telefon; normalize edilmiş kayıtlarda phoneE164 ile aynıdır */
+  /** Displayed phone number; matches phoneE164 in normalized records */
   phone?: string;
-  /** Dahili benzersiz telefon kimliği — yalnızca tekilleştirilmiş kayıtlarda bulunur */
+  /** Internal unique phone identity—present only in deduplicated records */
   phoneE164?: string;
   role?: Role;
   mustChangePassword?: boolean;
@@ -47,7 +47,7 @@ export interface UserDocument {
   profilePhotoKey?: string;
   profilePhotoUpdatedAt?: Date;
   createdAt?: Date;
-  /** Mobil kalori hesaplayıcının otomatik doldurması için üyenin kendi girdiği yaş/boy/kilo */
+  /** Member-provided age, height, and weight for mobile calorie calculator defaults */
   age?: number;
   heightCm?: number;
   weightKg?: number;
@@ -57,14 +57,14 @@ export function userCollection(database: Db = db): Collection<UserDocument> {
   return database.collection<UserDocument>("user");
 }
 
-/** BetterAuth oturum belgesi (session.storeSessionInDatabase: true) */
+/** BetterAuth session document (session.storeSessionInDatabase: true) */
 export interface SessionDocument {
   _id: ObjectId;
   userId: ObjectId;
   token?: string;
   expiresAt?: Date;
   createdAt?: Date;
-  /** Faz 6: girişte damgalanan cihaz parmak izi */
+  /** Phase 6: device fingerprint stamped at sign-in */
   deviceFingerprint?: string;
 }
 
@@ -74,7 +74,7 @@ export function sessionCollection(
   return database.collection<SessionDocument>("session");
 }
 
-/** Salon ayarları tekil belgesinin sabit kimliği */
+/** Fixed ID of the singleton gym settings document */
 export const GYM_SETTINGS_ID = "gym";
 
 export interface GymSettingsDocument {
@@ -94,14 +94,14 @@ export function gymSettingsCollection(
   return database.collection<GymSettingsDocument>("settings");
 }
 
-/** settings._id: "gym" tekil belgesini okur (yoksa null). */
+/** Reads the singleton settings._id: "gym" document (or null if absent). */
 export function findGymSettings(
   database: Db = db,
 ): Promise<WithId<GymSettingsDocument> | null> {
   return gymSettingsCollection(database).findOne({ _id: GYM_SETTINGS_ID });
 }
 
-/** Üyenin `weightKg` alanı her değiştiğinde eklenen tarihli anlık görüntü */
+/** Timestamped snapshot added whenever the member's `weightKg` changes */
 export interface WeightHistoryDocument {
   _id?: ObjectId;
   userId: string;

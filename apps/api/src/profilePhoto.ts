@@ -13,9 +13,9 @@ import { acquireLock, redis, releaseLock } from "./redis.js";
 const MAX_INPUT_PIXELS = 40_000_000;
 const PROFILE_PHOTO_SIZE = 1024;
 const PROFILE_PHOTO_LOCK_TTL_MS = 30_000;
-// BetterAuth rate limit'i yalnızca /api/auth/* kapsar; görsel işleme (sharp,
-// CPU) ve R2 PUT (ücretli class-A operasyon) maliyetli olduğundan yükleme ucu
-// kullanıcı başına ayrıca sınırlanır.
+// BetterAuth rate limiting covers only /api/auth/*; because image processing
+// (sharp, CPU) and R2 PUT (billable class-A operation) are costly, the upload
+// endpoint has a separate per-user limit.
 const PROFILE_PHOTO_UPLOADS_PER_WINDOW = 10;
 const PROFILE_PHOTO_RATE_WINDOW_SECONDS = 3600;
 
@@ -206,8 +206,8 @@ export async function enforceProfilePhotoRateLimit(
 ): Promise<void> {
   const key = `og:rl:profile-photo:${userId}`;
   const count = await redis.incr(key);
-  // NX: TTL yalnızca yoksa yazılır; incr/expire arasında çökme olursa
-  // anahtarın süresiz kalmasını sonraki istek onarır.
+  // NX: write the TTL only if absent; if a crash occurs between incr and expire,
+  // the next request repairs the key so it does not persist indefinitely.
   await redis.expire(key, PROFILE_PHOTO_RATE_WINDOW_SECONDS, "NX");
   if (count > PROFILE_PHOTO_UPLOADS_PER_WINDOW) {
     throw new ProfilePhotoRateLimitError(
@@ -251,7 +251,7 @@ export async function storeUserProfilePhoto(
           await deleteProfilePhotoObject(key);
         } catch (rollbackError) {
           console.error(
-            "Yeni profil fotoğrafı rollback silmesi başarısız",
+            "New profile photo rollback deletion failed",
             rollbackError,
           );
         }

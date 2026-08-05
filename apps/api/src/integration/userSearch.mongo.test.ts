@@ -12,8 +12,8 @@ import { buildUserSearchFilter, USER_SEARCH_LIMIT } from "../userSearch.js";
 const mongoUri = process.env.TEST_MONGODB_URI;
 
 test(
-  "üye araması ad, soyad, tam ad, e-posta ve telefonu kısmi eşleştirir",
-  { skip: mongoUri ? false : "TEST_MONGODB_URI tanımlı değil" },
+  "member search partially matches first name, last name, full name, email, and phone",
+  { skip: mongoUri ? false : "TEST_MONGODB_URI is not defined" },
   async () => {
     const client = new MongoClient(mongoUri!);
     const database = client.db(

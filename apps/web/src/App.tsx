@@ -25,11 +25,11 @@ import { dateLocale } from "./i18n/format";
 
 function roleLabel(
   role: string | undefined,
-  t: (key: "Yönetici" | "Personel" | "Üye") => string,
+  t: (key: "Administrator" | "Staff" | "Member") => string,
 ) {
-  if (role === "admin") return t("Yönetici");
-  if (role === "staff") return t("Personel");
-  return t("Üye");
+  if (role === "admin") return t("Administrator");
+  if (role === "staff") return t("Staff");
+  return t("Member");
 }
 
 function Shell({ children }: { children: React.ReactNode }) {
@@ -53,23 +53,23 @@ function Shell({ children }: { children: React.ReactNode }) {
             Open<em>Gym</em>
           </div>
           <nav className="nav">
-            <NavLink to="/overview">{t("Genel Bakış")}</NavLink>
-            <NavLink to="/members">{t("Üyeler")}</NavLink>
-            <NavLink to="/entries">{t("Geçişler")}</NavLink>
-            <NavLink to="/renewals">{t("Yenilemeler")}</NavLink>
-            <NavLink to="/reports">{t("Raporlar")}</NavLink>
-            <NavLink to="/security">{t("Güvenlik")}</NavLink>
+            <NavLink to="/overview">{t("Overview")}</NavLink>
+            <NavLink to="/members">{t("Members")}</NavLink>
+            <NavLink to="/entries">{t("Entries")}</NavLink>
+            <NavLink to="/renewals">{t("Renewals")}</NavLink>
+            <NavLink to="/reports">{t("Reports")}</NavLink>
+            <NavLink to="/security">{t("Security")}</NavLink>
             {profile?.role === "admin" && (
-              <NavLink to="/devices">{t("Cihazlar")}</NavLink>
+              <NavLink to="/devices">{t("Devices")}</NavLink>
             )}
             {profile?.role === "admin" && (
-              <NavLink to="/settings">{t("Ayarlar")}</NavLink>
+              <NavLink to="/settings">{t("Settings")}</NavLink>
             )}
             {profile?.role === "admin" && (
-              <NavLink to="/audit">{t("İşlem kaydı")}</NavLink>
+              <NavLink to="/audit">{t("Audit log")}</NavLink>
             )}
             {profile?.role === "admin" && (
-              <NavLink to="/data-requests">{t("Veri Koruma")}</NavLink>
+              <NavLink to="/data-requests">{t("Data protection")}</NavLink>
             )}
           </nav>
         </div>
@@ -83,7 +83,7 @@ function Shell({ children }: { children: React.ReactNode }) {
             className="ghost"
             onClick={() => authClient.signOut().then(() => refetch())}
           >
-            {t("Çıkış")}
+            {t("Sign out")}
           </button>
         </div>
       </header>
@@ -98,7 +98,7 @@ function Gate() {
   const { profile, loading, refresh } = useProfile();
 
   if (isPending || (user && loading)) {
-    return <div className="auth-wrap">{t("Yükleniyor…")}</div>;
+    return <div className="auth-wrap">{t("Loading…")}</div>;
   }
   if (!user || !profile) {
     return <Login />;
@@ -111,12 +111,12 @@ function Gate() {
       <div className="auth-wrap">
         <div className="auth-card">
           <LanguageSwitcher />
-          <h1>{t("Yetkisiz")}</h1>
+          <h1>{t("Unauthorized")}</h1>
           <p className="sub">
-            {t("Bu panel salon personeli içindir. Mobil uygulamayı kullanın.")}
+            {t("This panel is for gym staff. Please use the mobile app.")}
           </p>
           <button onClick={() => authClient.signOut().then(() => refetch())}>
-            {t("Çıkış")}
+            {t("Sign out")}
           </button>
         </div>
       </div>

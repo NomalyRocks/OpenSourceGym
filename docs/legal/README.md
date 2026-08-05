@@ -2,7 +2,7 @@
 
 OpenGym ships **no legal text**. The product is self-hosted and single-tenant,
 so the operator running the gym is the data controller and is the only party
-that can decide which regime applies (KVKK in Türkiye, GDPR/UK GDPR in Europe,
+that can decide which regime applies (KVKK in Turkey, GDPR/UK GDPR in Europe,
 CCPA/CPRA in California, PIPEDA in Canada, LGPD in Brazil, …). The application
 only stores **where** your documents live and **which version** is current.
 
@@ -21,7 +21,7 @@ jurisdiction review the result before publishing it.
 | Erasure request flow   | member requests → admin approves → account and related data purged |
 
 Consent field names are deliberately regime-neutral: `dataProcessingAccepted`
-covers whatever notice your jurisdiction calls for (aydınlatma metni, privacy
+covers whatever notice your jurisdiction calls for (disclosure text, privacy
 notice, information notice), `privacyAccepted` covers the privacy policy /
 terms you publish alongside it.
 
@@ -32,7 +32,7 @@ terms you publish alongside it.
 2. Publish them at stable public URLs (your gym website, a static bucket, a
    docs host). They must be reachable **without a login** — the mobile signup
    screen is unauthenticated.
-3. Admin panel → Settings → "Hukuki belgeler": paste both URLs and set the
+3. Admin panel → Settings → "Legal documents": paste both URLs and set the
    version.
 4. Verify: `curl https://<your-api>/api/legal` returns your URLs.
 

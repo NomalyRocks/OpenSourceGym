@@ -1,47 +1,49 @@
-# MongoDB ve Redis yedekleme / geri yükleme runbook'u
+# MongoDB and Redis backup / restore runbook
 
-> Bu runbook `docker-compose.prod.yml` production yığını içindir. Geliştirme
-> ortamında aynı komutlar `-f docker-compose.prod.yml` olmadan, MongoDB/Redis
-> kimlik doğrulama parametreleri olmadan ve `opengym-dev` veritabanı adıyla
-> çalışır.
+> This runbook is for the `docker-compose.prod.yml` production stack. In the
+> development environment, the same commands run without
+> `-f docker-compose.prod.yml`, without MongoDB/Redis authentication parameters,
+> and with the `opengym-dev` database name.
 
-Production yığınındaki `mongo` ve `redis` servisleri ile bu servislerin sırasıyla
-kullandığı `mongo-data` ve `redis-data` named volume'ları esas alınır. Komutlarda
-kullanılan `MONGO_USER`, `MONGO_PASSWORD` ve `REDIS_PASSWORD` değerleri depo
-kökündeki `.env` dosyasından kabuk ortamına yüklenir; parolaları bu dosyaya veya
-komutlara gömmeyin.
+This runbook is based on the `mongo` and `redis` services in the production
+stack and the `mongo-data` and `redis-data` named volumes they use,
+respectively. The `MONGO_USER`, `MONGO_PASSWORD`, and `REDIS_PASSWORD` values
+used in the commands are loaded into the shell environment from the `.env`
+file at the repository root; do not embed passwords in this file or in commands.
 
-## Neler yedeklenmeli?
+## What should be backed up?
 
-### MongoDB: zorunlu
+### MongoDB: required
 
-MongoDB üyeler, abonelikler, geçiş olayları, audit kayıtları ve KVKK silme
-talepleri dahil gerçek iş verisini tutar. Düzenli MongoDB yedeği zorunludur.
-Named volume'un doğrudan dosya sistemi kopyasını almak yerine, çalışan
-veritabanından tutarlı bir mantıksal yedek üretmek için `mongodump` kullanın.
+MongoDB stores actual business data, including members, subscriptions, entry
+events, audit records, and data protection deletion requests. Regular MongoDB
+backups are required. Instead of taking a direct file-system copy of the named
+volume, use `mongodump` to produce a consistent logical backup from the running
+database.
 
-### Redis: normalde yeniden üretilebilir, ancak kuyruk kontrol edilmeli
+### Redis: normally reproducible, but check the queue
 
-Redis'teki oturumlar ve hız sınırı sayaçları yeniden üretilebilir. Bunların
-kaybı kullanıcıların yeniden giriş yapmasını gerektirir; kalıcı iş verisi kaybı
-değildir. Ancak `og:entry-events` kuyruğunda henüz MongoDB'ye yazılmamış geçiş
-olayları bulunabilir. Redis kaybedilirse bu olaylar da kaybolabilir.
+Sessions and rate-limit counters in Redis can be reproduced. Losing them
+requires users to sign in again; it is not a loss of persistent business data.
+However, the `og:entry-events` queue may contain entry events that have not yet
+been written to MongoDB. These events may also be lost if Redis is lost.
 
-Felaket anında en güncel geçiş olaylarının korunması gerekiyorsa Redis RDB
-yedeğini de alın. Planlı bakımda mümkünse önce yeni geçişleri durdurun ve
-kuyruğun MongoDB'ye aktarılmasını bekleyin; yalnızca MongoDB yedeği almak,
-kuyrukta bekleyen olayları kapsamaz.
+If the latest entry events must be preserved during a disaster, also take a
+Redis RDB backup. During planned maintenance, stop new entries first if
+possible and wait for the queue to be transferred to MongoDB; taking only a
+MongoDB backup does not include events waiting in the queue.
 
-### Cloudflare R2: ayrı sistem
+### Cloudflare R2: separate system
 
-Cloudflare R2'de tutulan profil fotoğrafları MongoDB yedeğine **dahil değildir**.
-R2 için ayrı bir yedekleme, sürümleme veya çoğaltma politikası uygulanmalıdır.
+Profile photos stored in Cloudflare R2 are **not included** in the MongoDB
+backup. A separate backup, versioning, or replication policy must be applied
+for R2.
 
-## MongoDB yedeği alma
+## Backing up MongoDB
 
-Aşağıdaki komutları depo kökünde çalıştırın. `mongodump`, çalışan `mongo`
-servisinin içinde çalışır; sıkıştırılmış archive çıktısı doğrudan host üzerindeki
-`backups/` dizinine yazılır.
+Run the following commands at the repository root. `mongodump` runs inside the
+running `mongo` service; the compressed archive output is written directly to
+the `backups/` directory on the host.
 
 ```bash
 set -a
@@ -61,18 +63,18 @@ test -s "$BACKUP_FILE"
 sha256sum "$BACKUP_FILE" > "$BACKUP_FILE.sha256"
 ```
 
-Komut hata verirse oluşmuş olabilecek eksik archive dosyasını geçerli yedek
-saymayın. Yedek dosyasını ve `.sha256` dosyasını birlikte saklayın.
+If the command fails, do not consider any incomplete archive file it may have
+created to be a valid backup. Store the backup file and the `.sha256` file together.
 
-## MongoDB geri yükleme
+## Restoring MongoDB
 
-Önce checksum'u doğrulayın:
+Verify the checksum first:
 
 ```bash
 sha256sum -c backups/opengym-20260727T020000Z.archive.gz.sha256
 ```
 
-Ardından seçilen archive'ı aynı veritabanı adına geri yükleyin:
+Then restore the selected archive to the same database name:
 
 ```bash
 set -a
@@ -89,21 +91,21 @@ docker compose -f docker-compose.prod.yml exec -T mongo mongorestore \
   --drop < "$BACKUP_FILE"
 ```
 
-> **Dikkat:** `--drop`, archive içindeki her koleksiyonu geri yüklemeden önce
-> hedef veritabanındaki aynı adlı koleksiyonu ve mevcut verisini siler. Yanlış
-> sunucuda veya yanlış yedekle çalıştırılması geri döndürülemez veri kaybına yol
-> açabilir. Hedef Compose projesini, archive adını ve checksum'u çalıştırmadan
-> önce doğrulayın. Uygulama yazmalarını geri yükleme süresince durdurun.
+> **Caution:** Before restoring each collection in the archive, `--drop` deletes
+> the collection with the same name and its existing data from the target
+> database. Running it on the wrong server or with the wrong backup can cause
+> irreversible data loss. Verify the target Compose project, archive name, and
+> checksum before running it. Stop application writes for the duration of the restore.
 
-Mevcut koleksiyonları koruyarak üzerine yazmak çoğunlukla temiz bir felaket
-kurtarma sonucu vermez; bu nedenle üretim geri yüklemesinden önce aşağıdaki test
-prosedürünü tamamlayın.
+Overwriting while preserving existing collections usually does not produce a
+clean disaster recovery result; therefore, complete the test procedure below
+before a production restore.
 
-## Yedeği ayrı veritabanında test etme
+## Testing the backup in a separate database
 
-Test edilmemiş yedek, yedek sayılmaz. Her yedekleme döngüsünde veya en az ayda
-bir kez archive'ı ayrı bir veritabanı adına geri yükleyip açılabildiğini ve temel
-kayıt sayılarını doğrulayın.
+An untested backup is not a backup. In every backup cycle, or at least once a
+month, restore the archive under a separate database name and verify that it
+can be opened and has the expected basic record counts.
 
 ```bash
 set -a
@@ -130,16 +132,16 @@ docker compose -f docker-compose.prod.yml exec -T mongo mongosh "$RESTORE_TEST_D
   --authenticationDatabase admin \
   --quiet --eval '
   const names = db.getCollectionNames().sort();
-  if (names.length === 0) throw new Error("Geri yüklenen koleksiyon bulunamadı");
+  if (names.length === 0) throw new Error("No restored collections found");
   for (const name of names) print(name + "\t" + db.getCollection(name).countDocuments({}));
   assert.commandWorked(db.runCommand({ validate: names[0] }));
 '
 ```
 
-Çıktıdaki beklenen koleksiyonların ve makul kayıt sayılarının bulunduğunu
-kontrol edin. Kaynak sistem hâlâ erişilebiliyorsa kritik koleksiyonların
-sayılarını kaynakla karşılaştırın; canlı yazmalar nedeniyle küçük farkların
-olabileceğini hesaba katın. Test bittiğinde yalnızca test veritabanını silin:
+Check that the output contains the expected collections and reasonable record
+counts. If the source system is still accessible, compare the counts of
+critical collections with the source; account for small differences caused by
+live writes. When the test is complete, delete only the test database:
 
 ```bash
 set -a
@@ -154,9 +156,9 @@ docker compose -f docker-compose.prod.yml exec -T mongo mongosh \
   "db.getSiblingDB('$RESTORE_TEST_DB').dropDatabase()"
 ```
 
-## İsteğe bağlı Redis RDB yedeği ve geri yükleme
+## Optional Redis RDB backup and restore
 
-Önce kuyruk uzunluğunu ve dead-letter listesini kontrol edin:
+First, check the queue length and the dead-letter list:
 
 ```bash
 set -a
@@ -166,12 +168,11 @@ docker compose -f docker-compose.prod.yml exec -T redis redis-cli -a "$REDIS_PAS
 docker compose -f docker-compose.prod.yml exec -T redis redis-cli -a "$REDIS_PASSWORD" LLEN og:entry-events:dead
 ```
 
-`redis-cli -a` parolayı süreç argümanlarında gösterebilir ve süreç listesine
-sızdırabilir. Komutları yalnızca güvenilen sunucuda ve yetkili kullanıcıyla
-çalıştırın.
+`redis-cli -a` may expose the password in process arguments and leak it into the
+process list. Run the commands only on a trusted server and as an authorized user.
 
-RDB yedeği almak için Redis'e senkron snapshot yazdırın ve dosyayı host'a
-çıkarın:
+To take an RDB backup, have Redis write a synchronous snapshot and copy the file
+to the host:
 
 ```bash
 set -a
@@ -185,8 +186,9 @@ test -s "$REDIS_BACKUP_FILE"
 sha256sum "$REDIS_BACKUP_FILE" > "$REDIS_BACKUP_FILE.sha256"
 ```
 
-Redis geri yüklemesi mevcut oturumları, sayaçları ve kuyruk durumunu yedekteki
-ana döndürür. Uygulama ile Redis'i kullanan tüm süreçleri durdurduktan sonra:
+A Redis restore returns existing sessions, counters, and queue state to the
+backup's point in time. After stopping the application and all processes that
+use Redis:
 
 ```bash
 set -a
@@ -203,69 +205,67 @@ docker compose -f docker-compose.prod.yml exec -T redis redis-cli -a "$REDIS_PAS
 docker compose -f docker-compose.prod.yml exec -T redis redis-cli -a "$REDIS_PASSWORD" LLEN og:entry-events
 ```
 
-Bu işlem `redis-data` volume'undaki mevcut `dump.rdb` dosyasını değiştirir.
-Geri yüklemeden önce doğru yedek dosyasını ve checksum'u doğrulayın.
+This operation replaces the existing `dump.rdb` file in the `redis-data`
+volume. Verify the correct backup file and checksum before restoring.
 
-## Zamanlama, saklama ve sunucu dışı kopya
+## Scheduling, retention, and off-server copies
 
-- MongoDB yedeğini en az günlük alın. Yoğun geçiş hacminde daha kısa RPO için
-  sıklığı artırın.
-- Başlangıç politikası olarak günlük yedekleri 14 gün, haftalık yedekleri 8
-  hafta ve aylık yedekleri 12 ay saklayın. İşletmenin hukuki ve operasyonel
-  gereksinimlerine göre bu süreleri belgeleyip sınırlandırın.
-- Yedekleri yalnızca OpenGym sunucusunda veya aynı fiziksel diskte tutmayın.
-  Şifrelenmiş en az bir kopyayı farklı bir sunucuya ya da nesne depolamaya
-  aktarın. Sunucunun ve `mongo-data` volume'unun birlikte kaybını varsayın.
-- Cron işinin exit code'unu, dosya boyutunu ve checksum üretimini izleyin;
-  başarısızlık için alarm kurun. Düzenli geri yükleme testlerini ayrıca
-  takvimleyin ve sonucu kaydedin.
+- Back up MongoDB at least daily. Increase the frequency for a shorter RPO when
+  entry volume is high.
+- As a starting policy, retain daily backups for 14 days, weekly backups for 8
+  weeks, and monthly backups for 12 months. Document and limit these periods
+  according to the business's legal and operational requirements.
+- Do not keep backups only on the OpenGym server or the same physical disk.
+  Transfer at least one encrypted copy to a different server or object storage.
+  Assume the server and the `mongo-data` volume are lost together.
+- Monitor the cron job's exit code, file size, and checksum generation; create
+  an alert for failure. Schedule regular restore tests separately and record the result.
 
-Örnek günlük cron girdisi (sunucu yolunu kuruluma göre değiştirin):
+Example daily cron entry (adjust the server path for the installation):
 
 ```cron
 15 2 * * * cd /opt/opengym && set -a && . ./.env && set +a && mkdir -p backups && docker compose -f docker-compose.prod.yml exec -T mongo mongodump --username "$MONGO_USER" --password "$MONGO_PASSWORD" --authenticationDatabase admin --db opengym --archive --gzip > "backups/opengym-$(date -u +\%Y\%m\%dT\%H\%M\%SZ).archive.gz"
 ```
 
-Cron satırını kullanmadan önce aynı komutu interaktif kabukta çalıştırın. Yarım
-dosyaların geçerli yedek sanılmaması ve sunucu dışı aktarım/retention işlemleri
-için üretimde komutu hata kontrolü yapan bir yedekleme betiğiyle sarmalayın.
+Before using the cron line, run the same command in an interactive shell. In
+production, wrap the command in a backup script that checks for errors so
+partial files are not considered valid backups and to handle off-server
+transfer and retention operations.
 
-## KVKK ve yedek güvenliği
+## Data protection and backup security
 
-Yedekler kişisel veri içerir. Yedek dosyalarını aktarımda ve saklandığı yerde
-güçlü biçimde şifreleyin; erişimi yalnızca yetkili işletme personeliyle
-sınırlandırın, erişimleri kayda alın ve şifreleme anahtarlarını yedeklerden ayrı
-tutun. Saklama süresi amaçla sınırlı, belgelenmiş ve otomatik uygulanmış
-olmalıdır.
+Backups contain personal data. Strongly encrypt backup files in transit and at
+rest; restrict access to authorized business personnel, log access, and keep
+encryption keys separate from backups. The retention period must be limited to
+its purpose, documented, and applied automatically.
 
-Bir üyenin silme talebi onaylandığında aktif sistemdeki verisi silinse bile eski
-yedeklerdeki kopyası yedeğin saklama süresi boyunca kalmaya devam edebilir. Bu
-kopya normal işletim için yeniden kullanılmamalı; ilgili yedeğin belirlenmiş
-saklama süresi dolduğunda otomatik olarak düşmelidir. Felaket geri yüklemesi eski
-bir yedeği geri getirirse, yedek tarihinden sonra onaylanmış silme talepleri
-yeniden uygulanmalıdır.
+When a member's deletion request is approved, copies in old backups may remain
+for the backup retention period even after the data is deleted from the active
+system. This copy must not be reused for normal operations; it must be removed
+automatically when the relevant backup's defined retention period expires. If
+a disaster restore brings back an old backup, deletion requests approved after
+the backup date must be reapplied.
 
-## Felaket kurtarma sırası
+## Disaster recovery sequence
 
-1. Yeni sunucuyu güvenli biçimde hazırlayın; depo/uygulama sürümünü, `.env`
-   değerlerini ve şifreleme sırlarını güvenilir kaynaktan geri getirin.
-2. `docker-compose.prod.yml` ile `mongo` ve `redis` servislerini başlatın.
-   `.env` sırlarını güvenilir kaynaktan geri yükledikten sonra Compose,
-   `mongo-data` ve `redis-data` named volume'larını oluşturur:
+1. Prepare the new server securely; recover the repository/application version,
+   `.env` values, and encryption secrets from a trusted source.
+2. Start the `mongo` and `redis` services with `docker-compose.prod.yml`.
+   After restoring the `.env` secrets from a trusted source, Compose creates
+   the `mongo-data` and `redis-data` named volumes:
 
    ```bash
    docker compose -f docker-compose.prod.yml up -d mongo redis
    docker compose -f docker-compose.prod.yml ps
    ```
 
-3. En yeni başarılı MongoDB yedeğinin checksum'unu doğrulayın ve MongoDB'yi
-   yukarıdaki `mongorestore` prosedürüyle geri yükleyin.
-4. Redis RDB yedeği tutulmuşsa ve kuyruktaki olayların kurtarılması gerekiyorsa
-   Redis'i yukarıdaki prosedürle geri yükleyin. RDB yoksa boş Redis ile devam
-   edin; kullanıcıların yeniden giriş yapacağını kabul edin.
-5. R2 profil fotoğraflarını kendi ayrı kurtarma prosedürüyle doğrulayın/geri
-   getirin.
-6. API'yi ve istemcileri başlatın. Sağlık kontrolünü, yönetici girişini, üye ve
-   abonelik sayılarını, son geçiş olaylarını ve audit kayıtlarını doğrulayın.
-7. Yedek tarihinden sonra onaylanan KVKK silme taleplerini yeniden uygulayın;
-   ardından kontrollü biçimde yeni kayıt ve turnike trafiğini açın.
+3. Verify the checksum of the latest successful MongoDB backup and restore
+   MongoDB with the `mongorestore` procedure above.
+4. If a Redis RDB backup was retained and events in the queue must be recovered,
+   restore Redis with the procedure above. If there is no RDB, continue with an
+   empty Redis instance; accept that users will need to sign in again.
+5. Verify/restore R2 profile photos with their own separate recovery procedure.
+6. Start the API and clients. Verify the health check, administrator sign-in,
+   member and subscription counts, recent entry events, and audit records.
+7. Reapply data protection deletion requests approved after the backup date;
+   then enable new registrations and turnstile traffic in a controlled manner.

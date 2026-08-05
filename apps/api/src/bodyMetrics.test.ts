@@ -6,17 +6,17 @@ import {
   InvalidBodyMetricError,
 } from "./bodyMetrics.js";
 
-test("alan istekte yoksa dokunmaz", () => {
+test("leaves a field unchanged when it is absent from the request", () => {
   assert.doesNotThrow(() => assertValidBodyMetricsUpdate({}));
 });
 
-test("alan null ise dokunmaz (temizleme)", () => {
+test("accepts null fields for clearing", () => {
   assert.doesNotThrow(() =>
     assertValidBodyMetricsUpdate({ age: null, heightCm: null, weightKg: null }),
   );
 });
 
-test("aralık içindeki yaş, boy ve kilo kabul edilir", () => {
+test("accepts age, height, and weight within range", () => {
   assert.doesNotThrow(() =>
     assertValidBodyMetricsUpdate({ age: 30, heightCm: 180, weightKg: 80 }),
   );
@@ -28,7 +28,7 @@ test("aralık içindeki yaş, boy ve kilo kabul edilir", () => {
   assert.doesNotThrow(() => assertValidBodyMetricsUpdate({ weightKg: 300 }));
 });
 
-test("aralık dışındaki veya kesirli yaş reddedilir", () => {
+test("rejects out-of-range or fractional age", () => {
   assert.throws(
     () => assertValidBodyMetricsUpdate({ age: 17 }),
     InvalidBodyMetricError,
@@ -43,7 +43,7 @@ test("aralık dışındaki veya kesirli yaş reddedilir", () => {
   );
 });
 
-test("aralık dışındaki boy reddedilir", () => {
+test("rejects out-of-range height", () => {
   assert.throws(
     () => assertValidBodyMetricsUpdate({ heightCm: 119 }),
     InvalidBodyMetricError,
@@ -54,7 +54,7 @@ test("aralık dışındaki boy reddedilir", () => {
   );
 });
 
-test("aralık dışındaki kilo reddedilir", () => {
+test("rejects out-of-range weight", () => {
   assert.throws(
     () => assertValidBodyMetricsUpdate({ weightKg: 34.9 }),
     InvalidBodyMetricError,
@@ -65,7 +65,7 @@ test("aralık dışındaki kilo reddedilir", () => {
   );
 });
 
-test("sayısal olmayan veya sonsuz değerler reddedilir", () => {
+test("rejects non-numeric or non-finite values", () => {
   assert.throws(
     () => assertValidBodyMetricsUpdate({ heightCm: "180" }),
     InvalidBodyMetricError,
@@ -76,13 +76,13 @@ test("sayısal olmayan veya sonsuz değerler reddedilir", () => {
   );
 });
 
-test("gönderilmeyen alan güncellemeye girmez", () => {
+test("excludes omitted fields from the update", () => {
   const { set, unset } = buildBodyMetricsUpdate({ weightKg: 82 });
   assert.deepEqual(set, { weightKg: 82 });
   assert.deepEqual(unset, {});
 });
 
-test("null gönderilen alan temizlenir, sayı olan yazılır", () => {
+test("clears null fields and writes numeric fields", () => {
   const { set, unset } = buildBodyMetricsUpdate({
     age: 30,
     heightCm: null,
@@ -92,7 +92,7 @@ test("null gönderilen alan temizlenir, sayı olan yazılır", () => {
   assert.deepEqual(unset, { heightCm: "" });
 });
 
-test("boş gövde hiçbir alana dokunmaz", () => {
+test("an empty body leaves all fields unchanged", () => {
   const { set, unset } = buildBodyMetricsUpdate({});
   assert.deepEqual(set, {});
   assert.deepEqual(unset, {});

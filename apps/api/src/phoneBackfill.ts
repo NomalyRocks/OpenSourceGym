@@ -22,9 +22,9 @@ interface PhoneConflictDocument {
 }
 
 /**
- * Eski tekil telefonları E.164'e taşır. Aynı normalize numaraya sahip hesaplar
- * olduğu gibi kalır ve aktif çatışma kaydına alınır; böylece API açılışı ve
- * kısmi benzersiz indeks bu eski veriler yüzünden engellenmez.
+ * Migrates unique legacy phone numbers to E.164. Accounts sharing the same
+ * normalized number remain unchanged and are recorded as active conflicts, so
+ * this legacy data does not block API startup or the partial unique index.
  */
 export async function backfillLegacyUserPhones(
   database: Db = db,
@@ -48,9 +48,9 @@ export async function backfillLegacyUserPhones(
     })),
   );
 
-  // Yarım kalmış eski çalışmalarda dahili kimlikler birbiriyle çakışmış veya
-  // görünen telefondan sapmış olabilir. Önce etkilenen dahili alanları temizler,
-  // ardından yalnız tekil ve geçerli atamaları yazarız; public phone korunur.
+  // In incomplete legacy runs, internal identities may conflict or differ from
+  // the displayed phone. First clear affected internal fields, then write only
+  // unique valid assignments while preserving the public phone.
   const phoneIdentityIdsToClear = new Set([
     ...plan.assignments.map((assignment) => assignment.userId),
     ...plan.conflicts.flatMap((conflict) =>
@@ -106,8 +106,8 @@ export async function backfillLegacyUserPhones(
   const now = new Date();
 
   if (resolvedIds.length > 0) {
-    // Çatışma bittiğinde telefon ve kullanıcı kimliği içeren kayıt artık
-    // gerekli değildir; veri koruma yükümlülüğü gereği kalıcı olarak kaldırılır.
+    // When a conflict ends, its record containing phone and user identities is
+    // no longer needed and is permanently removed under data-protection duties.
     await conflictDocuments.deleteMany({ _id: { $in: resolvedIds } });
   }
 
@@ -133,23 +133,23 @@ export async function backfillLegacyUserPhones(
 
   if (plan.assignments.length > 0) {
     console.log(
-      `[phone-backfill] ${plan.assignments.length} tekil telefon E.164 biçimine taşındı.`,
+      `[phone-backfill] ${plan.assignments.length} unique phone numbers migrated to E.164.`,
     );
   }
   if (plan.conflicts.length > 0) {
     const summaries = plan.conflicts
       .map(
         (conflict) =>
-          `${maskPhoneE164(conflict.phoneE164)} (${conflict.users.length} hesap)`,
+          `${maskPhoneE164(conflict.phoneE164)} (${conflict.users.length} accounts)`,
       )
       .join(", ");
     console.warn(
-      `[phone-backfill] ${plan.conflicts.length} mükerrer telefon çatışması korundu: ${summaries}`,
+      `[phone-backfill] ${plan.conflicts.length} duplicate phone conflicts preserved: ${summaries}`,
     );
   }
   if (plan.invalidUserIds.length > 0) {
     console.warn(
-      `[phone-backfill] ${plan.invalidUserIds.length} geçersiz veya tutarsız eski telefon değiştirilmedi. Kullanıcı kimlikleri: ${plan.invalidUserIds.join(", ")}`,
+      `[phone-backfill] ${plan.invalidUserIds.length} invalid or inconsistent legacy phone numbers left unchanged. User IDs: ${plan.invalidUserIds.join(", ")}`,
     );
   }
 }
@@ -179,9 +179,9 @@ export async function findActivePhoneConflictUserIds(
 }
 
 /**
- * Telefonu değişen veya silinen kullanıcıyı eski çatışmalarından çıkarır. Tek
- * hesap kaldıysa o hesap normalize edilip benzersiz indeksin korumasına
- * alınmadan çatışma silinmez.
+ * Removes a changed or deleted user from legacy conflicts. When one account
+ * remains, the conflict is not deleted until that account is normalized and
+ * protected by the unique index.
  */
 export async function reconcilePhoneConflictsAfterUserChange(
   changedUserId: string,

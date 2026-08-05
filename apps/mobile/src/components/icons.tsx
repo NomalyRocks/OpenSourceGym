@@ -1,13 +1,12 @@
 import { View, type ViewStyle } from "react-native";
 
 /**
- * Görünüm tabanlı glif seti.
+ * View-based glyph set.
  *
- * Bu çalışma alanında `react-native-svg` yok; eklemek native dev-client
- * rebuild'i gerektirir. Bunun yerine her ikon 24 birimlik bir ızgarada düz
- * `View`'lardan kuruluyor: aynı 1.8 birim çizgi kalınlığı, aynı köşe yumuşaklığı,
- * aynı optik ağırlık. Tek bir ailenin parçası gibi okunmaları için kurallar
- * ikonlar arasında sabit tutulur.
+ * This workspace does not include `react-native-svg`; adding it requires a native
+ * dev-client rebuild. Instead, each icon is built from plain `View`s on a 24-unit
+ * grid with the same 1.8-unit stroke, corner softness, and optical weight. The
+ * rules remain consistent across icons so they read as one family.
  */
 
 export interface IconProps {
@@ -17,7 +16,7 @@ export interface IconProps {
 
 const STROKE = 1.8;
 
-/** 24'lük ızgarada mutlak konumlu dikdörtgen/çizgi. */
+/** Absolutely positioned rectangle/line on a 24-unit grid. */
 function rect(
   u: number,
   x: number,
@@ -36,7 +35,7 @@ function rect(
   };
 }
 
-/** İçi boş (çizgi) kutu. */
+/** Hollow outlined box. */
 function outlineRect(
   u: number,
   color: string,
@@ -53,7 +52,7 @@ function outlineRect(
   });
 }
 
-/** Dolu çizgi (yatay ya da dikey). */
+/** Solid line (horizontal or vertical). */
 function line(
   u: number,
   color: string,
@@ -80,7 +79,7 @@ function Frame({
   return <View style={{ width: size, height: size }}>{children}</View>;
 }
 
-/** Turnike QR'ı: üç bulucu kare + modül kümesi. */
+/** Turnstile QR: three finder squares and a module cluster. */
 export function QrGlyph({ size = 22, color }: IconProps) {
   const u = size / 24;
   const finder: ViewStyle = {
@@ -103,7 +102,7 @@ export function QrGlyph({ size = 22, color }: IconProps) {
   );
 }
 
-/** Ev: çatı üçgeni yerine kesilmiş kutu + saçak çizgisi. */
+/** Home: clipped box and eave line instead of a roof triangle. */
 export function HomeGlyph({ size = 22, color }: IconProps) {
   const u = size / 24;
   return (
@@ -123,7 +122,7 @@ export function HomeGlyph({ size = 22, color }: IconProps) {
   );
 }
 
-/** Takvim: başlık ayraçlı kart + iki askı. */
+/** Calendar: card with a header divider and two hangers. */
 export function CalendarGlyph({ size = 22, color }: IconProps) {
   const u = size / 24;
   return (
@@ -142,7 +141,7 @@ export function CalendarGlyph({ size = 22, color }: IconProps) {
   );
 }
 
-/** Araç kutusu: farklı hesaplayıcıları temsil eden 2×2 modül ızgarası. */
+/** Toolbox: 2×2 module grid representing different calculators. */
 export function ToolsGlyph({ size = 22, color }: IconProps) {
   const u = size / 24;
   return (
@@ -160,7 +159,7 @@ export function ToolsGlyph({ size = 22, color }: IconProps) {
   );
 }
 
-/** Hesap makinesi: kalori aracının katalog glifi. */
+/** Calculator: catalog glyph for the calorie tool. */
 export function CalculatorGlyph({ size = 22, color }: IconProps) {
   const u = size / 24;
   return (
@@ -181,7 +180,7 @@ export function CalculatorGlyph({ size = 22, color }: IconProps) {
   );
 }
 
-/** Baş ve omuz silüeti. */
+/** Head-and-shoulders silhouette. */
 export function PersonGlyph({ size = 22, color }: IconProps) {
   const u = size / 24;
   return (
@@ -214,7 +213,7 @@ export function PersonGlyph({ size = 22, color }: IconProps) {
   );
 }
 
-/** Zil. */
+/** Bell. */
 export function BellGlyph({ size = 20, color }: IconProps) {
   const u = size / 24;
   return (
@@ -269,7 +268,7 @@ export function BellGlyph({ size = 20, color }: IconProps) {
   );
 }
 
-/** Dişli: gövde halkası + altı diş. */
+/** Gear: body ring and six teeth. */
 export function GearGlyph({ size = 20, color }: IconProps) {
   const u = size / 24;
   const teeth = [0, 60, 120];
@@ -406,7 +405,7 @@ export function CloseGlyph({ size = 18, color }: IconProps) {
   );
 }
 
-/** Güneş: açık tema. */
+/** Sun: light theme. */
 export function SunGlyph({ size = 18, color }: IconProps) {
   const u = size / 24;
   return (
@@ -455,8 +454,8 @@ export function SunGlyph({ size = 18, color }: IconProps) {
 }
 
 /**
- * Ay: dolu daireden ikinci bir daireyle "ısırık" alınır. `overflow: hidden`
- * yerine zemin rengiyle maskelemek gerekmesin diye halka olarak çizilir.
+ * Moon: a second circle takes a "bite" from a solid circle. It is drawn as a
+ * ring to avoid masking it with the background color instead of `overflow: hidden`.
  */
 export function MoonGlyph({ size = 18, color }: IconProps) {
   const u = size / 24;
@@ -485,7 +484,7 @@ export function MoonGlyph({ size = 18, color }: IconProps) {
   );
 }
 
-/** Telefon gövdesi: "cihazı takip et" seçeneği. */
+/** Phone body: "follow device" option. */
 export function DeviceGlyph({ size = 18, color }: IconProps) {
   const u = size / 24;
   return (
@@ -496,7 +495,7 @@ export function DeviceGlyph({ size = 18, color }: IconProps) {
   );
 }
 
-/** Küre: dil seçimi. */
+/** Globe: language selection. */
 export function GlobeGlyph({ size = 18, color }: IconProps) {
   const u = size / 24;
   return (
@@ -587,7 +586,7 @@ export function ClockGlyph({ size = 18, color }: IconProps) {
   );
 }
 
-/** Kalkan: güvenlik ve veri koruma satırları. */
+/** Shield: security and data protection rows. */
 export function ShieldGlyph({ size = 18, color }: IconProps) {
   const u = size / 24;
   return (
@@ -666,7 +665,7 @@ export function EnvelopeGlyph({ size = 24, color }: IconProps) {
   );
 }
 
-/** Asma kilit: şifre akışları. */
+/** Padlock: password flows. */
 export function LockGlyph({ size = 18, color }: IconProps) {
   const u = size / 24;
   return (
@@ -689,7 +688,7 @@ export function LockGlyph({ size = 18, color }: IconProps) {
   );
 }
 
-/** Çıkış: kapı + ok. */
+/** Sign-out: door and arrow. */
 export function LogOutGlyph({ size = 18, color }: IconProps) {
   const u = size / 24;
   return (
@@ -717,7 +716,7 @@ export function LogOutGlyph({ size = 18, color }: IconProps) {
   );
 }
 
-/** Çöp kutusu: hesap silme. */
+/** Trash can: account deletion. */
 export function TrashGlyph({ size = 18, color }: IconProps) {
   const u = size / 24;
   return (
@@ -739,7 +738,7 @@ export function TrashGlyph({ size = 18, color }: IconProps) {
   );
 }
 
-/** Fotoğraf makinesi: profil fotoğrafı eylemi. */
+/** Camera: profile photo action. */
 export function CameraGlyph({ size = 18, color }: IconProps) {
   const u = size / 24;
   return (
@@ -768,7 +767,7 @@ export function CameraGlyph({ size = 18, color }: IconProps) {
   );
 }
 
-/** Bilgi: ipucu ve boş durum rozetleri. */
+/** Information: hint and empty-state badges. */
 export function InfoGlyph({ size = 18, color }: IconProps) {
   const u = size / 24;
   return (
@@ -814,7 +813,7 @@ export function InfoGlyph({ size = 18, color }: IconProps) {
   );
 }
 
-/** Uyarı: halka + ünlem. `InfoGlyph`'in ters yerleşimi. */
+/** Warning: ring and exclamation mark. Inverse layout of `InfoGlyph`. */
 export function AlertGlyph({ size = 18, color }: IconProps) {
   const u = size / 24;
   return (
@@ -860,7 +859,7 @@ export function AlertGlyph({ size = 18, color }: IconProps) {
   );
 }
 
-/** Üç dengesiz çubuk: doluluk / etkinlik. */
+/** Three uneven bars: occupancy/activity. */
 export function ActivityGlyph({ size = 20, color }: IconProps) {
   const u = size / 24;
   return (

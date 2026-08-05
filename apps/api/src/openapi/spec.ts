@@ -63,18 +63,18 @@ const jsonBody = (schema: z.ZodType): ZodOpenApiRequestBodyObject => ({
   content: { "application/json": { schema } },
 });
 
-const authErrorResponse = jsonResponse(
-  "Kimlik doğrulama hatası",
-  authErrorSchema,
-);
-const apiErrorResponse = jsonResponse("OpenGym API hatası", apiErrorSchema);
+const authErrorResponse = jsonResponse("Authentication error", authErrorSchema);
+const apiErrorResponse = jsonResponse("OpenGym API error", apiErrorSchema);
 
 const protectedResponses = (
   success: Record<string, ZodOpenApiResponseObject>,
 ): Record<string, ZodOpenApiResponseObject> => ({
   ...success,
-  "401": jsonResponse("Geçerli oturum bulunamadı", apiErrorSchema),
-  "403": jsonResponse("Rol veya zorunlu şifre değişimi engeli", apiErrorSchema),
+  "401": jsonResponse("No valid session found", apiErrorSchema),
+  "403": jsonResponse(
+    "Blocked by role or mandatory password change",
+    apiErrorSchema,
+  ),
 });
 
 const requiredRole = (
@@ -82,92 +82,93 @@ const requiredRole = (
   description: string,
   secured = true,
 ): Pick<ZodOpenApiOperationObject, "description" | "security"> => ({
-  description: `${description}\n\nGerekli rol: ${role}.`,
+  description: `${description}\n\nRequired role: ${role}.`,
   ...(secured ? { security: [{ sessionCookie: [] }] } : { security: [] }),
 });
 
 const idPathParams = z.object({
   id: objectIdSchema.meta({
-    description: "Hedef kaydın MongoDB ObjectId değeri",
+    description: "MongoDB ObjectId of the target record",
   }),
 });
 
 const userSearchQuery = z.object({
   q: z.string().trim().min(2).meta({
-    description: "Telefon, e-posta, ad veya soyad; en az 2 karakter",
+    description:
+      "Phone, email, first name, or last name; at least 2 characters",
   }),
 });
 
 const dayLabelQuerySchema = z
   .string()
   .regex(/^\d{4}-\d{2}-\d{2}$/)
-  .meta({ description: "Salon saat dilimindeki takvim günü (YYYY-MM-DD)" });
+  .meta({ description: "Calendar day in the gym time zone (YYYY-MM-DD)" });
 
 const myEntriesQuery = z.object({
   from: dayLabelQuerySchema,
   to: dayLabelQuerySchema.meta({
-    description: "Aralığın son günü; from ile arası en çok 92 gün olabilir",
+    description: "Last day of the range; at most 92 days after from",
   }),
 });
 
 const pageQuerySchema = z.object({
   cursor: z.string().min(1).optional().meta({
-    description: "Bir önceki sayfadan dönen opak devam imleci",
+    description: "Opaque continuation cursor returned by the previous page",
   }),
   limit: z.coerce.number().int().min(1).max(100).default(50).meta({
-    description: "Sayfa başına kayıt sayısı (varsayılan 50; 1-100)",
+    description: "Records per page (default 50; 1-100)",
   }),
 });
 
 const auditQuerySchema = pageQuerySchema.extend({
   action: z.string().min(1).max(64).optional().meta({
-    description: "Tam eşleşmeyle filtrelenecek işlem adı (1-64 karakter)",
+    description: "Action name to filter by exact match (1-64 characters)",
   }),
   from: z.coerce
     .date()
     .optional()
     .meta({
-      description: "Kayıt zamanı için dahil başlangıç tarihi ve saati",
+      description: "Inclusive start date and time for the record timestamp",
       override: { type: "string", format: "date-time" },
     }),
   to: z.coerce
     .date()
     .optional()
     .meta({
-      description: "Kayıt zamanı için dahil bitiş tarihi ve saati",
+      description: "Inclusive end date and time for the record timestamp",
       override: { type: "string", format: "date-time" },
     }),
 });
 
 const entryEventQuerySchema = pageQuerySchema.extend({
   deviceId: z.string().min(1).max(64).optional().meta({
-    description: "Filtrelenecek cihaz kimliği (1-64 karakter)",
+    description: "Device id to filter by (1-64 characters)",
   }),
   userId: z.string().min(1).max(64).optional().meta({
-    description: "Filtrelenecek kullanıcı kimliği (1-64 karakter)",
+    description: "User id to filter by (1-64 characters)",
   }),
   allowed: z.enum(["true", "false"]).optional().meta({
-    description: "Geçiş sonucunu izin verilen veya reddedilenlerle sınırlar",
+    description: "Limits gate results to allowed or denied events",
   }),
   from: z.coerce
     .date()
     .optional()
     .meta({
-      description: "Geçiş zamanı için dahil başlangıç tarihi ve saati",
+      description: "Inclusive start date and time for the gate event",
       override: { type: "string", format: "date-time" },
     }),
   to: z.coerce
     .date()
     .optional()
     .meta({
-      description: "Geçiş zamanı için dahil bitiş tarihi ve saati",
+      description: "Inclusive end date and time for the gate event",
       override: { type: "string", format: "date-time" },
     }),
 });
 
 const deletionRequestQuerySchema = pageQuerySchema.extend({
   status: z.enum(["pending", "approved", "rejected"]).optional().meta({
-    description: "Talepleri durumuna göre filtreler",
+    description: "Filters requests by status",
   }),
 });
 
@@ -177,7 +178,7 @@ const getSessionQuery = z.object({
 });
 
 const binaryImageSchema = z.string().meta({
-  description: "En fazla 10 MB JPEG, PNG veya WebP görsel verisi",
+  description: "Up to 10 MB of JPEG, PNG, or WebP image data",
   override: { type: "string", format: "binary" },
 });
 
@@ -189,18 +190,18 @@ export const openApiDocument: OpenApiDocument = createDocument({
     title: "OpenGym REST API",
     version: "0.1.0",
     description:
-      "OpenGym yönetim paneli, üye uygulaması ve turnike cihaz yönetimi REST yüzeyi. " +
-      " `/api/auth/*` yollarının sahibi BetterAuth'tur; burada etkin yapılandırmanın temsilî istemci uçları belgelenir.",
+      "REST surface for the OpenGym admin panel, member app, and gate device management. " +
+      "BetterAuth owns the `/api/auth/*` paths; representative client endpoints for the active configuration are documented here.",
   },
-  servers: [{ url: "/", description: "Bu OpenGym sunucusu" }],
+  servers: [{ url: "/", description: "This OpenGym server" }],
   tags: [
-    { name: "admin", description: "Personel ve yönetici işlemleri" },
-    { name: "me", description: "Oturumdaki kullanıcının işlemleri" },
-    { name: "devices", description: "Turnike cihaz yönetimi" },
-    { name: "system", description: "Sağlık ve API belgeleri" },
+    { name: "admin", description: "Staff and administrator operations" },
+    { name: "me", description: "Operations for the signed-in user" },
+    { name: "devices", description: "Gate device management" },
+    { name: "system", description: "Health and API documentation" },
     {
       name: "auth",
-      description: "BetterAuth tarafından sunulan kimlik uçları",
+      description: "Authentication endpoints provided by BetterAuth",
     },
   ],
   components: {
@@ -210,7 +211,7 @@ export const openApiDocument: OpenApiDocument = createDocument({
         in: "cookie",
         name: "better-auth.session_token",
         description:
-          "BetterAuth imzalı oturum çerezi. HTTPS üretim kurulumunda BetterAuth ada `__Secure-` öneki ekleyebilir.",
+          "BetterAuth-signed session cookie. In an HTTPS production deployment, BetterAuth may add the `__Secure-` prefix to the name.",
       },
     },
   },
@@ -219,24 +220,28 @@ export const openApiDocument: OpenApiDocument = createDocument({
       get: {
         tags: ["system"],
         operationId: "getHealth",
-        summary: "Servis sağlık durumu",
-        ...requiredRole("yok", "API işleminin çalıştığını bildirir", false),
-        responses: { "200": jsonResponse("Servis sağlıklı", healthSchema) },
+        summary: "Service health status",
+        ...requiredRole(
+          "none",
+          "Reports that the API process is running",
+          false,
+        ),
+        responses: { "200": jsonResponse("Service is healthy", healthSchema) },
       },
     },
     "/api/openapi.json": {
       get: {
         tags: ["system"],
         operationId: "getOpenApiDocument",
-        summary: "Ham OpenAPI belgesi",
+        summary: "Raw OpenAPI document",
         ...requiredRole(
-          "yok",
-          "OpenAPI 3.1 belgesini JSON olarak döndürür; production ortamında ENABLE_API_DOCS=true gerekir",
+          "none",
+          "Returns the OpenAPI 3.1 document as JSON; production requires ENABLE_API_DOCS=true",
           false,
         ),
         responses: {
           "200": {
-            description: "OpenAPI 3.1 JSON belgesi",
+            description: "OpenAPI 3.1 JSON document",
             content: {
               "application/json": {
                 schema: z.looseObject({
@@ -259,13 +264,13 @@ export const openApiDocument: OpenApiDocument = createDocument({
         operationId: "getSwaggerUi",
         summary: "Swagger UI",
         ...requiredRole(
-          "yok",
-          "Bu belgeyi kullanan Swagger UI'ı açar; production ortamında ENABLE_API_DOCS=true gerekir",
+          "none",
+          "Opens Swagger UI using this document; production requires ENABLE_API_DOCS=true",
           false,
         ),
         responses: {
           "200": {
-            description: "Swagger UI HTML sayfası",
+            description: "Swagger UI HTML page",
             content: {
               "text/html": {
                 schema: z.string(),
@@ -273,7 +278,7 @@ export const openApiDocument: OpenApiDocument = createDocument({
             },
           },
           "301": {
-            description: "Sonunda eğik çizgi bulunan UI yoluna yönlendirme",
+            description: "Redirect to the UI path with a trailing slash",
           },
         },
       },
@@ -282,14 +287,17 @@ export const openApiDocument: OpenApiDocument = createDocument({
       get: {
         tags: ["system"],
         operationId: "getLegalConfig",
-        summary: "Yayımlanmış hukuki belge adresleri",
+        summary: "Published legal document URLs",
         ...requiredRole(
-          "yok",
-          "Kayıt ekranının açacağı veri işleme ve gizlilik belgesi adreslerini döndürür",
+          "none",
+          "Returns the data-processing and privacy document URLs opened by the signup screen",
           false,
         ),
         responses: {
-          "200": jsonResponse("Hukuki belge yapılandırması", legalConfigSchema),
+          "200": jsonResponse(
+            "Legal document configuration",
+            legalConfigSchema,
+          ),
         },
       },
     },
@@ -297,15 +305,15 @@ export const openApiDocument: OpenApiDocument = createDocument({
       post: {
         tags: ["auth"],
         operationId: "signUpEmail",
-        summary: "E-posta ve şifreyle kayıt",
+        summary: "Sign up with email and password",
         ...requiredRole(
-          "yok",
-          "BetterAuth üzerinden üye hesabı oluşturur; veri işleme ve gizlilik onayları zorunludur",
+          "none",
+          "Creates a member account through BetterAuth; data-processing and privacy consent are required",
           false,
         ),
         requestBody: jsonBody(signUpRequestSchema),
         responses: {
-          "200": jsonResponse("Kullanıcı oluşturuldu", signUpResponseSchema),
+          "200": jsonResponse("User created", signUpResponseSchema),
           "400": authErrorResponse,
           "422": authErrorResponse,
           "429": authErrorResponse,
@@ -316,15 +324,15 @@ export const openApiDocument: OpenApiDocument = createDocument({
       post: {
         tags: ["auth"],
         operationId: "signInEmail",
-        summary: "E-posta ve şifreyle giriş",
+        summary: "Sign in with email and password",
         ...requiredRole(
-          "yok",
-          "BetterAuth oturumu açar ve session çerezini yazar",
+          "none",
+          "BetterAuth creates a session and writes the session cookie",
           false,
         ),
         requestBody: jsonBody(signInRequestSchema),
         responses: {
-          "200": jsonResponse("Oturum açıldı", signInResponseSchema),
+          "200": jsonResponse("Session created", signInResponseSchema),
           "401": authErrorResponse,
           "403": authErrorResponse,
           "429": authErrorResponse,
@@ -335,13 +343,13 @@ export const openApiDocument: OpenApiDocument = createDocument({
       post: {
         tags: ["auth"],
         operationId: "signOut",
-        summary: "Oturumu kapat",
+        summary: "Sign out",
         ...requiredRole(
-          "oturum açmış kullanıcı (admin | staff | member)",
-          "BetterAuth mevcut session çerezini iptal eder",
+          "signed-in user (admin | staff | member)",
+          "BetterAuth invalidates the current session cookie",
         ),
         responses: {
-          "200": jsonResponse("Oturum kapatıldı", otpSuccessSchema),
+          "200": jsonResponse("Session ended", otpSuccessSchema),
           "401": authErrorResponse,
         },
       },
@@ -350,15 +358,18 @@ export const openApiDocument: OpenApiDocument = createDocument({
       post: {
         tags: ["auth"],
         operationId: "sendEmailVerificationOtp",
-        summary: "E-posta OTP kodu gönder",
+        summary: "Send email OTP code",
         ...requiredRole(
-          "yok",
-          "BetterAuth emailOTP eklentisi belirtilen amaç için altı haneli kod gönderir",
+          "none",
+          "The BetterAuth emailOTP plugin sends a six-digit code for the specified purpose",
           false,
         ),
         requestBody: jsonBody(sendOtpRequestSchema),
         responses: {
-          "200": jsonResponse("Kod gönderim isteği işlendi", otpSuccessSchema),
+          "200": jsonResponse(
+            "Code delivery request processed",
+            otpSuccessSchema,
+          ),
           "400": authErrorResponse,
           "429": authErrorResponse,
         },
@@ -368,18 +379,15 @@ export const openApiDocument: OpenApiDocument = createDocument({
       post: {
         tags: ["auth"],
         operationId: "verifyEmailOtp",
-        summary: "E-posta OTP kodunu doğrula",
+        summary: "Verify email OTP code",
         ...requiredRole(
-          "yok",
-          "BetterAuth emailOTP eklentisi e-posta doğrulama kodunu tüketir",
+          "none",
+          "The BetterAuth emailOTP plugin consumes the email verification code",
           false,
         ),
         requestBody: jsonBody(verifyEmailOtpRequestSchema),
         responses: {
-          "200": jsonResponse(
-            "E-posta doğrulandı",
-            verifyEmailOtpResponseSchema,
-          ),
+          "200": jsonResponse("Email verified", verifyEmailOtpResponseSchema),
           "400": authErrorResponse,
           "403": authErrorResponse,
           "429": authErrorResponse,
@@ -390,16 +398,16 @@ export const openApiDocument: OpenApiDocument = createDocument({
       get: {
         tags: ["auth"],
         operationId: "getSession",
-        summary: "Mevcut oturumu getir",
+        summary: "Get current session",
         ...requiredRole(
-          "yok; session çerezi varsa oturum döner",
-          "BetterAuth mevcut oturum ve kullanıcı kaydını veya null döndürür",
+          "none; returns a session when the session cookie is present",
+          "BetterAuth returns the current session and user record, or null",
           false,
         ),
         requestParams: { query: getSessionQuery },
         security: [{ sessionCookie: [] }, {}],
         responses: {
-          "200": jsonResponse("Oturum veya null", getSessionResponseSchema),
+          "200": jsonResponse("Session or null", getSessionResponseSchema),
         },
       },
     },
@@ -407,14 +415,14 @@ export const openApiDocument: OpenApiDocument = createDocument({
       post: {
         tags: ["admin"],
         operationId: "changeInitialPassword",
-        summary: "İlk giriş şifresini değiştir",
+        summary: "Change initial sign-in password",
         ...requiredRole(
           "admin | staff | member",
-          "Zorunlu ilk şifre değişimini tamamlar",
+          "Completes the mandatory initial password change",
         ),
         requestBody: jsonBody(initialPasswordRequestSchema),
         responses: protectedResponses({
-          "200": jsonResponse("Şifre değiştirildi", okSchema),
+          "200": jsonResponse("Password changed", okSchema),
           "400": apiErrorResponse,
         }),
       },
@@ -423,17 +431,14 @@ export const openApiDocument: OpenApiDocument = createDocument({
       get: {
         tags: ["admin"],
         operationId: "searchUsers",
-        summary: "Kullanıcı ara",
+        summary: "Search users",
         ...requiredRole(
           "admin | staff",
-          "Telefon, e-posta, ad veya soyad ile en fazla 20 kullanıcı döndürür",
+          "Returns up to 20 users by phone, email, first name, or last name",
         ),
         requestParams: { query: userSearchQuery },
         responses: protectedResponses({
-          "200": jsonResponse(
-            "Eşleşen kullanıcılar",
-            z.array(publicUserSchema),
-          ),
+          "200": jsonResponse("Matching users", z.array(publicUserSchema)),
           "400": apiErrorResponse,
         }),
       },
@@ -442,15 +447,15 @@ export const openApiDocument: OpenApiDocument = createDocument({
       post: {
         tags: ["admin"],
         operationId: "assignUserRole",
-        summary: "Kullanıcı rolünü değiştir",
+        summary: "Change user role",
         ...requiredRole(
           "admin",
-          "Hedef kullanıcıya rol atar; MFA etkin yöneticide mfaCode ve mfaMethod zorunludur",
+          "Assigns a role to the target user; mfaCode and mfaMethod are required for an MFA-enabled administrator",
         ),
         requestParams: { path: idPathParams },
         requestBody: jsonBody(roleRequestSchema),
         responses: protectedResponses({
-          "200": jsonResponse("Rol atandı", okSchema),
+          "200": jsonResponse("Role assigned", okSchema),
           "400": apiErrorResponse,
           "404": apiErrorResponse,
           "429": apiErrorResponse,
@@ -461,15 +466,15 @@ export const openApiDocument: OpenApiDocument = createDocument({
       post: {
         tags: ["admin"],
         operationId: "createSubscription",
-        summary: "Abonelik oluştur veya uzat",
+        summary: "Create or extend subscription",
         ...requiredRole(
           "admin | staff",
-          "Üyenin mevcut çizelgesinin sonuna sıralı abonelik ekler",
+          "Appends a sequential subscription to the member's current timeline",
         ),
         requestBody: jsonBody(createSubscriptionRequestSchema),
         responses: protectedResponses({
           "200": jsonResponse(
-            "Abonelik oluşturuldu",
+            "Subscription created",
             createSubscriptionResponseSchema,
           ),
           "400": apiErrorResponse,
@@ -482,14 +487,14 @@ export const openApiDocument: OpenApiDocument = createDocument({
       get: {
         tags: ["admin"],
         operationId: "listUserSubscriptions",
-        summary: "Kullanıcının aboneliklerini listele",
+        summary: "List user subscriptions",
         ...requiredRole(
           "admin | staff",
-          "Hedef kullanıcıya ait abonelik dönemlerini döndürür",
+          "Returns subscription periods belonging to the target user",
         ),
         requestParams: { path: idPathParams },
         responses: protectedResponses({
-          "200": jsonResponse("Abonelikler", z.array(subscriptionSchema)),
+          "200": jsonResponse("Subscriptions", z.array(subscriptionSchema)),
           "400": apiErrorResponse,
         }),
       },
@@ -498,26 +503,23 @@ export const openApiDocument: OpenApiDocument = createDocument({
       get: {
         tags: ["admin"],
         operationId: "getGymSettings",
-        summary: "Salon ayarlarını getir",
-        ...requiredRole(
-          "admin",
-          "Salon ve paylaşım tespiti ayarlarını döndürür",
-        ),
+        summary: "Get gym settings",
+        ...requiredRole("admin", "Returns gym and sharing-detection settings"),
         responses: protectedResponses({
-          "200": jsonResponse("Salon ayarları", gymSettingsSchema),
+          "200": jsonResponse("Gym settings", gymSettingsSchema),
         }),
       },
       put: {
         tags: ["admin"],
         operationId: "updateGymSettings",
-        summary: "Salon ayarlarını güncelle",
+        summary: "Update gym settings",
         ...requiredRole(
           "admin",
-          "Salon, konum, kapasite ve isteğe bağlı paylaşım ayarlarını günceller",
+          "Updates gym, location, capacity, and optional sharing settings",
         ),
         requestBody: jsonBody(gymSettingsRequestSchema),
         responses: protectedResponses({
-          "200": jsonResponse("Ayarlar güncellendi", okSchema),
+          "200": jsonResponse("Settings updated", okSchema),
           "400": apiErrorResponse,
         }),
       },
@@ -526,13 +528,13 @@ export const openApiDocument: OpenApiDocument = createDocument({
       get: {
         tags: ["admin"],
         operationId: "getAdminStats",
-        summary: "Yönetim KPI değerlerini getir",
+        summary: "Get administration KPI values",
         ...requiredRole(
           "admin | staff",
-          "Aktif üye ve yedi gün içinde yenileme bekleyen üye sayılarını döndürür",
+          "Returns counts of active members and members due for renewal within seven days",
         ),
         responses: protectedResponses({
-          "200": jsonResponse("Yönetim istatistikleri", adminStatsSchema),
+          "200": jsonResponse("Administration statistics", adminStatsSchema),
         }),
       },
     },
@@ -540,17 +542,14 @@ export const openApiDocument: OpenApiDocument = createDocument({
       get: {
         tags: ["admin"],
         operationId: "listAuditLogs",
-        summary: "Denetim kayıtlarını listele",
+        summary: "List audit records",
         ...requiredRole(
           "admin",
-          "Hassas işlem kayıtlarını en yeniden eskiye imleçli olarak döndürür",
+          "Returns sensitive operation records from newest to oldest with cursor pagination",
         ),
         requestParams: { query: auditQuerySchema },
         responses: protectedResponses({
-          "200": jsonResponse(
-            "Denetim kayıtları sayfası",
-            pageSchema(auditLogSchema),
-          ),
+          "200": jsonResponse("Audit record page", pageSchema(auditLogSchema)),
         }),
       },
     },
@@ -558,17 +557,14 @@ export const openApiDocument: OpenApiDocument = createDocument({
       get: {
         tags: ["admin"],
         operationId: "listEntryEvents",
-        summary: "Turnike geçişlerini listele",
+        summary: "List gate events",
         ...requiredRole(
           "admin | staff",
-          "İzin ve ret olaylarını en yeniden eskiye imleçli olarak döndürür",
+          "Returns allow and deny events from newest to oldest with cursor pagination",
         ),
         requestParams: { query: entryEventQuerySchema },
         responses: protectedResponses({
-          "200": jsonResponse(
-            "Geçiş olayları sayfası",
-            pageSchema(entryEventSchema),
-          ),
+          "200": jsonResponse("Gate event page", pageSchema(entryEventSchema)),
         }),
       },
     },
@@ -576,15 +572,15 @@ export const openApiDocument: OpenApiDocument = createDocument({
       get: {
         tags: ["admin"],
         operationId: "listDeletionRequests",
-        summary: "Hesap silme taleplerini listele",
+        summary: "List account deletion requests",
         ...requiredRole(
           "admin",
-          "Hesap silme taleplerini en yeniden eskiye imleçli olarak döndürür",
+          "Returns account deletion requests from newest to oldest with cursor pagination",
         ),
         requestParams: { query: deletionRequestQuerySchema },
         responses: protectedResponses({
           "200": jsonResponse(
-            "Hesap silme talepleri sayfası",
+            "Account deletion request page",
             pageSchema(deletionRequestSchema),
           ),
         }),
@@ -594,14 +590,14 @@ export const openApiDocument: OpenApiDocument = createDocument({
       post: {
         tags: ["admin"],
         operationId: "approveDeletionRequest",
-        summary: "Hesap silme talebini onayla",
+        summary: "Approve account deletion request",
         ...requiredRole(
           "admin",
-          "Bekleyen talebi atomik olarak sahiplenir ve kullanıcı verilerini kalıcı siler",
+          "Atomically claims the pending request and permanently deletes user data",
         ),
         requestParams: { path: idPathParams },
         responses: protectedResponses({
-          "200": jsonResponse("Talep onaylandı", okSchema),
+          "200": jsonResponse("Request approved", okSchema),
           "404": apiErrorResponse,
           "409": apiErrorResponse,
           "503": apiErrorResponse,
@@ -612,11 +608,11 @@ export const openApiDocument: OpenApiDocument = createDocument({
       post: {
         tags: ["admin"],
         operationId: "rejectDeletionRequest",
-        summary: "Hesap silme talebini reddet",
-        ...requiredRole("admin", "Bekleyen hesap silme talebini reddeder"),
+        summary: "Reject account deletion request",
+        ...requiredRole("admin", "Rejects a pending account deletion request"),
         requestParams: { path: idPathParams },
         responses: protectedResponses({
-          "200": jsonResponse("Talep reddedildi", okSchema),
+          "200": jsonResponse("Request rejected", okSchema),
           "404": apiErrorResponse,
           "409": apiErrorResponse,
         }),
@@ -626,26 +622,26 @@ export const openApiDocument: OpenApiDocument = createDocument({
       get: {
         tags: ["devices"],
         operationId: "listDevices",
-        summary: "Turnike cihazlarını listele",
+        summary: "List gate devices",
         ...requiredRole(
           "admin | staff",
-          "Cihazları çevrimiçi durum ve 24 saatlik uptime ile döndürür",
+          "Returns devices with online status and 24-hour uptime",
         ),
         responses: protectedResponses({
-          "200": jsonResponse("Cihazlar", z.array(deviceSchema)),
+          "200": jsonResponse("Devices", z.array(deviceSchema)),
         }),
       },
       post: {
         tags: ["devices"],
         operationId: "createDevice",
-        summary: "Turnike cihazı oluştur",
+        summary: "Create gate device",
         ...requiredRole(
           "admin",
-          "Cihazı kaydeder; düz metin cihaz tokenı yalnızca bu yanıtta görünür",
+          "Registers the device; the plaintext device token appears only in this response",
         ),
         requestBody: jsonBody(createDeviceRequestSchema),
         responses: protectedResponses({
-          "200": jsonResponse("Cihaz oluşturuldu", deviceCreatedSchema),
+          "200": jsonResponse("Device created", deviceCreatedSchema),
           "400": apiErrorResponse,
         }),
       },
@@ -654,14 +650,14 @@ export const openApiDocument: OpenApiDocument = createDocument({
       delete: {
         tags: ["devices"],
         operationId: "deleteDevice",
-        summary: "Turnike cihazını sil",
+        summary: "Delete gate device",
         ...requiredRole(
           "admin",
-          "Cihaz kaydını ve aktif gateway bağlantısını siler",
+          "Deletes the device record and active gateway connection",
         ),
         requestParams: { path: idPathParams },
         responses: protectedResponses({
-          "200": jsonResponse("Cihaz silindi", okSchema),
+          "200": jsonResponse("Device deleted", okSchema),
           "404": apiErrorResponse,
         }),
       },
@@ -670,13 +666,13 @@ export const openApiDocument: OpenApiDocument = createDocument({
       get: {
         tags: ["me"],
         operationId: "getMyProfile",
-        summary: "Güncel profilimi getir",
+        summary: "Get my current profile",
         ...requiredRole(
           "admin | staff | member",
-          "Rol ve güvenlik bayrakları MongoDB'den taze okunmuş profili döndürür",
+          "Returns the profile with role and security flags read fresh from MongoDB",
         ),
         responses: protectedResponses({
-          "200": jsonResponse("Güncel profil", myProfileSchema),
+          "200": jsonResponse("Current profile", myProfileSchema),
         }),
       },
     },
@@ -684,15 +680,15 @@ export const openApiDocument: OpenApiDocument = createDocument({
       patch: {
         tags: ["me"],
         operationId: "patchMyBodyMetrics",
-        summary: "Kendi yaş/boy/kilo bilgimi güncelle",
+        summary: "Update my age, height, and weight",
         ...requiredRole(
           "admin | staff | member",
-          "Kalori hesaplayıcının otomatik doldurduğu alanlar. BetterAuth'un update-user ucu yerine burada tutulur ki yazma yolu rol denetiminden ve taze kullanıcı okumasından geçsin. Kilo değiştiğinde kilo geçmişine tarihli bir kayıt eklenir",
+          "Fields used to prefill the calorie calculator. This endpoint replaces BetterAuth's update-user endpoint so writes pass through role checks and a fresh user read. When weight changes, a timestamped record is added to weight history",
         ),
         requestBody: jsonBody(myBodyMetricsUpdateSchema),
         responses: protectedResponses({
-          "200": jsonResponse("Güncel vücut bilgileri", myBodyMetricsSchema),
-          "400": jsonResponse("Geçersiz vücut bilgisi", apiErrorSchema),
+          "200": jsonResponse("Current body metrics", myBodyMetricsSchema),
+          "400": jsonResponse("Invalid body metrics", apiErrorSchema),
         }),
       },
     },
@@ -700,13 +696,13 @@ export const openApiDocument: OpenApiDocument = createDocument({
       get: {
         tags: ["me"],
         operationId: "getMyWeightHistory",
-        summary: "Kilo geçmişimi getir",
+        summary: "Get my weight history",
         ...requiredRole(
           "admin | staff | member",
-          "Profildeki kilo her değiştiğinde eklenen tarihli kayıtlar, artan zamana göre sıralı",
+          "Timestamped records added whenever profile weight changes, sorted in ascending time order",
         ),
         responses: protectedResponses({
-          "200": jsonResponse("Kilo geçmişi", myWeightHistorySchema),
+          "200": jsonResponse("Weight history", myWeightHistorySchema),
         }),
       },
     },
@@ -714,10 +710,10 @@ export const openApiDocument: OpenApiDocument = createDocument({
       put: {
         tags: ["me"],
         operationId: "putMyProfilePhoto",
-        summary: "Profil fotoğrafımı yükle",
+        summary: "Upload my profile photo",
         ...requiredRole(
           "member",
-          "Ham görsel gövdesini normalize eder ve profil fotoğrafı olarak saklar",
+          "Normalizes the raw image body and stores it as the profile photo",
         ),
         requestBody: {
           required: true,
@@ -730,7 +726,7 @@ export const openApiDocument: OpenApiDocument = createDocument({
         },
         responses: protectedResponses({
           "200": jsonResponse(
-            "Profil fotoğrafı güncellendi",
+            "Profile photo updated",
             profilePhotoResponseSchema,
           ),
           "400": apiErrorResponse,
@@ -743,11 +739,11 @@ export const openApiDocument: OpenApiDocument = createDocument({
       delete: {
         tags: ["me"],
         operationId: "deleteMyProfilePhoto",
-        summary: "Profil fotoğrafımı sil",
-        ...requiredRole("member", "Saklanan profil fotoğrafını kaldırır"),
+        summary: "Delete my profile photo",
+        ...requiredRole("member", "Removes the stored profile photo"),
         responses: protectedResponses({
           "200": jsonResponse(
-            "Profil fotoğrafı kaldırıldı",
+            "Profile photo removed",
             profilePhotoResponseSchema,
           ),
           "409": apiErrorResponse,
@@ -759,13 +755,13 @@ export const openApiDocument: OpenApiDocument = createDocument({
       get: {
         tags: ["me"],
         operationId: "getMySubscription",
-        summary: "Aboneliğimi getir",
+        summary: "Get my subscription",
         ...requiredRole(
           "admin | staff | member",
-          "Oturumdaki kullanıcının etkin abonelik özetini döndürür",
+          "Returns the active subscription summary for the signed-in user",
         ),
         responses: protectedResponses({
-          "200": jsonResponse("Abonelik özeti", mySubscriptionSchema),
+          "200": jsonResponse("Subscription summary", mySubscriptionSchema),
         }),
       },
     },
@@ -773,14 +769,14 @@ export const openApiDocument: OpenApiDocument = createDocument({
       get: {
         tags: ["me"],
         operationId: "getMyEntries",
-        summary: "Geliş günlerimi getir",
+        summary: "Get my entry days",
         ...requiredRole(
           "admin | staff | member",
-          "Oturumdaki kullanıcının verilen aralıktaki geliş günlerini salon saat dilimine göre gruplayarak döndürür",
+          "Returns the signed-in user's entry days in the provided range, grouped by the gym time zone",
         ),
         requestParams: { query: myEntriesQuery },
         responses: protectedResponses({
-          "200": jsonResponse("Geliş günleri", myEntriesSchema),
+          "200": jsonResponse("Entry days", myEntriesSchema),
           "400": apiErrorResponse,
         }),
       },
@@ -789,14 +785,14 @@ export const openApiDocument: OpenApiDocument = createDocument({
       post: {
         tags: ["me"],
         operationId: "scanGate",
-        summary: "Turnike QR geçişi iste",
+        summary: "Request gate entry by QR",
         ...requiredRole(
           "admin | staff | member",
-          "Statik QR, abonelik, konum, paylaşım sinyalleri ve cihaz durumunu doğrulayıp turnikeyi açar",
+          "Validates the static QR, subscription, location, sharing signals, and device status, then opens the gate",
         ),
         requestBody: jsonBody(gateScanRequestSchema),
         responses: protectedResponses({
-          "200": jsonResponse("Turnike açıldı", gateScanResponseSchema),
+          "200": jsonResponse("Gate opened", gateScanResponseSchema),
           "400": apiErrorResponse,
           "429": apiErrorResponse,
         }),
@@ -806,13 +802,13 @@ export const openApiDocument: OpenApiDocument = createDocument({
       get: {
         tags: ["me"],
         operationId: "getOccupancy",
-        summary: "Salon doluluğunu getir",
+        summary: "Get gym occupancy",
         ...requiredRole(
           "admin | staff | member",
-          "Anlık içerideki kişi sayısını ve yapılandırılmış kapasite oranını döndürür",
+          "Returns the live number of people inside and the configured capacity ratio",
         ),
         responses: protectedResponses({
-          "200": jsonResponse("Salon doluluğu", occupancySchema),
+          "200": jsonResponse("Gym occupancy", occupancySchema),
         }),
       },
     },
@@ -820,38 +816,41 @@ export const openApiDocument: OpenApiDocument = createDocument({
       get: {
         tags: ["me"],
         operationId: "getMyDeletionRequest",
-        summary: "Hesap silme talebimi getir",
+        summary: "Get my account deletion request",
         ...requiredRole(
           "admin | staff | member",
-          "Oturumdaki kullanıcının son silme talebi durumunu döndürür",
+          "Returns the latest deletion request status for the signed-in user",
         ),
         responses: protectedResponses({
-          "200": jsonResponse("Silme talebi durumu", myDeletionRequestSchema),
+          "200": jsonResponse(
+            "Deletion request status",
+            myDeletionRequestSchema,
+          ),
         }),
       },
       post: {
         tags: ["me"],
         operationId: "createMyDeletionRequest",
-        summary: "Hesap silme talebi oluştur",
+        summary: "Create account deletion request",
         ...requiredRole(
-          "member (middleware admin | staff | member kabul eder; işlem üye rolünü ayrıca denetler)",
-          "Oturumdaki üye için bekleyen hesap silme talebi oluşturur",
+          "member (middleware accepts admin | staff | member; the operation checks the member role separately)",
+          "Creates a pending account deletion request for the signed-in member",
         ),
         responses: protectedResponses({
-          "200": jsonResponse("Talep oluşturuldu", okSchema),
+          "200": jsonResponse("Request created", okSchema),
           "409": apiErrorResponse,
         }),
       },
       delete: {
         tags: ["me"],
         operationId: "cancelMyDeletionRequest",
-        summary: "Hesap silme talebini geri çek",
+        summary: "Withdraw account deletion request",
         ...requiredRole(
           "admin | staff | member",
-          "Oturumdaki kullanıcının bekleyen silme talebini kaldırır",
+          "Removes the signed-in user's pending deletion request",
         ),
         responses: protectedResponses({
-          "200": jsonResponse("Talep geri çekildi", okSchema),
+          "200": jsonResponse("Request withdrawn", okSchema),
           "404": apiErrorResponse,
         }),
       },

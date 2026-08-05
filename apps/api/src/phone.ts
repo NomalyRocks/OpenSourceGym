@@ -1,9 +1,9 @@
 import { parsePhoneNumberWithError } from "libphonenumber-js/max";
 
 export const INVALID_PHONE_MESSAGE =
-  "Geçerli bir telefon numarası girin. Türkiye numaralarında ülke kodu zorunlu değildir.";
+  "Enter a valid phone number. The country code is optional for Turkish numbers.";
 export const PHONE_ALREADY_EXISTS_MESSAGE =
-  "Bu telefon numarasıyla kayıtlı bir hesap zaten var.";
+  "An account with this phone number already exists.";
 export const PHONE_ALREADY_EXISTS_CODE = "PHONE_ALREADY_EXISTS";
 
 export class InvalidPhoneNumberError extends Error {
@@ -14,9 +14,9 @@ export class InvalidPhoneNumberError extends Error {
 }
 
 /**
- * Ülke kodu bulunmayan numaraları Türkiye numarası olarak yorumlar ve geçerli
- * telefonları E.164 biçiminde döndürür. Girdinin tamamı telefon olmalıdır;
- * metin içinden numara ayıklanmaz ve dahili numaralar (extension) kabul edilmez.
+ * Interprets numbers without a country code as Turkish and returns valid phone
+ * numbers in E.164 format. The entire input must be a phone number; numbers are
+ * not extracted from text and extensions are not accepted.
  */
 export function normalizePhoneToE164(value: unknown): string {
   if (typeof value !== "string" || value.trim() === "") {
@@ -40,7 +40,7 @@ export function normalizePhoneToE164(value: unknown): string {
   }
 }
 
-/** Admin araması ve eski belgelerin güvenli okunması için hata atmayan sürüm. */
+/** Non-throwing version for admin search and safe reads of legacy documents. */
 export function tryNormalizePhoneToE164(value: unknown): string | null {
   try {
     return normalizePhoneToE164(value);

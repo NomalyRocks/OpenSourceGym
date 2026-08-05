@@ -20,7 +20,7 @@ function escapeHtml(value: string): string {
     .replace(/"/g, "&quot;");
 }
 
-// Yazdırma penceresine yazılan minimal sayfa: turnikeye yapıştırılacak QR + etiket
+// Minimal page written to the print window: QR and label to attach to the turnstile
 function printQr(
   name: string,
   title: string,
@@ -39,7 +39,7 @@ function printQr(
       <img src="${dataUrl}" style="width:320px;height:320px;" />
     </body></html>`);
   win.document.close();
-  // Görsel yüklenmeden print açılırsa çıktı boş kalabilir
+  // The output may be blank if printing starts before the image loads
   const img = win.document.querySelector("img");
   const doPrint = () => {
     win.focus();
@@ -58,7 +58,7 @@ export function Devices() {
   const fmt = (iso: string | null) =>
     iso ? new Date(iso).toLocaleString(locale) : "—";
   const directionLabel = (value: DeviceDirection) =>
-    value === "in" ? t("Giriş") : t("Turnike çıkışı");
+    value === "in" ? t("Entry") : t("Exit");
   const [devices, setDevices] = useState<Device[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [name, setName] = useState("");
@@ -72,8 +72,8 @@ export function Devices() {
   const [locationConfigured, setLocationConfigured] = useState(true);
 
   useEffect(() => {
-    // Statik QR fiziksel varlık kanıtı taşımaz; konum doğrulaması kapalıysa
-    // yönetici uyarılır (okunamazsa uyarı gösterilmez)
+    // A static QR does not prove physical presence; warn the administrator when
+    // location verification is disabled (show no warning if the setting cannot be read)
     api<GymSettings>("/api/admin/settings")
       .then((s) => setLocationConfigured(s.location !== null))
       .catch(() => undefined);
@@ -85,7 +85,7 @@ export function Devices() {
       setError(null);
     } catch (err) {
       if (isAbortError(err)) return;
-      setError(errorMessage(err, t, "Yüklenemedi."));
+      setError(errorMessage(err, t, "Could not load data."));
     }
   }
 
@@ -109,7 +109,7 @@ export function Devices() {
       setDirection("in");
       await load();
     } catch (err) {
-      setError(errorMessage(err, t, "Cihaz eklenemedi."));
+      setError(errorMessage(err, t, "Could not add the device."));
     } finally {
       setBusy(false);
     }
@@ -118,7 +118,7 @@ export function Devices() {
   async function remove(device: Device) {
     if (
       !confirm(
-        t('"{{name}}" cihazını silmek istediğinize emin misiniz?', {
+        t('Are you sure you want to delete the device "{{name}}"?', {
           name: device.name,
         }),
       )
@@ -130,7 +130,7 @@ export function Devices() {
       await api(`/api/admin/devices/${device.id}`, { method: "DELETE" });
       await load();
     } catch (err) {
-      setError(errorMessage(err, t, "Cihaz silinemedi."));
+      setError(errorMessage(err, t, "Could not delete the device."));
     }
   }
 
@@ -160,21 +160,21 @@ export function Devices() {
 
   return (
     <div className="stagger">
-      <h1>{t("Cihazlar")}</h1>
+      <h1>{t("Devices")}</h1>
       {!locationConfigured && (
         <div className="msg warn">
           {t(
-            "Salon konumu yapılandırılmamış: statik turnike QR'ının fotoğrafı salon dışından da geçiş açabilir. Ayarlar sayfasından konum doğrulamasını etkinleştirin.",
+            "Gym location is not configured: a photo of the static turnstile QR can open the gate from outside the gym. Enable location verification on the Settings page.",
           )}
         </div>
       )}
       {error && <div className="msg error">{error}</div>}
       {created && (
         <div className="panel">
-          <h2>{t("Yeni cihaz — {{name}}", { name: created.name })}</h2>
+          <h2>{t("New device — {{name}}", { name: created.name })}</h2>
           <p style={{ color: "var(--ink-dim)", marginBottom: 10 }}>
             {t(
-              "Bu token yalnızca şimdi görüntülenir; cihazın yapılandırmasına kaydedin. Kaybederseniz cihazı silip yeniden eklemeniz gerekir.",
+              "This token is shown only now; save it in the device configuration. If you lose it, delete and add the device again.",
             )}
           </p>
           <div className="row" style={{ alignItems: "center" }}>
@@ -186,20 +186,20 @@ export function Devices() {
               className="ghost"
               onClick={() => void copyToken()}
             >
-              {copied ? t("Kopyalandı") : t("Kopyala")}
+              {copied ? t("Copied") : t("Copy")}
             </button>
           </div>
           {createdQr && (
             <div style={{ marginTop: 16 }}>
               <p style={{ color: "var(--ink-dim)", marginBottom: 10 }}>
                 {t(
-                  "Bu statik QR'ı yazdırıp turnikeye yapıştırın — üyeler girişte bunu okutacak.",
+                  "Print this static QR code and attach it to the turnstile for members to scan.",
                 )}
               </p>
               <div className="qr-box">
                 <img
                   src={createdQr}
-                  alt={t("{{name}} QR kodu", { name: created.name })}
+                  alt={t("QR code for {{name}}", { name: created.name })}
                 />
               </div>
               <button
@@ -208,13 +208,13 @@ export function Devices() {
                 onClick={() =>
                   printQr(
                     created.name,
-                    t("{{name}} — Turnike QR", { name: created.name }),
+                    t("{{name}} — Turnstile QR", { name: created.name }),
                     directionLabel(created.direction),
                     createdQr,
                   )
                 }
               >
-                {t("QR'ı yazdır")}
+                {t("Print QR")}
               </button>
             </div>
           )}
@@ -224,11 +224,12 @@ export function Devices() {
         <div className="panel">
           <h2>
             {t("{{name}} — QR", {
-              name: devices.find((d) => d.id === previewId)?.name ?? t("Cihaz"),
+              name:
+                devices.find((d) => d.id === previewId)?.name ?? t("Device"),
             })}
           </h2>
           <div className="qr-box">
-            <img src={previewUrl} alt={t("Cihaz QR kodu")} />
+            <img src={previewUrl} alt={t("Device QR code")} />
           </div>
           <div className="row">
             <button
@@ -239,14 +240,14 @@ export function Devices() {
                 if (device) {
                   printQr(
                     device.name,
-                    t("{{name}} — Turnike QR", { name: device.name }),
+                    t("{{name}} — Turnstile QR", { name: device.name }),
                     directionLabel(device.direction),
                     previewUrl,
                   );
                 }
               }}
             >
-              {t("Yazdır")}
+              {t("Print")}
             </button>
             <button
               type="button"
@@ -256,37 +257,37 @@ export function Devices() {
                 setPreviewUrl(null);
               }}
             >
-              {t("Kapat")}
+              {t("Close")}
             </button>
           </div>
         </div>
       )}
       <div className="panel">
-        <h2>{t("Cihaz ekle")}</h2>
+        <h2>{t("Add device")}</h2>
         <form className="row" onSubmit={create}>
           <div className="field">
-            <label htmlFor="deviceName">{t("Ad")}</label>
+            <label htmlFor="deviceName">{t("Name")}</label>
             <input
               id="deviceName"
               value={name}
               onChange={(e) => setName(e.target.value)}
-              placeholder={t("Giriş turnikesi")}
+              placeholder={t("Entry turnstile")}
               required
             />
           </div>
           <div className="field">
-            <label htmlFor="deviceDirection">{t("Yön")}</label>
+            <label htmlFor="deviceDirection">{t("Direction")}</label>
             <select
               id="deviceDirection"
               value={direction}
               onChange={(e) => setDirection(e.target.value as DeviceDirection)}
             >
-              <option value="in">{t("Giriş")}</option>
-              <option value="out">{t("Turnike çıkışı")}</option>
+              <option value="in">{t("Entry")}</option>
+              <option value="out">{t("Exit")}</option>
             </select>
           </div>
           <button type="submit" disabled={busy}>
-            {busy ? t("Ekleniyor…") : t("Cihaz ekle")}
+            {busy ? t("Adding…") : t("Add device")}
           </button>
         </form>
       </div>
@@ -294,12 +295,12 @@ export function Devices() {
         <table>
           <thead>
             <tr>
-              <th>{t("Ad")}</th>
-              <th>{t("Yön")}</th>
-              <th>{t("Durum")}</th>
-              <th>{t("Son görülme")}</th>
-              <th>{t("Eklenme")}</th>
-              <th>{t("Uptime (24s)")}</th>
+              <th>{t("Name")}</th>
+              <th>{t("Direction")}</th>
+              <th>{t("Status")}</th>
+              <th>{t("Last seen")}</th>
+              <th>{t("Added")}</th>
+              <th>{t("Uptime (24h)")}</th>
               <th></th>
             </tr>
           </thead>
@@ -310,9 +311,9 @@ export function Devices() {
                 <td>{directionLabel(d.direction)}</td>
                 <td>
                   {d.online ? (
-                    <span className="badge ok">{t("Çevrimiçi")}</span>
+                    <span className="badge ok">{t("Online")}</span>
                   ) : (
-                    <span className="badge danger">{t("Çevrimdışı")}</span>
+                    <span className="badge danger">{t("Offline")}</span>
                   )}
                 </td>
                 <td>{fmt(d.lastSeenAt)}</td>
@@ -324,21 +325,21 @@ export function Devices() {
                     className="ghost"
                     onClick={() => void togglePreview(d)}
                   >
-                    {previewId === d.id ? t("QR'ı gizle") : t("QR göster")}
+                    {previewId === d.id ? t("Hide QR") : t("Show QR")}
                   </button>{" "}
                   <button
                     type="button"
                     className="ghost"
                     onClick={() => void remove(d)}
                   >
-                    {t("Sil")}
+                    {t("Delete")}
                   </button>
                 </td>
               </tr>
             ))}
             {devices.length === 0 && !error && (
               <tr>
-                <td colSpan={7}>{t("Kayıtlı cihaz yok.")}</td>
+                <td colSpan={7}>{t("No registered devices.")}</td>
               </tr>
             )}
           </tbody>

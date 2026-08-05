@@ -5,7 +5,7 @@ import { z } from "zod";
 export const DEFAULT_PAGE_LIMIT = 50;
 export const MAX_PAGE_LIMIT = 100;
 
-/** Tüm sayfalanan liste uçlarının ortak sorgu parametreleri. */
+/** Shared query parameters for all paginated list endpoints. */
 export const pageQuerySchema = z.object({
   cursor: z.string().min(1).optional(),
   limit: z.coerce
@@ -21,7 +21,7 @@ export interface PageCursor {
   id: ObjectId;
 }
 
-/** Geçersiz/bozuk imleç. Route katmanı bunu 400'e çevirir. */
+/** Invalid or malformed cursor. The route layer converts this to a 400. */
 export class InvalidCursorError extends Error {
   constructor() {
     super("invalid cursor");
@@ -31,8 +31,8 @@ export class InvalidCursorError extends Error {
 
 const OBJECT_ID_HEX = /^[0-9a-f]{24}$/i;
 
-// İmleç istemciye opak görünmeli: içeriği sözleşme değildir, sunucu sıralama
-// anahtarını değiştirdiğinde biçimi de değişebilir.
+// The cursor must appear opaque to clients: its content is not a contract, and
+// its format may change when the server changes the sort key.
 export function encodeCursor(at: Date, id: ObjectId): string {
   return Buffer.from(`${at.getTime()}:${id.toHexString()}`).toString(
     "base64url",
@@ -50,8 +50,8 @@ export function decodeCursor(raw: string): PageCursor | null {
   if (separator < 0) return null;
   const milliseconds = Number(decoded.slice(0, separator));
   const hex = decoded.slice(separator + 1);
-  // ObjectId.isValid 12 karakterlik ham string'i de kabul eder; oradan üretilen
-  // kimlik imleçtekinden farklı olur, bu yüzden hex biçimini kendimiz doğrularız.
+  // ObjectId.isValid also accepts raw 12-character strings; the resulting ID
+  // differs from the cursor value, so validate the hex format ourselves.
   if (!Number.isSafeInteger(milliseconds) || !OBJECT_ID_HEX.test(hex)) {
     return null;
   }
@@ -59,12 +59,12 @@ export function decodeCursor(raw: string): PageCursor | null {
 }
 
 /**
- * Sayfalama yönü. Listelerin çoğu "en yeni önce" ister (`desc`); yaklaşan
- * yenilemeler gibi geleceğe bakan listeler "en yakın önce" ister (`asc`).
+ * Pagination direction. Most lists want newest first (`desc`); forward-looking
+ * lists such as upcoming renewals want nearest first (`asc`).
  */
 export type PageDirection = "asc" | "desc";
 
-/** Sıralama anahtarı: zaman alanı + _id (eşit damgaları kırmak için). */
+/** Sort key: time field plus _id (to break equal timestamps). */
 export function sortSpec(
   timeField: string,
   direction: PageDirection = "desc",
@@ -74,10 +74,10 @@ export function sortSpec(
 }
 
 /**
- * Sıralama anahtarına göre imleçten SONRAKİ kayıtları seçen filtre.
- * Sıralama `{ [timeField]: yön, _id: yön }` olduğundan eşit zaman damgalarında
- * _id ile kırılır; aksi halde aynı milisaniyeye düşen kayıtlar sayfalar
- * arasında tekrarlanır veya atlanırdı.
+ * Filter selecting records AFTER the cursor according to the sort key. Because
+ * sorting is `{ [timeField]: direction, _id: direction }`, _id breaks equal
+ * timestamps; otherwise records in the same millisecond would repeat or be
+ * skipped across pages.
  */
 export function cursorFilter(
   timeField: string,
@@ -94,13 +94,13 @@ export function cursorFilter(
 }
 
 export interface FindPageParams {
-  /** Sıralama ve imleç için kullanılan tarih alanı (ör. "at", "requestedAt"). */
+  /** Date field used for sorting and the cursor (for example, "at", "requestedAt"). */
   timeField: string;
-  /** Uca özgü ek filtreler; imleç filtresiyle $and ile birleştirilir. */
+  /** Endpoint-specific filters; combined with the cursor filter using $and. */
   filter?: Document;
   cursor?: string | undefined;
   limit: number;
-  /** Varsayılan "desc" (en yeni önce). */
+  /** Defaults to "desc" (newest first). */
   direction?: PageDirection;
 }
 
@@ -110,8 +110,8 @@ export interface PageResult {
 }
 
 /**
- * Bir koleksiyondan tek sayfa okur ve sonraki sayfanın imlecini üretir.
- * @throws InvalidCursorError imleç çözümlenemezse.
+ * Reads one page from a collection and produces the next page cursor.
+ * @throws InvalidCursorError when the cursor cannot be decoded.
  */
 export async function findPage(
   collection: Collection<Document>,
@@ -130,8 +130,8 @@ export async function findPage(
     ? { $and: [filter, cursorFilter(timeField, cursor, direction)] }
     : filter;
 
-  // limit + 1 okunur: fazladan kayıt gelirse sonraki sayfa var demektir.
-  // Ayrı bir countDocuments çağrısı hem pahalı hem de yarışa açık olurdu.
+  // Read limit + 1: an extra record means another page exists. A separate
+  // countDocuments call would be both expensive and race-prone.
   const docs = await collection
     .find(query)
     .sort(sortSpec(timeField, direction))
@@ -142,9 +142,9 @@ export async function findPage(
 }
 
 /**
- * `limit + 1` okunmuş bir belge dizisini sayfaya böler ve sonraki imleci üretir.
- * Aggregation kullanan uçlar `findPage`i kullanamaz ama aynı imleç sözleşmesini
- * paylaşmalıdır; ortak nokta burasıdır.
+ * Splits an array read with `limit + 1` into a page and produces the next cursor.
+ * Endpoints using aggregation cannot use `findPage`, but must share the same
+ * cursor contract; this is the common point.
  */
 export function toPage(
   docs: WithId<Document>[],
@@ -162,7 +162,7 @@ export function toPage(
   return { docs: page, nextCursor };
 }
 
-/** `from`/`to` sorgu parametrelerini Mongo aralık filtresine çevirir. */
+/** Converts `from`/`to` query parameters into a Mongo range filter. */
 export function dateRangeFilter(
   field: string,
   from?: Date,

@@ -7,28 +7,28 @@ import { dateLocale } from "../i18n/format";
 import type { WebTranslationKey } from "../i18n/resources";
 
 const actionLabels: Partial<Record<string, WebTranslationKey>> = {
-  "sharing-signal": "Paylaşım sinyali",
-  "account-sharing-blocked": "Hesap paylaşımı engellendi",
-  "profile-photo-updated": "Profil fotoğrafı güncellendi",
-  "profile-photo-removed": "Profil fotoğrafı kaldırıldı",
-  "account-deletion-requested": "Silme talebi oluşturuldu",
-  "account-deletion-cancelled": "Silme talebi iptal edildi",
-  "account-deletion-approved": "Silme talebi onaylandı",
-  "account-deletion-rejected": "Silme talebi reddedildi",
-  // geriye dönük: "account-deletion-*" eylemlerinin eski adı — eski denetim
-  // kayıtları bu anahtarlarla yazıldı, kaldırılırsa geçmiş satırlar okunaksız kalır
-  "kvkk-deletion-requested": "Silme talebi oluşturuldu",
-  "kvkk-deletion-cancelled": "Silme talebi iptal edildi",
-  "kvkk-deletion-approved": "Silme talebi onaylandı",
-  "kvkk-deletion-rejected": "Silme talebi reddedildi",
-  "device-created": "Cihaz oluşturuldu",
-  "device-deleted": "Cihaz silindi",
-  "initial-password-changed": "İlk şifre değiştirildi",
-  "role-assigned": "Rol atandı",
-  "subscription-created": "Abonelik oluşturuldu",
-  "settings-updated": "Ayarlar güncellendi",
-  "renewal-reminder-sent": "Yenileme hatırlatması gönderildi",
-  "data-exported": "Veri dışa aktarıldı",
+  "sharing-signal": "Sharing signal",
+  "account-sharing-blocked": "Account sharing blocked",
+  "profile-photo-updated": "Profile photo updated",
+  "profile-photo-removed": "Profile photo removed",
+  "account-deletion-requested": "Deletion request created",
+  "account-deletion-cancelled": "Deletion request cancelled",
+  "account-deletion-approved": "Deletion request approved",
+  "account-deletion-rejected": "Deletion request rejected",
+  // Backward compatibility: former names for "account-deletion-*" actions — old
+  // audit records use these keys, and removing them would make past rows unreadable
+  "kvkk-deletion-requested": "Deletion request created",
+  "kvkk-deletion-cancelled": "Deletion request cancelled",
+  "kvkk-deletion-approved": "Deletion request approved",
+  "kvkk-deletion-rejected": "Deletion request rejected",
+  "device-created": "Device created",
+  "device-deleted": "Device deleted",
+  "initial-password-changed": "Initial password changed",
+  "role-assigned": "Role assigned",
+  "subscription-created": "Subscription created",
+  "settings-updated": "Settings updated",
+  "renewal-reminder-sent": "Renewal reminder sent",
+  "data-exported": "Data exported",
 };
 
 export function Audit() {
@@ -40,8 +40,8 @@ export function Audit() {
   const [error, setError] = useState<string | null>(null);
 
   /**
-   * `cursor` verilmezse ilk sayfa (liste sıfırlanır), verilirse sonraki sayfa
-   * eklenir. Filtre değişince imleç geçersizdir, bu yüzden baştan yüklenir.
+   * Without `cursor`, the first page is loaded (resetting the list); with it, the
+   * next page is appended. A filter change invalidates the cursor, so loading restarts.
    */
   const load = useCallback(
     async (cursor: string | null, signal?: AbortSignal) => {
@@ -59,7 +59,7 @@ export function Audit() {
         setError(null);
       } catch (err) {
         if (isAbortError(err)) return;
-        setError(errorMessage(err, t, "Yüklenemedi."));
+        setError(errorMessage(err, t, "Could not load data."));
       } finally {
         setLoading(false);
       }
@@ -75,16 +75,16 @@ export function Audit() {
 
   return (
     <div className="stagger">
-      <h1>{t("İşlem kaydı")}</h1>
+      <h1>{t("Audit log")}</h1>
       <div className="row" style={{ marginBottom: 16 }}>
         <div className="field">
-          <label htmlFor="audit-action">{t("İşlem")}</label>
+          <label htmlFor="audit-action">{t("Action")}</label>
           <select
             id="audit-action"
             value={action}
             onChange={(e) => setAction(e.target.value)}
           >
-            <option value="">{t("Tümü")}</option>
+            <option value="">{t("All")}</option>
             {Object.entries(actionLabels).map(([value, label]) => (
               <option key={value} value={value}>
                 {label ? t(label) : value}
@@ -98,10 +98,10 @@ export function Audit() {
         <table>
           <thead>
             <tr>
-              <th>{t("Zaman")}</th>
-              <th>{t("Kim")}</th>
-              <th>{t("İşlem")}</th>
-              <th>{t("Detay")}</th>
+              <th>{t("Time")}</th>
+              <th>{t("Actor")}</th>
+              <th>{t("Action")}</th>
+              <th>{t("Details")}</th>
             </tr>
           </thead>
           <tbody>
@@ -122,12 +122,12 @@ export function Audit() {
             })}
             {entries.length === 0 && !error && !loading && (
               <tr>
-                <td colSpan={4}>{t("Kayıt yok.")}</td>
+                <td colSpan={4}>{t("No records.")}</td>
               </tr>
             )}
             {loading && (
               <tr>
-                <td colSpan={4}>{t("Yükleniyor…")}</td>
+                <td colSpan={4}>{t("Loading…")}</td>
               </tr>
             )}
           </tbody>
@@ -138,7 +138,7 @@ export function Audit() {
             disabled={loading}
             style={{ marginTop: 16 }}
           >
-            {t("Daha fazla yükle")}
+            {t("Load more")}
           </button>
         )}
       </div>

@@ -29,19 +29,19 @@ interface UptimeAggregationResult {
   before: GroupedBeforeLog[];
 }
 
-// Cihaz bağlantı durumu geçmişi (KPI-4: son 24 saat çevrimiçi kalma yüzdesi).
-// Fire-and-forget: API/Gateway akışını bloklamaz, hata konsola düşer.
+// Device connection status history (KPI-4: percentage online in the last 24 hours).
+// Fire-and-forget: does not block the API/Gateway flow; errors go to the console.
 export function logDeviceStatus(deviceId: string, online: boolean): void {
   db.collection<DeviceStatusLogDoc>(COLLECTION)
     .insertOne({ deviceId, online, at: new Date() })
     .catch((err) => {
-      console.error("cihaz durum kaydı yazılamadı:", err);
+      console.error("device status record could not be written:", err);
     });
 }
 
-// Sunucu çöktükten/yeniden başladıktan sonra "online: true" olarak kalmış
-// cihazlar için kurtarma: her cihazın en son kaydı online ise bir "false"
-// kaydı eklenir (aksi halde uptime hesaplaması cihazı sonsuza dek çevrimiçi sanır)
+// Recovery for devices left as "online: true" after a server crash/restart: if
+// a device's latest record is online, append a "false" record (otherwise uptime
+// calculation would consider the device online forever).
 export function sweepStaleOnlineStatus(): void {
   (async () => {
     const collection = db.collection<DeviceStatusLogDoc>(COLLECTION);
@@ -57,7 +57,7 @@ export function sweepStaleOnlineStatus(): void {
       }
     }
   })().catch((err) => {
-    console.error("cihaz durum geçmişi başlangıç taraması başarısız:", err);
+    console.error("initial device status history sweep failed:", err);
   });
 }
 
@@ -70,16 +70,16 @@ function calculateUptime24h(
 ): number {
   if (inWindow.length === 0) {
     if (!before) {
-      // Hiç kayıt yok: cihazın şu anki durumu pencere boyunca sabit kabul edilir
+      // No records: treat the device's current state as constant for the window
       return nowOnline ? 100 : 0;
     }
     return before.online ? 100 : 0;
   }
 
   const firstInWindow = inWindow[0]!;
-  // Pencere başındaki durum: öncesinde bir kayıt varsa o durum, yoksa
-  // penceredeki ilk kaydın kendisi bir durum DEĞİŞİKLİĞİ olduğundan öncesinin
-  // tersi olduğu varsayılır
+  // State at the start of the window: use a preceding record if present;
+  // otherwise, because the first in-window record is itself a state CHANGE,
+  // assume the preceding state was its inverse
   let state = before ? before.online : !firstInWindow.online;
   let cursor = windowStart.getTime();
   let onlineMs = 0;
@@ -92,7 +92,7 @@ function calculateUptime24h(
     state = log.online;
     cursor = t;
   }
-  // Son segment: son kayıttan şimdiye kadar geçen süre
+  // Final segment: time from the last record until now
   if (state) {
     onlineMs += now - cursor;
   }
@@ -101,7 +101,7 @@ function calculateUptime24h(
   return Math.round(pct * 10) / 10;
 }
 
-// Son 24 saatte cihazların çevrimiçi kaldığı süre yüzdesi (0-100, 1 ondalık basamak)
+// Percentage of time devices were online in the last 24 hours (0–100, one decimal)
 export async function computeUptimes24h(
   devices: readonly DeviceUptimeInput[],
 ): Promise<Map<string, number>> {
@@ -183,7 +183,7 @@ export async function computeUptimes24h(
   return uptimes;
 }
 
-// Tek cihaz kullanan çağrılar toplu sorgu ve hesaplama mantığını paylaşır.
+// Single-device calls share the batch query and calculation logic.
 export async function computeUptime24h(
   deviceId: string,
   nowOnline: boolean,

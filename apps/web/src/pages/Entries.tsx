@@ -14,17 +14,17 @@ import { dayEndIso, dayStartIso } from "../lib/dateRange";
 import type { WebTranslationKey } from "../i18n/resources";
 
 const reasonLabels: Record<GateRejectCode, WebTranslationKey> = {
-  INVALID_QR: "Geçersiz kod",
-  UNKNOWN_DEVICE: "Bilinmeyen cihaz",
-  DEVICE_OFFLINE: "Turnike çevrimdışı",
-  NO_ACTIVE_SUBSCRIPTION: "Aktif abonelik yok",
-  LOCATION_REQUIRED: "Konum alınamadı",
-  OUT_OF_RANGE: "Salon dışı konum",
-  MOCK_LOCATION: "Sahte konum",
-  SHARING_BLOCKED: "Paylaşım engeli",
+  INVALID_QR: "Invalid code",
+  UNKNOWN_DEVICE: "Unknown device",
+  DEVICE_OFFLINE: "Turnstile offline",
+  NO_ACTIVE_SUBSCRIPTION: "No active subscription",
+  LOCATION_REQUIRED: "Location unavailable",
+  OUT_OF_RANGE: "Outside gym location",
+  MOCK_LOCATION: "Mock location",
+  SHARING_BLOCKED: "Sharing block",
 };
 
-// Eski akıştan (INVALID_TOKEN/EXPIRED/REPLAY) kalan kayıtlar için ham metne düşer
+// Fall back to raw text for records left by the old flow (INVALID_TOKEN/EXPIRED/REPLAY)
 export function Entries() {
   const { t, i18n } = useTranslation();
   const locale = dateLocale(i18n.resolvedLanguage);
@@ -49,9 +49,9 @@ export function Entries() {
     const params = new URLSearchParams();
     if (cursor) params.set("cursor", cursor);
     if (allowed) params.set("allowed", allowed);
-    // Uçlar ayrı ayrı çözülür: kullanıcı yalnızca başlangıcı veya yalnızca
-    // bitişi seçebilir. Bitiş günün sonuna sabitlenir; gün başına gönderilseydi
-    // sunucudaki `$lte` seçilen son günü tamamen dışarıda bırakırdı.
+    // Resolve the bounds separately: the user can select only a start or only
+    // an end. The end is pinned to the end of the day; sending the start of the
+    // day would make the server's `$lte` exclude the selected final day entirely.
     const fromIso = dayStartIso(from);
     const toIso = dayEndIso(to);
     if (fromIso) params.set("from", fromIso);
@@ -59,9 +59,9 @@ export function Entries() {
     return params.toString();
   }
 
-  // Otomatik tazeleme yalnızca ilk sayfayı yeniler. Kullanıcı "daha fazla
-  // yükle" ile geçmişe indiyse liste elinden alınmamalı; o durumda yalnızca
-  // doluluk sayacı güncellenir.
+  // Automatic refresh updates only the first page. If the user has gone back
+  // through history with "Load more," preserve the list and update only the
+  // occupancy counter.
   async function refresh(signal: AbortSignal) {
     try {
       const occupancyRequest = api<OccupancyResponse>("/api/me/occupancy", {
@@ -84,14 +84,14 @@ export function Entries() {
       setError(null);
     } catch (err) {
       if (isAbortError(err)) return;
-      setError(errorMessage(err, t, "Yüklenemedi."));
+      setError(errorMessage(err, t, "Could not load data."));
     }
   }
 
-  // Filtre değişince imleç geçersizdir: hook listeyi baştan yükler.
+  // A filter change invalidates the cursor, so the hook reloads the list from the start.
   usePollingQuery(refresh, 10000, `${allowed}|${from}|${to}`);
 
-  /** Filtre değişince sayfalama sıfırlanır: eski imleç yeni filtrede geçersiz. */
+  /** Reset pagination on filter changes because the old cursor is invalid for the new filter. */
   function changeFilter(apply: () => void) {
     apply();
     setPagedBack(false);
@@ -111,7 +111,7 @@ export function Entries() {
       setError(null);
     } catch (err) {
       if (!isAbortError(err)) {
-        setError(errorMessage(err, t, "Yüklenemedi."));
+        setError(errorMessage(err, t, "Could not load data."));
       }
     } finally {
       setLoadingMore(false);
@@ -120,31 +120,31 @@ export function Entries() {
 
   return (
     <div className="stagger">
-      <h1>{t("Geçişler")}</h1>
+      <h1>{t("Entries")}</h1>
       {occupancy && (
         <p className="hint" style={{ marginBottom: 16 }}>
-          {t("İçeride: {{count}}", { count: occupancy.inside })}
+          {t("Inside: {{count}}", { count: occupancy.inside })}
           {occupancy.ratio != null &&
-            ` · ${t("Doluluk: %{{percent}}", {
+            ` · ${t("Occupancy: {{percent}}%", {
               percent: Math.round(occupancy.ratio * 100),
             })}`}
         </p>
       )}
       <div className="row" style={{ marginBottom: 16 }}>
         <div className="field">
-          <label htmlFor="entries-result">{t("Sonuç")}</label>
+          <label htmlFor="entries-result">{t("Result")}</label>
           <select
             id="entries-result"
             value={allowed}
             onChange={(e) => changeFilter(() => setAllowed(e.target.value))}
           >
-            <option value="">{t("Tümü")}</option>
-            <option value="true">{t("İzin verildi")}</option>
-            <option value="false">{t("Reddedildi")}</option>
+            <option value="">{t("All")}</option>
+            <option value="true">{t("Allowed")}</option>
+            <option value="false">{t("Denied")}</option>
           </select>
         </div>
         <div className="field">
-          <label htmlFor="entries-from">{t("Başlangıç")}</label>
+          <label htmlFor="entries-from">{t("Start")}</label>
           <input
             id="entries-from"
             type="date"
@@ -153,7 +153,7 @@ export function Entries() {
           />
         </div>
         <div className="field">
-          <label htmlFor="entries-to">{t("Bitiş")}</label>
+          <label htmlFor="entries-to">{t("End")}</label>
           <input
             id="entries-to"
             type="date"
@@ -167,11 +167,11 @@ export function Entries() {
         <table>
           <thead>
             <tr>
-              <th>{t("Zaman")}</th>
-              <th>{t("Cihaz")}</th>
-              <th>{t("Üye")}</th>
-              <th>{t("Sonuç")}</th>
-              <th>{t("Neden")}</th>
+              <th>{t("Time")}</th>
+              <th>{t("Device")}</th>
+              <th>{t("Member")}</th>
+              <th>{t("Result")}</th>
+              <th>{t("Reason")}</th>
             </tr>
           </thead>
           <tbody>
@@ -182,9 +182,9 @@ export function Entries() {
                 <td>{e.memberName ?? "—"}</td>
                 <td>
                   {e.allowed ? (
-                    <span className="badge ok">{t("İzin verildi")}</span>
+                    <span className="badge ok">{t("Allowed")}</span>
                   ) : (
-                    <span className="badge danger">{t("Reddedildi")}</span>
+                    <span className="badge danger">{t("Denied")}</span>
                   )}
                 </td>
                 <td>{reasonLabel(e.reason)}</td>
@@ -192,7 +192,7 @@ export function Entries() {
             ))}
             {entries.length === 0 && !error && (
               <tr>
-                <td colSpan={5}>{t("Kayıt yok.")}</td>
+                <td colSpan={5}>{t("No records.")}</td>
               </tr>
             )}
           </tbody>
@@ -203,7 +203,7 @@ export function Entries() {
             disabled={loadingMore}
             style={{ marginTop: 16 }}
           >
-            {t("Daha fazla yükle")}
+            {t("Load more")}
           </button>
         )}
       </div>

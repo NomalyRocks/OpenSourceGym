@@ -10,10 +10,10 @@ import { redis } from "./redis.js";
 import { logAudit } from "./audit.js";
 import { revokeUserSessions } from "./sessions.js";
 
-// Faz 6 — Hesap paylaşımı tespiti: varsayılan ayarlar (settings.sharing ile
-// ezilebilir). Bu modül sharing.ts, sessions.ts, audit.ts ve db/redis
-// dışında hiçbir şey import ETMEMELİDİR — auth.ts'in databaseHooks'undan
-// çağrılır, auth.ts'e geri import döngüsü oluşturmamalı.
+// Phase 6—account-sharing detection defaults (overridable by settings.sharing).
+// This module MUST NOT import anything beyond sharing.ts, sessions.ts, audit.ts,
+// and db/redis—it is called from auth.ts databaseHooks and must not create an
+// import cycle back to auth.ts.
 export const SHARING_DEFAULTS: SharingConfig = {
   memberMaxSessions: 2,
   staffMaxSessions: 5,
@@ -24,11 +24,10 @@ export const SHARING_DEFAULTS: SharingConfig = {
 
 export const QR_BLOCK_KEY = (userId: string): string => `og:qr-block:${userId}`;
 export const QR_LOC_KEY = (userId: string): string => `og:qr-loc:${userId}`;
-export const FP_CHURN_KEY = (userId: string): string =>
-  `og:fp-churn:${userId}`;
+export const FP_CHURN_KEY = (userId: string): string => `og:fp-churn:${userId}`;
 
-// settings._id: "gym" tekil belgesindeki opsiyonel "sharing" alt nesnesi,
-// varsayılanların üzerine sığ (shallow) olarak birleştirilir
+// The optional "sharing" object in the singleton settings._id: "gym" document
+// is shallow-merged over the defaults
 export async function getSharingConfig(): Promise<SharingConfig> {
   const doc = await findGymSettings();
   return { ...SHARING_DEFAULTS, ...(doc?.sharing ?? {}) };
@@ -38,8 +37,8 @@ export async function isQrBlocked(userId: string): Promise<boolean> {
   return (await redis.exists(QR_BLOCK_KEY(userId))) === 1;
 }
 
-// audit_logs süresiz saklanır (sharing_signals ise 30 gün TTL'lidir) — konum
-// gibi hassas alanlar audit'e değil, yalnızca TTL'li sinyal kaydına yazılır
+// audit_logs are retained indefinitely (sharing_signals have a 30-day TTL)—
+// sensitive fields such as location go only to the TTL signal record, not audit
 const AUDIT_OMIT_META_KEYS = new Set(["lat", "lng"]);
 
 function redactMetaForAudit(
@@ -53,8 +52,8 @@ function redactMetaForAudit(
   return redacted;
 }
 
-// Bir hesap paylaşımı şüphesi sinyalini kaydeder; tespit sinyallerinin hiçbiri
-// isteği asla başarısız kılmamalıdır — bu yüzden tüm gövde try/catch içindedir
+// Records a suspected account-sharing signal; detection signals must never fail
+// the request, so the entire body is wrapped in try/catch
 export async function recordSharingSignal(
   actor: { id: string; email: string },
   kind: SharingSignalKind,
@@ -72,8 +71,8 @@ export async function recordSharingSignal(
       ...redactMetaForAudit(meta),
     });
 
-    // Eskalasyon: pencere içinde eşik sayıda sinyal birikince QR üretimi
-    // otomatik olarak engellenir ve tüm oturumlar iptal edilir
+    // Escalation: once the threshold number of signals accumulates in the window,
+    // QR generation is blocked automatically and all sessions are revoked
     const cfg = await getSharingConfig();
     const since = new Date(Date.now() - cfg.signalWindowHours * 3600_000);
     const signalCount = await db.collection("sharing_signals").countDocuments({
@@ -85,9 +84,9 @@ export async function recordSharingSignal(
         condition: "NX",
         expiration: { type: "EX", value: cfg.qrBlockHours * 3600 },
       });
-      // Yalnızca engel bu çağrıyla İLK KEZ kurulduysa (NX başarılıysa)
-      // oturumlar iptal edilir ve olay denetim kaydına yazılır — aksi halde
-      // aynı pencere içindeki her yeni sinyal tekrar tekrar tetiklenir
+      // Revoke sessions and audit the event only if this call established the
+      // block for the FIRST TIME (NX succeeded); otherwise every new signal in
+      // the same window would trigger it repeatedly
       if (acquired === "OK") {
         await revokeUserSessions(actor.id);
         await logAudit(actor, "account-sharing-blocked", actor.id, {
@@ -98,14 +97,13 @@ export async function recordSharingSignal(
       }
     }
   } catch (err) {
-    console.error("recordSharingSignal başarısız oldu:", err);
+    console.error("recordSharingSignal failed:", err);
   }
 }
 
-// Oturum oluşturma sonrası (session.create.after) çağrılır: eşzamanlı oturum
-// üst sınırını uygular (en eski oturum sessizce atılır) ve parmak izi
-// (fingerprint) churn'ünü tespit eder. Bir auth hook'undan çağrıldığı için
-// ASLA fırlatmamalıdır (throw), aksi halde girişi bozar.
+// Called after session creation (session.create.after): enforces the concurrent
+// session cap (silently evicting the oldest session) and detects fingerprint
+// churn. Because it runs from an auth hook, it must NEVER throw or it breaks sign-in.
 export async function enforceSessionPolicy(session: {
   userId: string;
 }): Promise<void> {
@@ -124,11 +122,10 @@ export async function enforceSessionPolicy(session: {
       .sort({ createdAt: -1 })
       .toArray();
 
-    // Churn kontrolü ÖNCE yapılır (eviction'dan önce), böylece az sonra
-    // atılacak oturumlar da parmak izi sayımına dahil olur. Eşik role göre
-    // ayarlanan oturum sınırına (cap) görecelidir — sabit bir sayı personel/
-    // admin (cap 5) için meşru çoklu cihaz kullanımını yanlış pozitif
-    // işaretlerdi (üye cap'i 2 için sabit 3 uygundu, personel için değildi)
+    // Check churn FIRST (before eviction) so soon-to-be-evicted sessions count
+    // toward fingerprints. The threshold is relative to the role-based session
+    // cap—a fixed number would flag legitimate multi-device use by staff/admins
+    // (cap 5) as a false positive; a fixed 3 suited members with cap 2, not staff
     const distinctFingerprints = new Set(
       sessions
         .map((s) => s.deviceFingerprint)
@@ -149,8 +146,8 @@ export async function enforceSessionPolicy(session: {
       }
     }
 
-    // Eviction: kapasiteyi aşan fazlalık en eski oturumlardır (sessions
-    // createdAt'e göre azalan sıralı, cap indeksinden itibaren kalanlar)
+    // Eviction: excess sessions over capacity are the oldest ones (sessions are
+    // sorted by createdAt descending, and those from the cap index onward remain)
     if (sessions.length > cap) {
       const excess = sessions.slice(cap);
       const excessIds = excess.map((s) => s._id);
@@ -161,14 +158,13 @@ export async function enforceSessionPolicy(session: {
       }
       await sessionCollection().deleteMany({ _id: { $in: excessIds } });
 
-      // "active-sessions-<userId>" listesi hayatta kalan oturumlarla YENİDEN
-      // YAZILIR, silinmez: BetterAuth'un kendi oturum yönetimi (listSessions,
-      // deleteUserSessions, revokeSessionsOnPasswordReset) bu listeyi referans
-      // alır — listeyi tamamen silmek hayatta kalan oturumların Redis
-      // kayıtlarını BetterAuth için görünmez (öksüz) bırakır. Girdi biçimi
-      // BetterAuth internal-adapter'ıyla birebir aynıdır:
-      // [{token, expiresAt(ms)}], expiresAt'e göre artan sıralı, anahtar
-      // TTL'i en geç dolan oturuma göre
+      // REWRITE the "active-sessions-<userId>" list with surviving sessions; do
+      // not delete it. BetterAuth's session management (listSessions,
+      // deleteUserSessions, revokeSessionsOnPasswordReset) references this list,
+      // and deleting it makes surviving Redis session records invisible (orphaned)
+      // to BetterAuth. The input shape exactly matches BetterAuth's internal adapter:
+      // [{token, expiresAt(ms)}], sorted by expiresAt ascending, with key TTL
+      // based on the latest-expiring session
       const now = Date.now();
       const survivors = sessions
         .slice(0, cap)
@@ -193,6 +189,6 @@ export async function enforceSessionPolicy(session: {
       }
     }
   } catch (err) {
-    console.error("enforceSessionPolicy başarısız oldu:", err);
+    console.error("enforceSessionPolicy failed:", err);
   }
 }

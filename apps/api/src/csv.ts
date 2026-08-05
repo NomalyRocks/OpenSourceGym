@@ -1,8 +1,9 @@
 /**
- * Elektronik tablo uygulamaları bu karakterlerle başlayan hücreyi FORMÜL olarak
- * yorumlar. Dışa aktarılan veri üye adı/notu gibi serbest metin içerdiğinden,
- * `=cmd|...` yazan biri dosyayı açan personelin makinesinde kod çalıştırabilir.
- * Hücrenin başına tek tırnak koymak değeri metin olarak sabitler.
+ * Spreadsheet applications interpret cells beginning with these characters as
+ * FORMULAS. Because exported data contains free text such as member names and
+ * notes, someone entering `=cmd|...` could execute code on the staff member's
+ * machine when the file is opened. Prefixing the cell with an apostrophe fixes
+ * the value as text.
  */
 const FORMULA_PREFIXES = ["=", "+", "-", "@", "\t", "\r"];
 
@@ -12,8 +13,8 @@ export function csvCell(value: unknown): string {
   const guarded = FORMULA_PREFIXES.some((prefix) => raw.startsWith(prefix))
     ? `'${raw}`
     : raw;
-  // Tırnak, virgül veya satır sonu içeren her değer tırnaklanır; içteki
-  // tırnaklar RFC 4180'e göre ikilenir.
+  // Quote every value containing a quote, comma, or line break; double embedded
+  // quotes according to RFC 4180.
   if (/[",\n\r]/.test(guarded)) {
     return `"${guarded.replaceAll('"', '""')}"`;
   }
@@ -25,7 +26,7 @@ export function csvRow(values: unknown[]): string {
 }
 
 /**
- * Excel'in UTF-8'i doğru tanıması için BOM. Bu olmadan Türkçe karakterler
- * Windows Excel'de bozuk görünür — dışa aktarmanın asıl kullanıcısı muhasebe.
+ * BOM for correct UTF-8 detection in Excel. Without it, non-ASCII characters
+ * appear corrupted in Windows Excel—the primary export consumer is accounting.
  */
 export const UTF8_BOM = "﻿";

@@ -24,8 +24,8 @@ function termPatterns(term: string): RegExp[] {
 }
 
 /**
- * Her sorgu terimi en az bir kullanıcı alanıyla eşleşmelidir. Böylece
- * "Ayşe Yılmaz" gibi sorgularda terimler farklı alanlardan karşılanabilir.
+ * Every query term must match at least one user field. This allows terms in a
+ * query such as "Alice Smith" to be satisfied by different fields.
  */
 export function buildUserSearchFilter(
   query: string,

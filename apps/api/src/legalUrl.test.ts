@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { legalDocumentUrlSchema } from "./legalUrl.js";
 
-test("hukuki belge URL şeması yalnızca HTTP(S) adreslerini kabul eder", () => {
+test("legal document URL schema accepts only HTTP(S) addresses", () => {
   assert.equal(
     legalDocumentUrlSchema.safeParse("https://example.com/privacy").success,
     true,

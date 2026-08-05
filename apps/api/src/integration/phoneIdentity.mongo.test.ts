@@ -22,8 +22,8 @@ function errorCode(reason: unknown): unknown {
 }
 
 test(
-  "telefon backfill'i mükerrerleri korur ve benzersiz indeks yarışları engeller",
-  { skip: mongoUri ? false : "TEST_MONGODB_URI tanımlı değil" },
+  "phone backfill preserves duplicates and unique indexes prevent races",
+  { skip: mongoUri ? false : "TEST_MONGODB_URI is not defined" },
   async () => {
     const client = new MongoClient(mongoUri!);
     const database = client.db(

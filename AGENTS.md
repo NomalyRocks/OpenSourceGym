@@ -82,7 +82,9 @@ Request bodies are validated with zod. No OpenAPI/codegen: clients use hand-roll
 ## Conventions & gotchas
 
 - `api` and `shared` are ESM (`"type": "module"`) — relative imports need `.js` extensions. `web` uses bundler resolution (no extensions). `mobile` is not ESM.
-- User-facing strings, code comments, and product docs are Turkish; identifiers and infra docs are English.
+- **Everything written in code is English**: identifiers, comments, JSDoc, log and thrown-error text, test titles, i18n keys, and infra docs. Product docs (`PRD.md`, `ROADMAP.md`) stay Turkish.
+- Turkish user-facing copy lives in exactly one place per client: the `tr` map in `apps/web/src/i18n/resources.ts` and `apps/mobile/src/i18n/resources.ts`. Translation keys are the English source strings; `t("Overview")` renders "Genel Bakış" under `tr` and falls back to the key itself under `en`. Never hardcode a Turkish literal in a component — add a key to the `tr` map instead.
+- The API has no i18n layer, so the little user-facing copy it owns stays Turkish and is deliberately excluded from the English rule: OTP/security e-mail subjects and bodies in `apps/api/src/auth.ts`, renewal reminder e-mails in `apps/api/src/renewals.ts`, and the seeded admin display name in `apps/api/src/seed.ts`. The same carve-out covers the default turnstile display names in `agents/sim/fleet.mjs`, which show up in the admin panel. Everything else in `apps/api` — including `sendApiError` messages, which clients never display because they map on the `code` — is English.
 - TS strict + `noUncheckedIndexedAccess` via `tsconfig.base.json`. `mobile` does not extend the base (it extends `expo/tsconfig.base`) and pins its own newer TypeScript.
 - Dev infra host ports are non-default to avoid collisions: Mongo `127.0.0.1:27018`, Redis `127.0.0.1:6380` (inside compose network the defaults 27017/6379 apply).
 - Expo work: consult the exact versioned docs at https://docs.expo.dev/versions/v57.0.0/ — see `apps/mobile/AGENTS.md`.

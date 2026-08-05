@@ -2,7 +2,7 @@ import js from "@eslint/js";
 import tseslint from "typescript-eslint";
 
 export default tseslint.config(
-  // agents/: cihaz tarafı referans kodu (RPi/ESP32/sim), workspace dışı
+  // agents/: device-side reference code (RPi/ESP32/sim), outside the workspace
   {
     ignores: ["**/dist/**", "**/node_modules/**", "**/.turbo/**", "agents/**"],
   },

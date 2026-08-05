@@ -11,8 +11,8 @@ import {
 } from "./renewals.js";
 
 export const REMINDER_DEFAULTS: ReminderConfig = {
-  // Kapalı başlar: sürüm yükselten bir kurulum, ayarı açıkça açmadan üyelerine
-  // toplu e-posta göndermemeli.
+  // Starts disabled: an upgraded installation must not send bulk email to
+  // members until the operator explicitly enables it.
   enabled: false,
   daysBefore: [7, 1],
 };
@@ -22,7 +22,7 @@ const SWEEP_INTERVAL_MS = 60 * 60 * 1000;
 const SWEEP_LOCK_KEY = "og:lock:renewal-reminder-sweep";
 const SWEEP_LOCK_LEASE_MS = 10 * 60 * 1000;
 
-/** settings._id: "gym" belgesindeki hatırlatma ayarlarını varsayılanlarla birleştirir. */
+/** Merges reminder settings in settings._id: "gym" with defaults. */
 export async function findReminderConfig(
   database: Db = db,
 ): Promise<ReminderConfig> {
@@ -31,13 +31,13 @@ export async function findReminderConfig(
 }
 
 export interface SweepReport {
-  /** Hatırlatmalar kapalıysa hiçbir şey yapılmaz. */
+  /** No action is taken when reminders are disabled. */
   skipped: boolean;
   scanned: number;
   sent: number;
-  /** Bu eşik için zaten gönderilmiş olduğu için atlananlar. */
+  /** Skipped because already sent for this threshold. */
   alreadySent: number;
-  /** Son 24 saatte (elle veya otomatik) hatırlatıldığı için atlananlar. */
+  /** Skipped because a manual or automatic reminder was sent in the last 24 hours. */
   cooledDown: number;
   failed: number;
 }
@@ -51,12 +51,11 @@ interface DueRow {
 }
 
 /**
- * Yaklaşan yenilemeleri tarar ve eşiği geçen her abonelik için bir kez
- * hatırlatma gönderir.
+ * Scans upcoming renewals and sends one reminder for each subscription that
+ * crosses a threshold.
  *
- * Tekillik unique indeksle sağlanır (bkz. `recordAndSendReminder`), bu yüzden
- * süpürme yeniden çalıştırılabilir: yarıda kesilse de gönderilmiş hatırlatma
- * ikinci kez gitmez.
+ * A unique index enforces uniqueness (see `recordAndSendReminder`), so the sweep
+ * is rerunnable: even if interrupted, a sent reminder will not be sent twice.
  */
 export async function runRenewalReminderSweep(
   database: Db = db,
@@ -82,14 +81,14 @@ export async function runRenewalReminderSweep(
   }
 
   const gymName = settingsDoc?.gymName?.trim() || "OpenGym";
-  // Küçükten büyüğe: bir abonelik birden çok eşiği aşmışsa en dar olanı
-  // (yani "1 gün kaldı") kullanılır, çünkü üyeye gösterilecek doğru aciliyet odur.
+  // Ascending order: if a subscription has crossed multiple thresholds, use the
+  // narrowest one (for example, "1 day left") because it reflects the correct urgency.
   const thresholds = [...new Set(config.daysBefore)].sort((a, b) => a - b);
   const horizonDays = thresholds[thresholds.length - 1] ?? 0;
   const horizon = new Date(now.getTime() + (horizonDays + 1) * DAY_MS);
 
-  // Sonuçlar toArray ile toplanmaz: üye sayısı büyüdükçe tek seferde belleğe
-  // alınacak liste de büyür, imleç üzerinden akıtmak sabit bellek kullanır.
+  // Do not collect results with toArray: as member count grows, so does the list
+  // loaded into memory at once; streaming through the cursor uses constant memory.
   const cursor = database.collection("subscriptions").aggregate<DueRow>([
     { $sort: { userId: 1, endsAt: -1, _id: -1 } },
     {
@@ -138,9 +137,9 @@ export async function runRenewalReminderSweep(
     const email = row.user?.email;
     if (!email) continue;
 
-    // Hızlı eleme: bekleme süresini fiilen uygulayan yer sendRenewalReminder
-    // (kilit altında), burası yalnızca boşuna kilit almayı önler — satırın
-    // son hatırlatma zamanı zaten toplulaştırmadan bedavaya geldi.
+    // Fast rejection: sendRenewalReminder enforces the cooldown under the lock;
+    // this only avoids acquiring a pointless lock—the row's latest reminder time
+    // already came free from the aggregation.
     if (
       row.lastReminderAt &&
       now.getTime() - row.lastReminderAt.getTime() < REMINDER_COOLDOWN_MS
@@ -173,46 +172,46 @@ export async function runRenewalReminderSweep(
       else if (outcome.status === "already-sent") report.alreadySent++;
       else report.cooledDown++;
     } catch (err) {
-      // Tek bir başarısız gönderim süpürmeyi durdurmamalı; kayıt geri alındığı
-      // için bir sonraki turda yeniden denenir.
+      // One failed send must not stop the sweep; because its record is rolled
+      // back, the next run retries it.
       report.failed++;
-      console.error("yenileme hatırlatması gönderilemedi:", err);
+      console.error("renewal reminder could not be sent:", err);
     }
   }
 
   if (report.sent > 0 || report.failed > 0) {
     console.info(
-      `[reminders] ${report.sent} gönderildi, ${report.failed} başarısız, ${report.scanned} tarandı`,
+      `[reminders] ${report.sent} sent, ${report.failed} failed, ${report.scanned} scanned`,
     );
   }
   return report;
 }
 
 export interface RenewalReminderScheduler {
-  /** Zamanlayıcıyı durdurur ve süren turun bitmesini bekler. */
+  /** Stops the scheduler and waits for the active run to finish. */
   stop(): Promise<void>;
-  /** Testler ve elle tetikleme için: kilidi alıp tek tur çalıştırır. */
+  /** For tests and manual triggers: acquires the lock and runs one sweep. */
   runOnce(now?: Date): Promise<SweepReport | null>;
 }
 
 /**
- * Saatlik süpürmeyi başlatır. Zamanlayıcı `unref` edilir: bekleyen bir tick
- * SIGTERM sonrası sürecin kapanmasını geciktirmemeli.
+ * Starts the hourly sweep. The timer is `unref`ed: a pending tick must not delay
+ * process shutdown after SIGTERM.
  */
 export function startRenewalReminderScheduler(
   database: Db = db,
 ): RenewalReminderScheduler {
   let stopped = false;
-  // Süren tur kapanışta beklenir. Bir hatırlatma kaydı yazılıp SMTP yanıtı
-  // beklenirken süreç kapanırsa kayıt "gönderildi" olarak kalır ve unique
-  // indeks yüzünden o eşik bir daha denenmez — üye sessizce hatırlatmasız
-  // kalırdı. (kill -9 bu boşluğu yine açık bırakır; graceful kapanış kapatır.)
+  // Wait for the active run during shutdown. If the process exits after writing
+  // a reminder record but while awaiting SMTP, the record remains "sent," and
+  // the unique index prevents retrying that threshold—the member silently gets
+  // no reminder. (kill -9 still leaves this gap; graceful shutdown closes it.)
   let inFlight: Promise<unknown> = Promise.resolve();
 
   async function runOnce(now = new Date()): Promise<SweepReport | null> {
-    // Kilit, örnek çoğaltıldığında veya bir tur uzayıp bir sonrakiyle
-    // çakıştığında aynı üyeye iki posta gitmesini önler. Unique indeks son
-    // savunma hattıdır; kilit gereksiz işi baştan engeller.
+    // The lock prevents duplicate email to a member when instances scale out or
+    // one run overlaps the next. The unique index is the last line of defense;
+    // the lock avoids unnecessary work up front.
     const token = randomUUID();
     if (!(await acquireLock(SWEEP_LOCK_KEY, token, SWEEP_LOCK_LEASE_MS))) {
       return null;
@@ -221,7 +220,7 @@ export function startRenewalReminderScheduler(
       return await runRenewalReminderSweep(database, now);
     } finally {
       await releaseLock(SWEEP_LOCK_KEY, token).catch((err: unknown) => {
-        console.error("hatırlatma süpürme kilidi bırakılamadı:", err);
+        console.error("reminder sweep lock could not be released:", err);
       });
     }
   }
@@ -229,7 +228,7 @@ export function startRenewalReminderScheduler(
   const timer = setInterval(() => {
     if (stopped) return;
     inFlight = runOnce().catch((err: unknown) => {
-      console.error("yenileme hatırlatma süpürmesi başarısız:", err);
+      console.error("renewal reminder sweep failed:", err);
     });
   }, SWEEP_INTERVAL_MS);
   timer.unref();

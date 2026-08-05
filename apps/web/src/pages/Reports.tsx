@@ -36,7 +36,7 @@ function TrendChart({ trend }: { trend: EntryTrend }) {
   const peak = Math.max(...trend.points.map((p) => p.total), 0);
 
   if (peak === 0) {
-    return <p className="hint">{t("Bu aralıkta geçiş kaydı yok.")}</p>;
+    return <p className="hint">{t("No entries in this range.")}</p>;
   }
 
   return (
@@ -45,8 +45,8 @@ function TrendChart({ trend }: { trend: EntryTrend }) {
         <div
           className="trend-bar-slot"
           key={point.date}
-          // Tarayıcı ipucu: nokta sayısı çoğaldıkça eksen etiketleri
-          // okunamaz hâle gelir, değerler başlıkta kalır.
+          // Browser tooltip: as the number of points grows, axis labels become
+          // unreadable, while the values remain available in the title.
           title={`${point.date} · ${point.total} (${point.allowed}/${point.denied})`}
         >
           <div
@@ -79,8 +79,8 @@ export function Reports() {
     dateInputValue(new Date(Date.now() - 30 * DAY_MS)),
   );
   const [to, setTo] = useState(today);
-  // Girdiler yazılırken değil "Uygula" ile sorgulanır; her tuş vuruşunda
-  // toplulaştırma çalıştırmak sunucuyu boş yere yorar.
+  // Query inputs on "Apply," not while typing; running aggregation on every
+  // keystroke would burden the server unnecessarily.
   const [applied, setApplied] = useState({ from, to });
 
   const [summary, setSummary] = useState<ReportSummary | null>(null);
@@ -94,7 +94,7 @@ export function Reports() {
       if (!bounds) {
         setError(
           t(
-            "Aralık geçersiz. Başlangıç bitişten sonra olamaz ve aralık 366 günü aşamaz.",
+            "Invalid range. Start cannot be after end and the range cannot exceed 366 days.",
           ),
         );
         setLoading(false);
@@ -114,11 +114,11 @@ export function Reports() {
         setError(null);
       } catch (err) {
         if (isAbortError(err)) return;
-        setError(errorMessage(err, t, "Yüklenemedi."));
+        setError(errorMessage(err, t, "Could not load data."));
       } finally {
-        // İptal edilen isteğin finally'si yerine geçen isteğin yükleme
-        // durumunu silmemeli; aksi halde hızlı aralık değişiminde arayüz
-        // istek sürerken "bitti" görünür.
+        // The canceled request's finally block must not clear the replacement
+        // request's loading state; otherwise, rapid range changes make the UI
+        // appear finished while the request is still in progress.
         if (!signal.aborted) setLoading(false);
       }
     },
@@ -148,12 +148,12 @@ export function Reports() {
 
   return (
     <div className="stagger">
-      <h1>{t("Raporlar")}</h1>
+      <h1>{t("Reports")}</h1>
 
       <div className="panel">
         <div className="row" style={{ alignItems: "flex-end", gap: 16 }}>
           <div className="field" style={{ marginBottom: 0 }}>
-            <label htmlFor="report-from">{t("Başlangıç")}</label>
+            <label htmlFor="report-from">{t("Start")}</label>
             <input
               id="report-from"
               type="date"
@@ -163,7 +163,7 @@ export function Reports() {
             />
           </div>
           <div className="field" style={{ marginBottom: 0 }}>
-            <label htmlFor="report-to">{t("Bitiş")}</label>
+            <label htmlFor="report-to">{t("End")}</label>
             <input
               id="report-to"
               type="date"
@@ -173,16 +173,16 @@ export function Reports() {
             />
           </div>
           <button onClick={() => setApplied({ from, to })} disabled={loading}>
-            {t("Uygula")}
+            {t("Apply")}
           </button>
           <button className="ghost" onClick={() => applyPreset(7)}>
-            {t("Son 7 gün")}
+            {t("Last 7 days")}
           </button>
           <button className="ghost" onClick={() => applyPreset(30)}>
-            {t("Son 30 gün")}
+            {t("Last 30 days")}
           </button>
           <button className="ghost" onClick={() => applyPreset(90)}>
-            {t("Son 90 gün")}
+            {t("Last 90 days")}
           </button>
         </div>
       </div>
@@ -191,41 +191,41 @@ export function Reports() {
 
       <div className="kpi-grid">
         <KpiCard
-          label={t("Yeni Üye")}
+          label={t("New members")}
           value={summary ? number(summary.newMembers) : "—"}
-          delta={t("aralıkta kaydolan")}
+          delta={t("joined in range")}
         />
         <KpiCard
-          label={t("Yeni Abonelik")}
+          label={t("New subscriptions")}
           value={summary ? number(summary.newSubscriptions) : "—"}
-          delta={t("aralıkta eklenen")}
+          delta={t("added in range")}
         />
         <KpiCard
-          label={t("Kaybedilen Üye")}
+          label={t("Lapsed members")}
           value={summary ? number(summary.lapsedMembers) : "—"}
-          delta={t("aralıkta bitip yenilemeyen")}
+          delta={t("expired without renewal")}
           color="var(--danger)"
         />
         <KpiCard
-          label={t("Yenileme Bekleyen")}
+          label={t("Renewals due")}
           value={summary ? number(summary.renewalsDue) : "—"}
-          delta={t("7 gün içinde")}
+          delta={t("within 7 days")}
           color="var(--warn)"
         />
       </div>
 
       <div className="kpi-grid cols-3">
         <KpiCard
-          label={t("Aktif Üye")}
+          label={t("Active members")}
           value={summary ? number(summary.activeMembers) : "—"}
-          delta={t("aktif abonelik")}
+          delta={t("active subscriptions")}
         />
         <KpiCard
-          label={t("Geçiş Sayısı")}
+          label={t("Entry count")}
           value={summary ? number(summary.entries.total) : "—"}
           delta={
             summary
-              ? t("{{allowed}} izin · {{denied}} red", {
+              ? t("{{allowed}} allowed · {{denied}} denied", {
                   allowed: summary.entries.allowed,
                   denied: summary.entries.denied,
                 })
@@ -233,41 +233,41 @@ export function Reports() {
           }
         />
         <KpiCard
-          label={t("Benzersiz üye")}
+          label={t("Unique members")}
           value={summary ? number(summary.entries.uniqueMembers) : "—"}
-          delta={t("aralıkta en az bir geçiş")}
+          delta={t("at least one entry in range")}
         />
       </div>
 
       <div className="panel">
-        <h2>{t("Günlük Giriş Trendi")}</h2>
-        {loading && !trend && <p className="hint">{t("Yükleniyor…")}</p>}
+        <h2>{t("Daily entry trend")}</h2>
+        {loading && !trend && <p className="hint">{t("Loading…")}</p>}
         {trend && <TrendChart trend={trend} />}
       </div>
 
       {profile?.role === "admin" && bounds && (
         <div className="panel">
-          <h2>{t("Dışa Aktar")}</h2>
+          <h2>{t("Export")}</h2>
           <p className="hint" style={{ marginBottom: 14 }}>
             {t(
-              "Dışa aktarılan dosyalar kişisel veri içerir ve her indirme işlem kaydına yazılır.",
+              "Exported files contain personal data and every download is written to the audit log.",
             )}
           </p>
           <div className="row" style={{ gap: 12 }}>
-            {/* api() JSON çözer; CSV doğrudan bağlantıyla indirilir — oturum
-                çerezi tarayıcı tarafından zaten gönderilir. */}
+            {/* api() parses JSON; CSV is downloaded through a direct link — the
+                browser already sends the session cookie. */}
             <a className="button ghost" href={exportHref("members")} download>
-              {t("Üyeler (CSV)")}
+              {t("Members (CSV)")}
             </a>
             <a
               className="button ghost"
               href={exportHref("subscriptions")}
               download
             >
-              {t("Abonelikler (CSV)")}
+              {t("Subscriptions (CSV)")}
             </a>
             <a className="button ghost" href={exportHref("entries")} download>
-              {t("Geçişler (CSV)")}
+              {t("Entries (CSV)")}
             </a>
           </div>
         </div>

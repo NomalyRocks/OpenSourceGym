@@ -15,10 +15,23 @@ import type { WebTranslationKey } from "../i18n/resources";
 
 const subscriptionMonthOptions: readonly SubscriptionMonths[] = [1, 3, 6, 12];
 
-function roleKey(role: PublicUser["role"]): "Yönetici" | "Personel" | "Üye" {
-  if (role === "admin") return "Yönetici";
-  if (role === "staff") return "Personel";
-  return "Üye";
+function roleKey(
+  role: PublicUser["role"],
+): "Administrator" | "Staff" | "Member" {
+  if (role === "admin") return "Administrator";
+  if (role === "staff") return "Staff";
+  return "Member";
+}
+
+const monthsKeys = {
+  1: "1 month",
+  3: "3 months",
+  6: "6 months",
+  12: "12 months",
+} as const satisfies Record<SubscriptionMonths, WebTranslationKey>;
+
+function monthsKey(months: SubscriptionMonths): WebTranslationKey {
+  return monthsKeys[months];
 }
 
 function MemberAvatar({
@@ -33,13 +46,13 @@ function MemberAvatar({
   const initials =
     `${member.firstName[0] ?? ""}${member.lastName[0] ?? ""}`.toLocaleUpperCase(
       dateLocale(i18n.resolvedLanguage),
-    ) || "Ü";
+    ) || "?";
   return (
     <span className={`member-avatar${large ? " member-avatar-large" : ""}`}>
       {member.profilePhotoUrl && !failed ? (
         <img
           src={member.profilePhotoUrl}
-          alt={t("{{name}} profil fotoğrafı", {
+          alt={t("Profile photo of {{name}}", {
             name: `${member.firstName} ${member.lastName}`,
           })}
           onError={() => setFailed(true)}
@@ -57,12 +70,12 @@ function subscriptionStatus(subscription: Subscription): {
 } {
   const now = Date.now();
   if (new Date(subscription.startsAt).getTime() > now) {
-    return { label: "Planlandı", className: "warn" };
+    return { label: "Scheduled", className: "warn" };
   }
   if (new Date(subscription.endsAt).getTime() >= now) {
-    return { label: "Aktif", className: "ok" };
+    return { label: "Active", className: "ok" };
   }
-  return { label: "Bitti", className: "member" };
+  return { label: "Expired", className: "member" };
 }
 
 function SubscriptionPanel({ member }: { member: PublicUser }) {
@@ -79,8 +92,8 @@ function SubscriptionPanel({ member }: { member: PublicUser }) {
     });
   }
 
-  // Yükleme render fazında değil burada yapılır: render sırasında istek atmak
-  // StrictMode'da çift istek ve unmount sonrası setState üretiyordu.
+  // Load here instead of during the render phase: requesting during render caused
+  // duplicate requests in StrictMode and setState calls after unmount.
   useEffect(() => {
     const controller = new AbortController();
     setSubs(null);
@@ -91,12 +104,12 @@ function SubscriptionPanel({ member }: { member: PublicUser }) {
       .then(setSubs)
       .catch((err) => {
         if (isAbortError(err)) return;
-        setLoadError(errorMessage(err, t, "Yüklenemedi."));
+        setLoadError(errorMessage(err, t, "Could not load data."));
       })
       .finally(() => setLoading(false));
 
-    // Üye değişince veya bileşen sökülünce uçuşan istek iptal edilir; geç
-    // dönen yanıt yeni üyenin listesini ezemez.
+    // Cancel the in-flight request when the member changes or the component
+    // unmounts, so a late response cannot overwrite the new member's list.
     return () => controller.abort();
   }, [member.id]);
 
@@ -106,18 +119,18 @@ function SubscriptionPanel({ member }: { member: PublicUser }) {
       const request: CreateSubscriptionRequest = {
         userId: member.id,
         months,
-        note: t("{{months}} aylık paket", { months }),
+        note: t("{{months}}-month plan", { months }),
       };
       await api("/api/admin/subscriptions", {
         method: "POST",
         body: request,
       });
-      setMsg({ kind: "success", text: t("Abonelik tanımlandı.") });
+      setMsg({ kind: "success", text: t("Subscription granted.") });
       setSubs(await load());
     } catch (err) {
       setMsg({
         kind: "error",
-        text: errorMessage(err, t, "Abonelik tanımlanamadı."),
+        text: errorMessage(err, t, "Could not grant the subscription."),
       });
     }
   }
@@ -127,7 +140,7 @@ function SubscriptionPanel({ member }: { member: PublicUser }) {
       <div className="member-detail-heading">
         <MemberAvatar member={member} large />
         <h2>
-          {t("Abonelik — {{name}}", {
+          {t("Subscription — {{name}}", {
             name: `${member.firstName} ${member.lastName}`,
           })}
         </h2>
@@ -136,7 +149,7 @@ function SubscriptionPanel({ member }: { member: PublicUser }) {
       {loadError && <div className="msg error">{loadError}</div>}
       <div className="row" style={{ marginBottom: 18 }}>
         <div className="field">
-          <label htmlFor="months">{t("Paket")}</label>
+          <label htmlFor="months">{t("Plan")}</label>
           <select
             id="months"
             value={months}
@@ -146,26 +159,26 @@ function SubscriptionPanel({ member }: { member: PublicUser }) {
           >
             {subscriptionMonthOptions.map((option) => (
               <option key={option} value={option}>
-                {t(`${option} ay` as "1 ay" | "3 ay" | "6 ay" | "12 ay")}
+                {t(monthsKey(option))}
               </option>
             ))}
           </select>
         </div>
-        <button onClick={grant}>{t("Abonelik tanımla")}</button>
+        <button onClick={grant}>{t("Grant subscription")}</button>
       </div>
       <table>
         <thead>
           <tr>
-            <th>{t("Başlangıç")}</th>
-            <th>{t("Bitiş")}</th>
-            <th>{t("Not")}</th>
-            <th>{t("Durum")}</th>
+            <th>{t("Start")}</th>
+            <th>{t("End")}</th>
+            <th>{t("Note")}</th>
+            <th>{t("Status")}</th>
           </tr>
         </thead>
         <tbody>
           {loading && (
             <tr>
-              <td colSpan={4}>{t("Yükleniyor…")}</td>
+              <td colSpan={4}>{t("Loading…")}</td>
             </tr>
           )}
           {!loading &&
@@ -194,7 +207,7 @@ function SubscriptionPanel({ member }: { member: PublicUser }) {
             })}
           {!loading && subs?.length === 0 && (
             <tr>
-              <td colSpan={4}>{t("Abonelik kaydı yok.")}</td>
+              <td colSpan={4}>{t("No subscription records.")}</td>
             </tr>
           )}
         </tbody>
@@ -232,7 +245,7 @@ export function Members() {
       setResults(null);
       setMsg({
         kind: "error",
-        text: t("Aramak için en az iki karakter girin."),
+        text: t("Enter at least two characters to search."),
       });
       return;
     }
@@ -244,7 +257,7 @@ export function Members() {
       setResults(null);
       setMsg({
         kind: "error",
-        text: errorMessage(err, t, "Arama başarısız."),
+        text: errorMessage(err, t, "Search failed."),
       });
     }
   }
@@ -260,7 +273,7 @@ export function Members() {
     });
     setMsg({
       kind: "success",
-      text: t("{{email}} → {{role}} olarak güncellendi.", {
+      text: t("{{email}} was updated to {{role}}.", {
         email: target.email,
         role: t(roleKey(role as PublicUser["role"])),
       }),
@@ -288,7 +301,7 @@ export function Members() {
       }
       setMsg({
         kind: "error",
-        text: errorMessage(err, t, "Rol atanamadı."),
+        text: errorMessage(err, t, "Could not assign the role."),
       });
     }
   }
@@ -301,9 +314,9 @@ export function Members() {
     if (method === "otp") {
       try {
         await authApi("/two-factor/send-otp", {});
-        setMfaInfo(t("Kod e-postanıza gönderildi."));
+        setMfaInfo(t("A code was sent to your email."));
       } catch (err) {
-        setMfaError(errorMessage(err, t, "Kod gönderilemedi."));
+        setMfaError(errorMessage(err, t, "The code could not be sent."));
       }
     }
   }
@@ -320,9 +333,9 @@ export function Members() {
       setMfaPrompt(null);
     } catch (err) {
       if (err instanceof ApiError && err.code === "MFA_INVALID") {
-        setMfaError(t("Kod geçersiz."));
+        setMfaError(t("The code is invalid."));
       } else {
-        setMfaError(errorMessage(err, t, "Doğrulama başarısız."));
+        setMfaError(errorMessage(err, t, "Verification failed."));
       }
     } finally {
       setMfaBusy(false);
@@ -331,37 +344,37 @@ export function Members() {
 
   return (
     <div className="stagger">
-      <h1>{t("Üyeler")}</h1>
+      <h1>{t("Members")}</h1>
       <div className="panel">
         <form className="row" onSubmit={search}>
           <div className="field">
             <label htmlFor="member-query">
-              {t("Telefon, e-posta, ad veya soyad")}
+              {t("Phone, email, first or last name")}
             </label>
             <input
               id="member-query"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              placeholder={t("Ayşe Yılmaz, ayse@… veya +90530…")}
+              placeholder={t("Jane Smith, jane@… or +1202…")}
               minLength={2}
               required
             />
           </div>
-          <button type="submit">{t("Ara")}</button>
+          <button type="submit">{t("Search")}</button>
         </form>
       </div>
       {msg && <div className={`msg ${msg.kind}`}>{msg.text}</div>}
       {results && (
         <div className="panel">
-          <h2>{t("Sonuçlar")}</h2>
+          <h2>{t("Results")}</h2>
           <table>
             <thead>
               <tr>
-                <th>{t("Ad Soyad")}</th>
-                <th>{t("Telefon")}</th>
-                <th>{t("E-posta")}</th>
-                <th>{t("Rol")}</th>
-                <th>{t("İşlem")}</th>
+                <th>{t("Full name")}</th>
+                <th>{t("Phone")}</th>
+                <th>{t("Email")}</th>
+                <th>{t("Role")}</th>
+                <th>{t("Action")}</th>
               </tr>
             </thead>
             <tbody>
@@ -389,9 +402,9 @@ export function Members() {
                           value={u.role}
                           onChange={(e) => setRole(u, e.target.value)}
                         >
-                          <option value="member">{t("Üye")}</option>
-                          <option value="staff">{t("Personel")}</option>
-                          <option value="admin">{t("Yönetici")}</option>
+                          <option value="member">{t("Member")}</option>
+                          <option value="staff">{t("Staff")}</option>
+                          <option value="admin">{t("Administrator")}</option>
                         </select>
                       )}
                       <button
@@ -399,7 +412,7 @@ export function Members() {
                         className="ghost"
                         onClick={() => setSelected(u)}
                       >
-                        {t("Abonelik")}
+                        {t("Subscription")}
                       </button>
                     </div>
                   </td>
@@ -407,7 +420,7 @@ export function Members() {
               ))}
               {results.length === 0 && (
                 <tr>
-                  <td colSpan={5}>{t("Eşleşen üye bulunamadı.")}</td>
+                  <td colSpan={5}>{t("No matching member found.")}</td>
                 </tr>
               )}
             </tbody>
@@ -418,15 +431,12 @@ export function Members() {
       {mfaPrompt && (
         <div className="modal-overlay">
           <div className="panel">
-            <h2>{t("MFA doğrulama gerekli")}</h2>
+            <h2>{t("MFA verification required")}</h2>
             <p className="hint" style={{ marginBottom: 16 }}>
-              {t(
-                "{{email}} kullanıcısının rolünü {{role}} olarak değiştirmek için doğrulama kodu girin.",
-                {
-                  email: mfaPrompt.target.email,
-                  role: t(roleKey(mfaPrompt.role as PublicUser["role"])),
-                },
-              )}
+              {t("Enter a verification code to change {{email}} to {{role}}.", {
+                email: mfaPrompt.target.email,
+                role: t(roleKey(mfaPrompt.role as PublicUser["role"])),
+              })}
             </p>
             {mfaError && <div className="msg error">{mfaError}</div>}
             {mfaInfo && <div className="msg success">{mfaInfo}</div>}
@@ -443,11 +453,11 @@ export function Members() {
                 className={mfaMethod === "otp" ? "" : "ghost"}
                 onClick={() => void chooseMfaMethod("otp")}
               >
-                {t("E-posta kodu")}
+                {t("Email code")}
               </button>
             </div>
             <div className="field">
-              <label htmlFor="mfaCode">{t("Doğrulama kodu")}</label>
+              <label htmlFor="mfaCode">{t("Verification code")}</label>
               <input
                 id="mfaCode"
                 value={mfaCode}
@@ -463,7 +473,7 @@ export function Members() {
                 onClick={() => void confirmMfa()}
                 disabled={mfaBusy || !mfaCode}
               >
-                {mfaBusy ? t("Doğrulanıyor…") : t("Onayla")}
+                {mfaBusy ? t("Verifying…") : t("Approve")}
               </button>
               <button
                 type="button"
@@ -471,7 +481,7 @@ export function Members() {
                 onClick={() => setMfaPrompt(null)}
                 disabled={mfaBusy}
               >
-                {t("Vazgeç")}
+                {t("Cancel")}
               </button>
             </div>
           </div>

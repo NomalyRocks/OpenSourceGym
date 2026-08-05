@@ -5,8 +5,8 @@ export type DeviceIntegrityResult = {
   reasons: string[];
 };
 
-// Prod derlemelerde varsayılan açık, __DEV__ altında (emülatör/Expo Go yanlış
-// pozitiflerini önlemek için) varsayılan kapalı. EXPO_PUBLIC_ANTI_DEBUG=1/0 ile zorlanabilir.
+// Enabled by default in production builds and disabled by default under __DEV__
+// (to prevent emulator/Expo Go false positives). Override with EXPO_PUBLIC_ANTI_DEBUG=1/0.
 const enabled =
   (process.env.EXPO_PUBLIC_ANTI_DEBUG ?? (__DEV__ ? "0" : "1")) === "1";
 
@@ -22,7 +22,7 @@ export async function checkDeviceIntegrity(): Promise<DeviceIntegrityResult> {
       reasons.push("root");
     }
   } catch {
-    // Kontrol başarısız oldu — pozitif sinyal sayılmaz (fail-open).
+    // The check failed—do not treat it as a positive signal (fail-open).
   }
 
   try {
@@ -30,7 +30,7 @@ export async function checkDeviceIntegrity(): Promise<DeviceIntegrityResult> {
       reasons.push("emulator");
     }
   } catch {
-    // Kontrol başarısız oldu — pozitif sinyal sayılmaz (fail-open).
+    // The check failed—do not treat it as a positive signal (fail-open).
   }
 
   try {
@@ -38,7 +38,7 @@ export async function checkDeviceIntegrity(): Promise<DeviceIntegrityResult> {
       reasons.push("dev-bundle");
     }
   } catch {
-    // Kontrol başarısız oldu — pozitif sinyal sayılmaz (fail-open).
+    // The check failed—do not treat it as a positive signal (fail-open).
   }
 
   return { compromised: reasons.length > 0, reasons };

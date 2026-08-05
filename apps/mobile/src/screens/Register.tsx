@@ -63,7 +63,7 @@ export function Register({
         if (!cancelled) setLegal(config);
       })
       .catch(() => {
-        // Belge adresleri alınamadı; onay kutuları linksiz modda kalır, kayıt akışı bloke olmaz.
+        // Document URLs could not be loaded; checkboxes remain unlinked without blocking registration.
       });
     return () => {
       cancelled = true;
@@ -72,7 +72,7 @@ export function Register({
 
   async function submit() {
     setError(null);
-    const required = t("Bu alan zorunludur.");
+    const required = t("This field is required.");
     const nextErrors: typeof fieldErrors = {};
     if (!firstName.trim()) nextErrors.firstName = required;
     if (!lastName.trim()) nextErrors.lastName = required;
@@ -80,7 +80,7 @@ export function Register({
     if (!phone.trim()) nextErrors.phone = required;
     if (!password) nextErrors.password = required;
     else if (password.length < 8) {
-      nextErrors.password = t("Şifre en az 8 karakter olmalı.");
+      nextErrors.password = t("The password must be at least 8 characters.");
     }
     setFieldErrors(nextErrors);
     const firstInvalid = (
@@ -92,7 +92,7 @@ export function Register({
     }
     if (!dataProcessing || !privacy) {
       setError(
-        t("Veri işleme bildirimi ve gizlilik sözleşmesi onayları zorunludur."),
+        t("You must accept the data processing notice and privacy policy."),
       );
       return;
     }
@@ -100,16 +100,14 @@ export function Register({
       setBusy,
       () =>
         setError(
-          t(
-            "Bağlantı kurulamadı. İnternet bağlantınızı kontrol edip tekrar deneyin.",
-          ),
+          t("Could not connect. Check your internet connection and try again."),
         ),
       async () => {
         const { error } = await authClient.signUp.email({
           name: `${firstName} ${lastName}`,
           email,
           password,
-          // @ts-expect-error ek alanlar sunucu şemasında tanımlı
+          // @ts-expect-error additional fields are defined in the server schema
           firstName,
           lastName,
           phone,
@@ -118,16 +116,18 @@ export function Register({
         });
         if (error) {
           if (error.code === "PHONE_ALREADY_EXISTS") {
-            setError(t("Bu telefon numarası ile kayıtlı hesap var."));
+            setError(
+              t("An account is already registered with this phone number."),
+            );
           } else if (error.code === "INVALID_PHONE_NUMBER") {
-            setError(t("Geçerli bir telefon numarası girin."));
+            setError(t("Enter a valid phone number."));
           } else if (
             error.code === "USER_ALREADY_EXISTS" ||
             error.code === "USER_ALREADY_EXISTS_USE_ANOTHER_EMAIL"
           ) {
-            setError(t("Bu e-posta ile kayıtlı hesap var."));
+            setError(t("An account is already registered with this email."));
           } else {
-            setError(t("Kayıt başarısız."));
+            setError(t("Registration failed."));
           }
           return;
         }
@@ -141,15 +141,15 @@ export function Register({
       onBack={onLogin}
       footer={
         <AuthFooterLink
-          prompt={t("Zaten hesabın var mı?")}
-          actionLabel={t("Giriş Yap")}
+          prompt={t("Already have an account?")}
+          actionLabel={t("Sign In")}
           onPress={onLogin}
         />
       }
     >
       <AuthHeading
-        title={t("Hesap oluştur")}
-        subtitle={t("Üyeliğini oluştur ve QR ile giriş yap")}
+        title={t("Create account")}
+        subtitle={t("Create your membership and enter with QR")}
       />
 
       {error ? (
@@ -163,7 +163,7 @@ export function Register({
           <View style={styles.nameCell}>
             <Field
               inputRef={refs.firstName}
-              label={t("İsim")}
+              label={t("First name")}
               value={firstName}
               error={fieldErrors.firstName}
               onChangeText={(value) => {
@@ -181,7 +181,7 @@ export function Register({
           <View style={styles.nameCell}>
             <Field
               inputRef={refs.lastName}
-              label={t("Soyisim")}
+              label={t("Last name")}
               value={lastName}
               error={fieldErrors.lastName}
               onChangeText={(value) => {
@@ -199,7 +199,7 @@ export function Register({
         </View>
         <Field
           inputRef={refs.email}
-          label={t("E-posta")}
+          label={t("Email")}
           value={email}
           error={fieldErrors.email}
           onChangeText={(value) => {
@@ -214,7 +214,7 @@ export function Register({
         />
         <Field
           inputRef={refs.phone}
-          label={t("Telefon Numarası")}
+          label={t("Phone number")}
           value={phone}
           error={fieldErrors.phone}
           onChangeText={(value) => {
@@ -229,10 +229,10 @@ export function Register({
         />
         <PasswordField
           inputRef={refs.password}
-          label={t("Şifre (min. 8 karakter)")}
+          label={t("Password (min. 8 characters)")}
           value={password}
           error={fieldErrors.password}
-          helperText={t("En az 8 karakter kullanın.")}
+          helperText={t("Use at least 8 characters.")}
           onChangeText={(value) => {
             setPassword(value);
             setFieldErrors((current) => ({ ...current, password: undefined }));
@@ -247,7 +247,7 @@ export function Register({
           checked={dataProcessing}
           onToggle={() => setDataProcessing(!dataProcessing)}
           label={t(
-            "Veri işleme bildirimini okudum, kişisel verilerimin işlenmesini onaylıyorum.",
+            "I have read the data processing notice and consent to the processing of my personal data.",
           )}
         />
         {legal?.dataProcessingUrl ? (
@@ -257,15 +257,13 @@ export function Register({
             onPress={() => void Linking.openURL(legal.dataProcessingUrl!)}
             style={styles.consentLink}
           >
-            <Text style={styles.consentLinkLabel}>
-              {t("Belgeyi görüntüle")}
-            </Text>
+            <Text style={styles.consentLinkLabel}>{t("View document")}</Text>
           </Pressable>
         ) : null}
         <Checkbox
           checked={privacy}
           onToggle={() => setPrivacy(!privacy)}
-          label={t("Gizlilik sözleşmesini okudum ve kabul ediyorum.")}
+          label={t("I have read and accept the privacy policy.")}
         />
         {legal?.privacyUrl ? (
           <Pressable
@@ -274,14 +272,12 @@ export function Register({
             onPress={() => void Linking.openURL(legal.privacyUrl!)}
             style={styles.consentLink}
           >
-            <Text style={styles.consentLinkLabel}>
-              {t("Belgeyi görüntüle")}
-            </Text>
+            <Text style={styles.consentLinkLabel}>{t("View document")}</Text>
           </Pressable>
         ) : null}
       </View>
 
-      <Button title={t("Kayıt Ol")} onPress={submit} busy={busy} />
+      <Button title={t("Sign Up")} onPress={submit} busy={busy} />
     </AuthShell>
   );
 }

@@ -9,7 +9,7 @@ export const pageSchema = <T extends z.ZodType>(itemSchema: T) =>
     items: z.array(itemSchema),
     nextCursor: z.string().nullable().meta({
       description:
-        "Sonraki sayfa için cursor sorgu parametresine verilir; son sayfada null olur",
+        "Pass this as the cursor query parameter for the next page; null on the last page",
     }),
   });
 
@@ -18,10 +18,10 @@ export const roleSchema = withId(z.enum(["admin", "staff", "member"]), "Role");
 export const objectIdSchema = z
   .string()
   .regex(/^[a-f\d]{24}$/i)
-  .meta({ description: "MongoDB ObjectId (24 onaltılık karakter)" });
+  .meta({ description: "MongoDB ObjectId (24 hexadecimal characters)" });
 
 export const isoDateTimeSchema = z.iso.datetime().meta({
-  description: "ISO 8601 zaman damgası",
+  description: "ISO 8601 timestamp",
 });
 
 export const apiErrorSchema = withId(
@@ -61,13 +61,13 @@ export const myProfileSchema = withId(
     twoFactorEnabled: z.boolean(),
     profilePhotoUrl: z.url().nullable(),
     age: z.number().nullable().meta({
-      description: "Kalori hesaplayıcının otomatik dolduracağı yaş",
+      description: "Age used to prefill the calorie calculator",
     }),
     heightCm: z.number().nullable().meta({
-      description: "Kalori hesaplayıcının otomatik dolduracağı boy (cm)",
+      description: "Height used to prefill the calorie calculator (cm)",
     }),
     weightKg: z.number().nullable().meta({
-      description: "Kalori hesaplayıcının otomatik dolduracağı kilo (kg)",
+      description: "Weight used to prefill the calorie calculator (kg)",
     }),
   }),
   "MyProfile",
@@ -92,7 +92,7 @@ export const myBodyMetricsUpdateSchema = withId(
     .partial()
     .meta({
       description:
-        "Alan gönderilmezse dokunulmaz, `null` gönderilirse temizlenir. En az bir alan zorunlu.",
+        "Omitted fields remain unchanged; fields sent as `null` are cleared. At least one field is required.",
     }),
   "MyBodyMetricsUpdate",
 );
@@ -133,8 +133,8 @@ export const sharingConfigSchema = withId(
   "SharingConfig",
 );
 
-// Hukuki metinler ürüne gömülmez; operatör kendi mevzuatına göre yayımladığı
-// belgelerin adresini girer (bkz. docs/legal/README.md).
+// Legal text is not embedded in the product; the operator enters URLs for
+// documents published under applicable law (see docs/legal/README.md).
 export const legalConfigSchema = withId(
   z.object({
     dataProcessingUrl: legalDocumentUrlSchema.nullable(),
@@ -281,13 +281,13 @@ export const myEntriesSchema = withId(
           .string()
           .regex(/^\d{4}-\d{2}-\d{2}$/)
           .meta({
-            description: "Salon saat dilimindeki takvim günü",
+            description: "Calendar day in the gym time zone",
           }),
         entries: z.number().int().positive(),
       }),
     ),
     timeZone: z.string().meta({
-      description: "Günlerin hesaplandığı IANA saat dilimi",
+      description: "IANA time zone used to calculate days",
     }),
   }),
   "MyEntries",
@@ -375,7 +375,7 @@ export const authErrorSchema = withId(
   "AuthError",
 );
 
-// İstek şemaları routes/*.ts içindeki dosyaya özel zod doğrulayıcılarını yansıtır.
+// Request schemas mirror the file-specific Zod validators in routes/*.ts.
 export const initialPasswordRequestSchema = withId(
   z.object({
     currentPassword: z.string(),

@@ -7,15 +7,15 @@ import type { Db, Document } from "mongodb";
 import { db } from "./db.js";
 import { env } from "./env.js";
 
-/** Rapor aralığının azami uzunluğu — grafikte kova sayısını sınırlar. */
+/** Maximum report range—limits the number of chart buckets. */
 export const MAX_REPORT_RANGE_DAYS = 366;
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const RENEWAL_WINDOW_DAYS = 7;
 
 /**
- * Bir anın verilen saat dilimindeki takvim gününü `YYYY-MM-DD` olarak verir.
- * `en-CA` tam olarak bu biçimi üretir; elle parça birleştirmeye gerek yok.
+ * Returns an instant's calendar day in the given time zone as `YYYY-MM-DD`.
+ * `en-CA` produces exactly this format, avoiding manual component assembly.
  */
 export function localDayLabel(at: Date, timeZone: string): string {
   return new Intl.DateTimeFormat("en-CA", {
@@ -27,18 +27,18 @@ export function localDayLabel(at: Date, timeZone: string): string {
 }
 
 /**
- * Aralığın kapsadığı yerel günlerin etiketlerini sırayla üretir.
+ * Produces labels for the local days covered by the range, in order.
  *
- * Adımlama etiketin kendisi üzerinde yapılır, zaman damgası üzerinde değil:
- * "24 saat ekle" yaz saati geçişlerinde bir günü atlar veya tekrarlar. Takvim
- * günü üzerinden ilerlemek saat dilimi kurallarından bağımsızdır.
+ * Step through the label itself, not the timestamp: "add 24 hours" skips or
+ * repeats a day across daylight-saving transitions. Advancing by calendar day
+ * is independent of time-zone rules.
  */
 export function dayLabels(from: Date, to: Date, timeZone: string): string[] {
   const labels: string[] = [];
   const last = localDayLabel(to, timeZone);
   let current = localDayLabel(from, timeZone);
 
-  // Bozuk bir aralık sonsuz döngüye dönüşmemeli; üst sınır kova tavanıdır.
+  // A malformed range must not become an infinite loop; cap it at the bucket limit.
   for (let guard = 0; guard <= MAX_REPORT_RANGE_DAYS; guard++) {
     labels.push(current);
     if (current >= last) break;
@@ -67,9 +67,9 @@ async function countFrom(
 }
 
 /**
- * Üyenin EN GEÇ aboneliğinin bitişine bakar. `distinct` ile "herhangi bir aktif
- * abonelik" saymak yanıltıcı olurdu: peşine yeni paket eklenmiş bir üye hâlâ
- * "yenilemesi yaklaşıyor" görünürdü.
+ * Looks at the end of the member's LATEST subscription. Counting "any active
+ * subscription" with `distinct` would mislead: a member with a newer package
+ * appended would still appear as "renewal approaching."
  */
 function latestEndPipeline(match: Document): Document[] {
   return [
@@ -78,7 +78,7 @@ function latestEndPipeline(match: Document): Document[] {
   ];
 }
 
-/** Aboneliği önümüzdeki 7 gün içinde bitecek benzersiz üye sayısı. */
+/** Number of unique members whose subscription ends within the next seven days. */
 export async function countRenewalsDue(
   database: Db = db,
   now = new Date(),
@@ -93,7 +93,7 @@ export async function countRenewalsDue(
   );
 }
 
-/** Şu an aktif aboneliği olan benzersiz üye sayısı. */
+/** Number of unique members with an active subscription now. */
 export async function countActiveMembers(
   database: Db = db,
   now = new Date(),
@@ -130,8 +130,8 @@ export async function buildReportSummary(
     database
       .collection("subscriptions")
       .countDocuments({ createdAt: { $gte: from, $lte: to } }),
-    // Aralıkta biten VE aralık sonuna kadar yenilenmeyen üyeler: en geç bitiş
-    // aralığın içinde kalıyorsa üye aralık sonunda aboneliksizdir.
+    // Members ending in the range AND not renewed by range end: if the latest
+    // end remains within the range, the member is unsubscribed at range end.
     countFrom(
       database,
       "subscriptions",
@@ -160,9 +160,9 @@ interface EntryTotals {
 }
 
 /**
- * Toplamlar ve benzersiz üye sayısı tek geçişte alınır. Benzersiz üyeler
- * `$addToSet` ile toplanmaz: dizi belge boyutu sınırına dayanabilir, ayrı bir
- * `$group` + `$count` dalı sabit bellek kullanır.
+ * Totals and unique-member count are collected in one pass. Unique members are
+ * not accumulated with `$addToSet`: the array could hit the document-size limit,
+ * while a separate `$group` plus `$count` branch uses constant memory.
  */
 async function aggregateEntryTotals(
   database: Db,
@@ -220,8 +220,8 @@ export async function buildEntryTrend(
       { $match: { at: { $gte: from, $lte: to } } },
       {
         $group: {
-          // Kova sınırı salonun yerel günüdür: UTC'ye göre gruplayınca gece
-          // yarısına yakın geçişler komşu güne kayardı.
+          // The bucket boundary is the gym's local day: grouping by UTC would
+          // move events near midnight to an adjacent day.
           _id: {
             $dateToString: {
               date: "$at",
@@ -237,8 +237,8 @@ export async function buildEntryTrend(
     .toArray();
 
   const byDay = new Map(rows.map((row) => [row._id, row]));
-  // Boş günler de noktaya dönüşür: eksik kovalar grafikte "o gün hiç kimse
-  // gelmedi"yi değil "veri yok"u gösterir ve trendi yanlış okutur.
+  // Empty days also become points: missing buckets read as "no data" rather
+  // than "nobody attended that day" and distort the chart trend.
   const points: EntryTrendPoint[] = dayLabels(from, to, timeZone).map(
     (date) => {
       const row = byDay.get(date);
