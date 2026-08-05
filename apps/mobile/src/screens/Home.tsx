@@ -1,14 +1,17 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { AppState, Pressable, StyleSheet, Text, View } from "react-native";
 import type {
   MyProfile,
   MySubscription,
   OccupancyResponse,
 } from "@opengym/shared";
 import { api } from "../lib/api";
+import { fetchAttendance, type AttendanceDay } from "../lib/attendance";
+import { buildWeek, dayKey } from "../lib/dateKeys";
 import { Avatar } from "../components/Avatar";
 import { BellGlyph, QrGlyph } from "../components/icons";
+import { WeekStrip } from "../components/WeekStrip";
 import {
   tabularNumbers,
   useTheme,
@@ -52,6 +55,25 @@ function Perforation() {
 
 const HEADER_AVATAR = 46;
 
+function useCurrentDayKey() {
+  const [currentDayKey, setCurrentDayKey] = useState(() => dayKey(new Date()));
+
+  useEffect(() => {
+    const subscription = AppState.addEventListener("change", (nextState) => {
+      if (nextState !== "active") return;
+
+      const nextDayKey = dayKey(new Date());
+      setCurrentDayKey((previousDayKey) =>
+        previousDayKey === nextDayKey ? previousDayKey : nextDayKey,
+      );
+    });
+
+    return () => subscription.remove();
+  }, []);
+
+  return currentDayKey;
+}
+
 export function Home({
   userName,
   onOpenQr,
@@ -79,15 +101,33 @@ export function Home({
     null,
   );
   const [occupancyError, setOccupancyError] = useState<string | null>(null);
+  const [attendance, setAttendance] = useState<AttendanceDay[]>([]);
+  const [attendanceLoaded, setAttendanceLoaded] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
 
+  const todayKey = useCurrentDayKey();
+  const week = useMemo(() => {
+    const [year, month, date] = todayKey.split("-").map(Number);
+    return buildWeek(new Date(year!, month! - 1, date!));
+  }, [todayKey]);
+
+  const weekFrom = week[0]?.key;
+  const weekTo = week[6]?.key;
+
   const load = useCallback(async () => {
-    const [profileResult, subscriptionResult, occupancyResult] =
-      await Promise.allSettled([
-        api<MyProfile>("/api/me/profile"),
-        api<MySubscription>("/api/me/subscription"),
-        api<OccupancyResponse>("/api/me/occupancy"),
-      ]);
+    const [
+      profileResult,
+      subscriptionResult,
+      occupancyResult,
+      attendanceResult,
+    ] = await Promise.allSettled([
+      api<MyProfile>("/api/me/profile"),
+      api<MySubscription>("/api/me/subscription"),
+      api<OccupancyResponse>("/api/me/occupancy"),
+      weekFrom && weekTo
+        ? fetchAttendance({ from: weekFrom, to: weekTo })
+        : Promise.resolve({ days: [], timeZone: "" }),
+    ]);
 
     // Profil yalnızca başlıktaki görseli besler; okunamazsa Avatar baş
     // harflere düşer, bu yüzden ayrı bir hata mesajı göstermiyoruz.
@@ -113,7 +153,14 @@ export function Home({
       );
     }
     setOccupancyLoaded(true);
-  }, [t]);
+
+    // Geliş şeridi ikincil bir gösterim: çekilemezse sessizce nötr kalır,
+    // Home'un geri kalanını hata banner'ıyla kirletmez.
+    if (attendanceResult.status === "fulfilled") {
+      setAttendance(attendanceResult.value.days);
+    }
+    setAttendanceLoaded(true);
+  }, [t, weekFrom, weekTo]);
 
   useEffect(() => {
     void load();
@@ -164,6 +211,12 @@ export function Home({
         })
       : "—";
 
+  const attendanceByDay = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const day of attendance) map.set(day.date, day.entries);
+    return map;
+  }, [attendance]);
+
   const active = subscription?.active === true;
   const remainingDays = subscription?.remainingDays ?? 0;
   // Son bir haftaya girildiğinde üyelik plakası uyarı tonuna geçer: bilgi
@@ -211,6 +264,16 @@ export function Home({
           onPress={onOpenNotifications}
           badgeCount={unreadCount}
           icon={(color) => <BellGlyph size={21} color={color} />}
+        />
+      </View>
+
+      <View style={styles.weekStrip}>
+        <WeekStrip
+          days={week}
+          attendanceByDay={attendanceByDay}
+          todayKey={todayKey}
+          loading={!attendanceLoaded}
+          locale={locale}
         />
       </View>
 
@@ -366,6 +429,8 @@ const homeStyles = (theme: Theme) =>
       color: theme.colors.textPrimary,
       marginTop: 2,
     },
+
+    weekStrip: { marginBottom: theme.spacing.lg },
 
     skeletonGap: { marginTop: theme.spacing.sm },
 

@@ -66,6 +66,15 @@ export async function ensureIndexes(database: Db = db): Promise<void> {
     { name: "subscriptions_user_ends_at" },
   );
 
+  // weight_history: hem kayıt (son değeri okuma) hem takvim listesi
+  // find({ userId }).sort({ at: -1 }) kalıbını kullanır.
+  await ensureIndex(
+    database,
+    "weight_history",
+    { userId: 1, at: -1 },
+    { name: "weight_history_user_at" },
+  );
+
   // sharing_signals: 30 gün sonra otomatik silinir (TTL) + kullanıcı bazlı sorgu indeksi
   await ensureIndex(
     database,

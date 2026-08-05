@@ -4,6 +4,7 @@ import {
   calculateCaloriePlan,
   cmToFeetAndInches,
   feetAndInchesToCm,
+  formatEditable,
   kgToPounds,
   parseLocalizedNumber,
   poundsToKg,
@@ -123,5 +124,11 @@ describe("birim ve sayı yardımcıları", () => {
       Math.abs(feetAndInchesToCm(imperial.feet, imperial.inches) - 180) <
         0.000001,
     );
+  });
+
+  it("formatEditable gereksiz ondalık sıfırı atar ve yerele göre ayırıcı seçer", () => {
+    assert.equal(formatEditable(82, "tr"), "82");
+    assert.equal(formatEditable(82.5, "tr"), "82,5");
+    assert.equal(formatEditable(82.5, "en"), "82.5");
   });
 });

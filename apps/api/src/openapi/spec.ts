@@ -26,7 +26,10 @@ import {
   initialPasswordRequestSchema,
   myDeletionRequestSchema,
   myEntriesSchema,
+  myBodyMetricsSchema,
+  myBodyMetricsUpdateSchema,
   myProfileSchema,
+  myWeightHistorySchema,
   mySubscriptionSchema,
   objectIdSchema,
   occupancySchema,
@@ -658,6 +661,36 @@ export const openApiDocument: OpenApiDocument = createDocument({
         ),
         responses: protectedResponses({
           "200": jsonResponse("Güncel profil", myProfileSchema),
+        }),
+      },
+    },
+    "/api/me/body-metrics": {
+      patch: {
+        tags: ["me"],
+        operationId: "patchMyBodyMetrics",
+        summary: "Kendi yaş/boy/kilo bilgimi güncelle",
+        ...requiredRole(
+          "admin | staff | member",
+          "Kalori hesaplayıcının otomatik doldurduğu alanlar. BetterAuth'un update-user ucu yerine burada tutulur ki yazma yolu rol denetiminden ve taze kullanıcı okumasından geçsin. Kilo değiştiğinde kilo geçmişine tarihli bir kayıt eklenir",
+        ),
+        requestBody: jsonBody(myBodyMetricsUpdateSchema),
+        responses: protectedResponses({
+          "200": jsonResponse("Güncel vücut bilgileri", myBodyMetricsSchema),
+          "400": jsonResponse("Geçersiz vücut bilgisi", apiErrorSchema),
+        }),
+      },
+    },
+    "/api/me/weight-history": {
+      get: {
+        tags: ["me"],
+        operationId: "getMyWeightHistory",
+        summary: "Kilo geçmişimi getir",
+        ...requiredRole(
+          "admin | staff | member",
+          "Profildeki kilo her değiştiğinde eklenen tarihli kayıtlar, artan zamana göre sıralı",
+        ),
+        responses: protectedResponses({
+          "200": jsonResponse("Kilo geçmişi", myWeightHistorySchema),
         }),
       },
     },

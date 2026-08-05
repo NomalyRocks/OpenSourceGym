@@ -5,13 +5,26 @@ import { z } from "zod";
 import type {
   GateRejectCode,
   GateScanResponse,
+  MyBodyMetrics,
   MyDeletionRequest,
   MyEntriesResponse,
   MySubscription,
+  MyWeightHistoryResponse,
   OccupancyResponse,
   ProfilePhotoResponse,
 } from "@opengym/shared";
-import { db, findGymSettings, isDuplicateKeyError } from "../db.js";
+import {
+  db,
+  findGymSettings,
+  isDuplicateKeyError,
+  userCollection,
+} from "../db.js";
+import {
+  AGE_RANGE,
+  buildBodyMetricsUpdate,
+  HEIGHT_CM_RANGE,
+  WEIGHT_KG_RANGE,
+} from "../bodyMetrics.js";
 import { env } from "../env.js";
 import {
   DAY_LABEL_PATTERN,
@@ -20,6 +33,10 @@ import {
   MAX_ENTRY_RANGE_DAYS,
   toEntryDays,
 } from "../entryDays.js";
+import {
+  listWeightHistory,
+  recordWeightHistoryIfChanged,
+} from "../weightHistory.js";
 import { sendApiError } from "../apiError.js";
 import { acquireLock, redis, releaseLock } from "../redis.js";
 import { authed, requireRole, type AuthedRequest } from "../middleware.js";
@@ -226,6 +243,155 @@ meRouter.get(
       timeZone,
     };
     res.json(body);
+  }),
+);
+
+// Mobil takvimin kilo katmanı: weightKg her değiştiğinde eklenen geçmiş.
+meRouter.get(
+  "/weight-history",
+  requireRole("admin", "staff", "member"),
+  authed(async (req, res) => {
+    const entries = await listWeightHistory(req.user.id);
+    const body: MyWeightHistoryResponse = {
+      entries: entries.map((entry) => ({
+        weightKg: entry.weightKg,
+        at: entry.at.toISOString(),
+      })),
+    };
+    res.json(body);
+  }),
+);
+
+// Üyenin kendi yaş/boy/kilosu. BetterAuth'un `update-user` ucu yerine burada
+// duruyor: yazma yolu `requireRole` üzerinden geçmeli ki kullanıcı her istekte
+// Mongo'dan yeniden okunsun ve `mustChangePassword` bekleyen hesaplar
+// yazamasın (bkz. AGENTS.md, auth.ts additionalFields `input: false`).
+const bodyMetricsSchema = z
+  .object({
+    age: z.number().int().min(AGE_RANGE.min).max(AGE_RANGE.max).nullable(),
+    heightCm: z
+      .number()
+      .min(HEIGHT_CM_RANGE.min)
+      .max(HEIGHT_CM_RANGE.max)
+      .nullable(),
+    weightKg: z
+      .number()
+      .min(WEIGHT_KG_RANGE.min)
+      .max(WEIGHT_KG_RANGE.max)
+      .nullable(),
+  })
+  .partial();
+
+const BODY_METRICS_RATE_LIMIT = 10;
+const BODY_METRICS_RATE_WINDOW_SECONDS = 60;
+const BODY_METRICS_LOCK_TTL_MS = 5000;
+
+/** Kilo geçmişi her değişimde büyür; yazma ucu kullanıcı başına sınırlanır. */
+async function isBodyMetricsRateLimited(userId: string): Promise<boolean> {
+  const key = `og:rl:body-metrics:${userId}`;
+  const count = await redis.incr(key);
+  await redis.expire(key, BODY_METRICS_RATE_WINDOW_SECONDS, "NX");
+  return count > BODY_METRICS_RATE_LIMIT;
+}
+
+meRouter.patch(
+  "/body-metrics",
+  requireRole("admin", "staff", "member"),
+  authed(async (req, res) => {
+    const parsed = bodyMetricsSchema.safeParse(req.body);
+    if (!parsed.success) {
+      sendApiError(
+        res,
+        400,
+        "INVALID_REQUEST",
+        "Body metrics are missing or out of the accepted range.",
+      );
+      return;
+    }
+
+    // Boşluk denetimi şemadan sonra: zod `{ age: undefined }` gövdesini
+    // geçirebilir ve geriye boş bir güncelleme kalır — updateOne boş belgeyle
+    // hata fırlatır. Kararı üretilen güncelleme belgesine göre veriyoruz.
+    const { set, unset } = buildBodyMetricsUpdate(parsed.data);
+    if (Object.keys(set).length === 0 && Object.keys(unset).length === 0) {
+      sendApiError(
+        res,
+        400,
+        "INVALID_REQUEST",
+        "At least one body metric field must be provided.",
+      );
+      return;
+    }
+
+    if (await isBodyMetricsRateLimited(req.user.id)) {
+      sendApiError(
+        res,
+        429,
+        "RATE_LIMITED",
+        "Too many body metric updates. Please wait a minute.",
+      );
+      return;
+    }
+
+    // Kilit, profil yazımı ile kilo geçmişi eklemesini tek parça yapar:
+    // aynı üyenin eşzamanlı iki isteği araya girip geçmişi profildekiyle
+    // çelişen bir sırayla büyütemesin.
+    const lockKey = `og:lock:body-metrics:${req.user.id}`;
+    const lockToken = randomUUID();
+    if (!(await acquireLock(lockKey, lockToken, BODY_METRICS_LOCK_TTL_MS))) {
+      sendApiError(
+        res,
+        429,
+        "RATE_LIMITED",
+        "Another body metrics update is in progress. Please retry.",
+      );
+      return;
+    }
+
+    try {
+      const result = await userCollection().updateOne(
+        { _id: new ObjectId(req.user.id) },
+        {
+          ...(Object.keys(set).length > 0 ? { $set: set } : {}),
+          ...(Object.keys(unset).length > 0 ? { $unset: unset } : {}),
+        },
+      );
+      // Hesap silme onayı bu istekle yarışmış olabilir. Eşleşen belge yoksa
+      // kullanıcı artık yok; geçmişe kayıt eklemek silinen sağlık verisini
+      // yeniden yaratırdı.
+      if (result.matchedCount !== 1) {
+        sendApiError(res, 401, "AUTH_REQUIRED", "Account is no longer active.");
+        return;
+      }
+
+      // Kilo geçmişi yalnızca gerçek bir değer yazıldığında büyür; temizleme
+      // (null) geçmişe kayıt eklemez.
+      if (typeof set.weightKg === "number") {
+        await recordWeightHistoryIfChanged(req.user.id, set.weightKg);
+      }
+
+      // Yanıt, yalnızca bu istekte yazılanları değil güncel tam durumu döner:
+      // istemci tek alan gönderdiğinde diğerlerini "temizlenmiş" sanmasın.
+      const doc = await userCollection().findOne(
+        { _id: new ObjectId(req.user.id) },
+        { projection: { age: 1, heightCm: 1, weightKg: 1 } },
+      );
+      // Sağlık verisi yazımı denetlenebilir olmalı (KVKK m.6 özel nitelikli
+      // veri). Yalnızca alan adları yazılır — audit_logs süresiz saklanır,
+      // değerlerin oraya kopyalanması silme hakkını delerdi.
+      await logAudit(req.user, "body-metrics-updated", req.user.id, {
+        fields: [...Object.keys(set), ...Object.keys(unset)],
+      });
+
+      const body: MyBodyMetrics = {
+        age: typeof doc?.age === "number" ? doc.age : null,
+        heightCm: typeof doc?.heightCm === "number" ? doc.heightCm : null,
+        weightKg: typeof doc?.weightKg === "number" ? doc.weightKg : null,
+      };
+      res.json(body);
+    } finally {
+      await releaseLock(lockKey, lockToken);
+    }
   }),
 );
 

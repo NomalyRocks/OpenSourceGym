@@ -24,6 +24,8 @@ export const SHARING_DEFAULTS: SharingConfig = {
 
 export const QR_BLOCK_KEY = (userId: string): string => `og:qr-block:${userId}`;
 export const QR_LOC_KEY = (userId: string): string => `og:qr-loc:${userId}`;
+export const FP_CHURN_KEY = (userId: string): string =>
+  `og:fp-churn:${userId}`;
 
 // settings._id: "gym" tekil belgesindeki opsiyonel "sharing" alt nesnesi,
 // varsayılanların üzerine sığ (shallow) olarak birleştirilir
@@ -133,7 +135,7 @@ export async function enforceSessionPolicy(session: {
         .filter((fp): fp is string => typeof fp === "string" && fp.length > 0),
     );
     if (distinctFingerprints.size > cap) {
-      const churnKey = `og:fp-churn:${session.userId}`;
+      const churnKey = FP_CHURN_KEY(session.userId);
       const acquired = await redis.set(churnKey, "1", {
         condition: "NX",
         expiration: { type: "EX", value: 3600 },

@@ -59,8 +59,53 @@ export const myProfileSchema = withId(
     mustChangePassword: z.boolean(),
     twoFactorEnabled: z.boolean(),
     profilePhotoUrl: z.url().nullable(),
+    age: z.number().nullable().meta({
+      description: "Kalori hesaplayıcının otomatik dolduracağı yaş",
+    }),
+    heightCm: z.number().nullable().meta({
+      description: "Kalori hesaplayıcının otomatik dolduracağı boy (cm)",
+    }),
+    weightKg: z.number().nullable().meta({
+      description: "Kalori hesaplayıcının otomatik dolduracağı kilo (kg)",
+    }),
   }),
   "MyProfile",
+);
+
+export const myBodyMetricsSchema = withId(
+  z.object({
+    age: z.number().nullable(),
+    heightCm: z.number().nullable(),
+    weightKg: z.number().nullable(),
+  }),
+  "MyBodyMetrics",
+);
+
+export const myBodyMetricsUpdateSchema = withId(
+  z
+    .object({
+      age: z.number().int().min(18).max(80).nullable(),
+      heightCm: z.number().min(120).max(230).nullable(),
+      weightKg: z.number().min(35).max(300).nullable(),
+    })
+    .partial()
+    .meta({
+      description:
+        "Alan gönderilmezse dokunulmaz, `null` gönderilirse temizlenir. En az bir alan zorunlu.",
+    }),
+  "MyBodyMetricsUpdate",
+);
+
+export const myWeightHistorySchema = withId(
+  z.object({
+    entries: z.array(
+      z.object({
+        weightKg: z.number(),
+        at: z.iso.datetime(),
+      }),
+    ),
+  }),
+  "MyWeightHistory",
 );
 
 export const subscriptionSchema = withId(

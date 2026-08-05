@@ -25,6 +25,26 @@ import {
   PHONE_ALREADY_EXISTS_CODE,
   PHONE_ALREADY_EXISTS_MESSAGE,
 } from "./phone.js";
+import {
+  assertValidBodyMetricsUpdate,
+  InvalidBodyMetricError,
+} from "./bodyMetrics.js";
+
+/** Vücut ölçüsü doğrulama hatasını BetterAuth'un 400 yanıtına çevirir. */
+function assertBodyMetricsOrBadRequest(input: {
+  age?: unknown;
+  heightCm?: unknown;
+  weightKg?: unknown;
+}): void {
+  try {
+    assertValidBodyMetricsUpdate(input);
+  } catch (err) {
+    if (err instanceof InvalidBodyMetricError) {
+      throw new APIError("BAD_REQUEST", { message: err.message });
+    }
+    throw err;
+  }
+}
 
 function normalizePhoneForApi(value: unknown): string {
   try {
@@ -210,6 +230,15 @@ export const auth = betterAuth({
       privacyAccepted: { type: "boolean", required: true },
       kvkkAcceptedAt: { type: "date", required: false, input: false },
       privacyAcceptedAt: { type: "date", required: false, input: false },
+      // Mobil kalori hesaplayıcının otomatik doldurabilmesi için üyenin
+      // kendi girdiği yaş/boy/kilo. `input: false`: BetterAuth'un genel
+      // `update-user` ve `sign-up` uçlarından yazılamazlar, çünkü o uçlar
+      // yalnızca oturum middleware'inden geçer; `requireRole`'un
+      // mustChangePassword denetimi ve Mongo'dan yeniden okuma davranışı
+      // çalışmaz (bkz. AGENTS.md). Tek yazma yolu PATCH /api/me/body-metrics.
+      age: { type: "number", required: false, input: false },
+      heightCm: { type: "number", required: false, input: false },
+      weightKg: { type: "number", required: false, input: false },
     },
   },
 
@@ -234,6 +263,9 @@ export const auth = betterAuth({
             phone?: unknown;
             kvkkAccepted?: boolean;
             privacyAccepted?: boolean;
+            age?: unknown;
+            heightCm?: unknown;
+            weightKg?: unknown;
           };
           if (!candidate.kvkkAccepted || !candidate.privacyAccepted) {
             throw new APIError("BAD_REQUEST", {
@@ -241,6 +273,10 @@ export const auth = betterAuth({
                 "KVKK aydınlatma metni ve gizlilik sözleşmesi onayları zorunludur.",
             });
           }
+          // `input: false` bu alanları kayıt gövdesinden zaten eler; doğrulama
+          // yine de burada duruyor ki alanlar ileride yazılabilir yapılırsa
+          // aralık dışı bir değer sessizce kalıcı olmasın.
+          assertBodyMetricsOrBadRequest(candidate);
           const isInitialAdminSeed = isInitialAdminSeedInput(
             candidate.email,
             candidate.phone,
@@ -266,9 +302,16 @@ export const auth = betterAuth({
       },
       update: {
         before: async (user) => {
+          const candidate = user as typeof user & {
+            phone?: unknown;
+            age?: unknown;
+            heightCm?: unknown;
+            weightKg?: unknown;
+          };
+          assertBodyMetricsOrBadRequest(candidate);
+
           if (!Object.prototype.hasOwnProperty.call(user, "phone")) return;
 
-          const candidate = user as typeof user & { phone?: unknown };
           const phoneE164 = normalizePhoneForApi(candidate.phone);
           if (await hasActivePhoneConflict(phoneE164)) {
             throw duplicatePhoneError();

@@ -15,12 +15,15 @@ import {
   useWindowDimensions,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import type { MyBodyMetrics, MyProfile } from "@opengym/shared";
 import type { MobileTranslationKey } from "../i18n/resources";
+import { api } from "../lib/api";
 import {
   CALORIE_LIMITS,
   calculateCaloriePlan,
   cmToFeetAndInches,
   feetAndInchesToCm,
+  formatEditable,
   kgToPounds,
   parseLocalizedNumber,
   poundsToKg,
@@ -30,6 +33,10 @@ import {
   type Sex,
 } from "../lib/calorieCalculator";
 import { getCalorieIntroArtworkSize } from "../lib/calorieCalculatorLayout";
+import {
+  loadCalorieCalculatorState,
+  saveCalorieCalculatorState,
+} from "../lib/calorieCalculatorStorage";
 import {
   tabularNumbers,
   useTheme,
@@ -114,11 +121,6 @@ const GOAL_OPTIONS: ReadonlyArray<{
     body: "Bakım kalorinden yüzde 10 daha yüksek bir hedef oluşturur.",
   },
 ];
-
-function formatEditable(value: number, language: string | undefined) {
-  const normalized = value.toFixed(1).replace(/\.0$/, "");
-  return language?.startsWith("tr") ? normalized.replace(".", ",") : normalized;
-}
 
 function formatGoalAdjustment(factor: number, language: string | undefined) {
   const percent = Math.round(Math.abs(factor - 1) * 100);
@@ -280,6 +282,9 @@ export function CalorieCalculator({ onClose }: { onClose: () => void }) {
   const [weightLb, setWeightLb] = useState("");
   const [activity, setActivity] = useState<ActivityLevel | null>(null);
   const [goal, setGoal] = useState<CalorieGoal | null>(null);
+  // Cihaz cache'inin anahtarı üyeye özeldir; kimlik profil okumasından gelir.
+  const [userId, setUserId] = useState<string | null>(null);
+  const [profileSyncFailed, setProfileSyncFailed] = useState(false);
 
   const introArtworkSize = getCalorieIntroArtworkSize(viewport);
   const compactIntro = introArtworkSize < 228;
@@ -334,6 +339,129 @@ export function CalorieCalculator({ onClose }: { onClose: () => void }) {
           goal,
         })
       : null;
+
+  // Bu cihazda daha önce tamamlanmış bir akış varsa alanları önceden
+  // doldurur; yoksa üyenin profiline kaydettiği boy/kilo (varsa) yalnızca o
+  // iki alanı doldurur. Kullanıcıya sadece onaylamak/düzeltmek düşer.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      // Cihaz cache'i üyeye özel anahtar altında saklanır, bu yüzden önce
+      // kimlik gerekir: profil okunamazsa akış boş başlar.
+      let profile: MyProfile | null = null;
+      try {
+        profile = await api<MyProfile>("/api/me/profile");
+      } catch {
+        // Kimlik alınamadıysa ne cihaza ne profile yazabiliriz; sonuç
+        // ekranındaki uyarı bunu üyeye söyler, akış boş başlar.
+        if (!cancelled) setProfileSyncFailed(true);
+        return;
+      }
+      if (cancelled) return;
+      setUserId(profile.id);
+
+      const cached = await loadCalorieCalculatorState(profile.id);
+      if (cancelled) return;
+      if (cached) {
+        setSex(cached.sex);
+        setAge(String(cached.age));
+        setHeightUnit(cached.heightUnit);
+        setWeightUnit(cached.weightUnit);
+        if (cached.heightUnit === "imperial") {
+          const converted = cmToFeetAndInches(cached.heightCm);
+          setHeightFeet(String(converted.feet));
+          setHeightInches(formatEditable(converted.inches, language));
+        } else {
+          setHeightCm(formatEditable(cached.heightCm, language));
+        }
+        if (cached.weightUnit === "imperial") {
+          setWeightLb(formatEditable(kgToPounds(cached.weightKg), language));
+        } else {
+          setWeightKg(formatEditable(cached.weightKg, language));
+        }
+        setActivity(cached.activity);
+        setGoal(cached.goal);
+        return;
+      }
+      // Cihazda kayıt yoksa üyenin profiline yazdığı değerler o alanları
+      // doldurur; kullanıcıya sadece onaylamak/düzeltmek düşer.
+      if (typeof profile.age === "number") {
+        setAge(String(profile.age));
+      }
+      if (typeof profile.heightCm === "number") {
+        setHeightCm(formatEditable(profile.heightCm, language));
+      }
+      if (typeof profile.weightKg === "number") {
+        setWeightKg(formatEditable(profile.weightKg, language));
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // Yalnızca ilk montajda çalışır: bir dahaki hesaplamayı önceden doldurmak
+    // için, akış zaten sürerken dil değişiminde alanları ezmemeli.
+  }, []);
+
+  // Sonuç ekranına ulaşılınca girdiler bu cihaza kaydedilir; yaş/boy/kilo
+  // ayrıca üyenin profiline de yazılır (bir dahaki hesaplamayı otomatik doldursun).
+  useEffect(() => {
+    if (
+      stage !== "result" ||
+      sex == null ||
+      ageValue == null ||
+      normalizedHeight == null ||
+      normalizedWeight == null ||
+      activity == null ||
+      goal == null
+    ) {
+      return;
+    }
+    // Cihaz cache'i üyeye özel anahtar altında; kimlik bilinmiyorsa yazılmaz
+    // ve bu durum sonuç ekranında uyarı olarak görünür.
+    if (userId == null) {
+      setProfileSyncFailed(true);
+      return;
+    }
+
+    void saveCalorieCalculatorState(userId, {
+      sex,
+      age: ageValue,
+      heightCm: normalizedHeight,
+      weightKg: normalizedWeight,
+      activity,
+      goal,
+      heightUnit,
+      weightUnit,
+    });
+    // Profile yazım sessizce yutulamaz: başarısız olursa üye bir dahaki sefere
+    // alanların neden boş geldiğini anlamalı. Hesaplama yine de gösterilir.
+    void (async () => {
+      try {
+        await api<MyBodyMetrics>("/api/me/body-metrics", {
+          method: "PATCH",
+          body: {
+            age: ageValue,
+            heightCm: normalizedHeight,
+            weightKg: normalizedWeight,
+          },
+        });
+        setProfileSyncFailed(false);
+      } catch {
+        setProfileSyncFailed(true);
+      }
+    })();
+  }, [
+    stage,
+    userId,
+    sex,
+    ageValue,
+    normalizedHeight,
+    normalizedWeight,
+    activity,
+    goal,
+    heightUnit,
+    weightUnit,
+  ]);
 
   const heightHasValue =
     heightUnit === "metric"
@@ -466,7 +594,9 @@ export function CalorieCalculator({ onClose }: { onClose: () => void }) {
             <View style={styles.privacyNote}>
               <StatusMessage
                 tone="neutral"
-                text={t("Girdiğin bilgiler kaydedilmez ve cihazından çıkmaz.")}
+                text={t(
+                  "Girdiğin bilgiler bu cihazda saklanır; boy ve kilon, bir dahaki sefere otomatik dolması için profiline de kaydedilir.",
+                )}
               />
             </View>
           </View>
@@ -690,6 +820,17 @@ export function CalorieCalculator({ onClose }: { onClose: () => void }) {
                 ),
               })}
             </Text>
+
+            {profileSyncFailed ? (
+              <View style={styles.syncWarning}>
+                <StatusMessage
+                  tone="neutral"
+                  text={t(
+                    "Bilgilerin profiline kaydedilemedi; bu hesaplama geçerli ama alanlar bir dahaki sefere otomatik dolmayabilir.",
+                  )}
+                />
+              </View>
+            ) : null}
 
             <View style={styles.resultSection}>
               <Text style={styles.resultSectionTitle}>
@@ -1119,6 +1260,7 @@ const calculatorStyles = (theme: Theme) =>
       textAlign: "center",
       marginTop: theme.spacing.xxs,
     },
+    syncWarning: { marginTop: theme.spacing.md },
     resultSection: { marginTop: theme.spacing.xxl },
     resultSectionTitle: {
       ...theme.type.sectionTitle,

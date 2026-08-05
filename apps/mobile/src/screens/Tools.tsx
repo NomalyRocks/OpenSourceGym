@@ -1,15 +1,9 @@
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-import {
-  Pressable,
-  StyleSheet,
-  Text,
-  View,
-  useWindowDimensions,
-} from "react-native";
+import { Pressable, StyleSheet, Text, View } from "react-native";
 import { CalculatorGlyph, ChevronRightGlyph } from "../components/icons";
 import { useTheme, useThemedStyles, type Theme } from "../theme";
-import { ScreenHeader, ScrollScreen } from "../ui";
+import { Plate, ScreenHeader, ScrollScreen } from "../ui";
 import { CalorieCalculator } from "./CalorieCalculator";
 
 export function Tools({
@@ -20,9 +14,7 @@ export function Tools({
   const { t } = useTranslation();
   const theme = useTheme();
   const styles = useThemedStyles(toolsStyles);
-  const { width, fontScale } = useWindowDimensions();
   const [calculatorOpen, setCalculatorOpen] = useState(false);
-  const singleColumn = width < 360 || fontScale > 1.3;
 
   useEffect(
     () => () => {
@@ -54,7 +46,10 @@ export function Tools({
         )}
       />
 
-      <View style={styles.grid}>
+      {/* Tek satırlık, tam genişlik kart: bir 2 sütunlu ızgara tek öğede
+          yarı boş kalır. Yeni araçlar eklendiğinde bu satır altına aynen
+          çoğaltılır — ızgara matematiği değil, dikey bir liste büyür. */}
+      <View style={styles.list}>
         <Pressable
           accessibilityRole="button"
           accessibilityLabel={t("Günlük kalori ihtiyacı")}
@@ -62,24 +57,28 @@ export function Tools({
             "Kalori ve makro hesaplama akışını tam ekranda açar.",
           )}
           onPress={openCalculator}
-          style={({ pressed }) => [
-            styles.card,
-            singleColumn && styles.cardSingle,
-            pressed && styles.cardPressed,
-          ]}
         >
-          <View style={styles.iconWell}>
-            <CalculatorGlyph size={27} color={theme.colors.accent} />
-          </View>
-          <View style={styles.cardCopy}>
-            <Text style={styles.cardTitle}>{t("Günlük kalori ihtiyacı")}</Text>
-            <Text style={styles.cardBody}>
-              {t("Hedef kalorilerini ve günlük makrolarını tahmin et.")}
-            </Text>
-          </View>
-          <View style={styles.cardArrow}>
-            <ChevronRightGlyph size={18} color={theme.colors.textTertiary} />
-          </View>
+          {({ pressed }) => (
+            <Plate style={pressed && styles.cardPressed}>
+              <View style={styles.cardRow}>
+                <View style={styles.iconWell}>
+                  <CalculatorGlyph size={26} color={theme.colors.accent} />
+                </View>
+                <View style={styles.cardCopy}>
+                  <Text style={styles.cardTitle}>
+                    {t("Günlük kalori ihtiyacı")}
+                  </Text>
+                  <Text style={styles.cardBody}>
+                    {t("Hedef kalorilerini ve günlük makrolarını tahmin et.")}
+                  </Text>
+                </View>
+                <ChevronRightGlyph
+                  size={18}
+                  color={theme.colors.textTertiary}
+                />
+              </View>
+            </Plate>
+          )}
         </Pressable>
       </View>
     </ScrollScreen>
@@ -88,25 +87,12 @@ export function Tools({
 
 const toolsStyles = (theme: Theme) =>
   StyleSheet.create({
-    grid: {
+    list: { gap: theme.spacing.sm },
+    cardPressed: { backgroundColor: theme.colors.surfaceRaised },
+    cardRow: {
       flexDirection: "row",
-      flexWrap: "wrap",
+      alignItems: "center",
       gap: theme.spacing.md,
-    },
-    card: {
-      width: "47.5%",
-      minHeight: 184,
-      padding: theme.spacing.lg,
-      borderRadius: theme.radius.card,
-      backgroundColor: theme.colors.surface,
-      borderWidth: theme.name === "dark" ? StyleSheet.hairlineWidth : 0,
-      borderColor: theme.colors.outline,
-      ...theme.shadows.plate,
-    },
-    cardSingle: { width: "100%", minHeight: 158 },
-    cardPressed: {
-      backgroundColor: theme.colors.surfaceRaised,
-      transform: [{ scale: 0.985 }],
     },
     iconWell: {
       width: 52,
@@ -115,9 +101,8 @@ const toolsStyles = (theme: Theme) =>
       alignItems: "center",
       justifyContent: "center",
       backgroundColor: theme.colors.accentSurface,
-      marginBottom: theme.spacing.lg,
     },
-    cardCopy: { flex: 1 },
+    cardCopy: { flex: 1, gap: 2 },
     cardTitle: {
       ...theme.type.title,
       color: theme.colors.textPrimary,
@@ -125,15 +110,5 @@ const toolsStyles = (theme: Theme) =>
     cardBody: {
       ...theme.type.supporting,
       color: theme.colors.textSecondary,
-      marginTop: theme.spacing.xxs,
-    },
-    cardArrow: {
-      position: "absolute",
-      right: theme.spacing.md,
-      top: theme.spacing.md,
-      width: 32,
-      height: 32,
-      alignItems: "center",
-      justifyContent: "center",
     },
   });

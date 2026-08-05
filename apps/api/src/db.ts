@@ -46,6 +46,10 @@ export interface UserDocument {
   profilePhotoKey?: string;
   profilePhotoUpdatedAt?: Date;
   createdAt?: Date;
+  /** Mobil kalori hesaplayıcının otomatik doldurması için üyenin kendi girdiği yaş/boy/kilo */
+  age?: number;
+  heightCm?: number;
+  weightKg?: number;
 }
 
 export function userCollection(database: Db = db): Collection<UserDocument> {
@@ -93,4 +97,18 @@ export function findGymSettings(
   database: Db = db,
 ): Promise<WithId<GymSettingsDocument> | null> {
   return gymSettingsCollection(database).findOne({ _id: GYM_SETTINGS_ID });
+}
+
+/** Üyenin `weightKg` alanı her değiştiğinde eklenen tarihli anlık görüntü */
+export interface WeightHistoryDocument {
+  _id?: ObjectId;
+  userId: string;
+  weightKg: number;
+  at: Date;
+}
+
+export function weightHistoryCollection(
+  database: Db = db,
+): Collection<WeightHistoryDocument> {
+  return database.collection<WeightHistoryDocument>("weight_history");
 }

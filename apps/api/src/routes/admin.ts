@@ -20,6 +20,7 @@ import {
   gymSettingsCollection,
   toObjectId,
   userCollection,
+  weightHistoryCollection,
   GYM_SETTINGS_ID,
   type GymSettingsDocument,
   type UserDocument,
@@ -33,7 +34,12 @@ import {
   buildProfilePhotoUrl,
   deleteUserProfilePhotoForAccountDeletion,
 } from "../profilePhoto.js";
-import { SHARING_DEFAULTS } from "../sharing.js";
+import {
+  FP_CHURN_KEY,
+  QR_BLOCK_KEY,
+  QR_LOC_KEY,
+  SHARING_DEFAULTS,
+} from "../sharing.js";
 import { countActiveMembers, countRenewalsDue } from "../reports.js";
 import { REMINDER_DEFAULTS } from "../renewalReminders.js";
 import {
@@ -707,6 +713,20 @@ adminRouter.post(
     // ve abonelikleri silinen üyeye ait olarak kalamaz (unutulma hakkı).
     // İstatistik değeri yok; anonimleştirmek yerine siliniyorlar.
     await db.collection("renewal_reminders").deleteMany({ userId: targetId });
+    // Kilo geçmişi sağlık verisidir ve üye kimliğiyle birlikte anlamlıdır;
+    // anonimleştirilecek bir istatistik değeri yok, tamamen silinir.
+    // Not: weight_history.userId string tutulur, ObjectId değil.
+    await weightHistoryCollection().deleteMany({ userId: targetIdStr });
+    // Faz 6 paylaşım tespiti kayıtları da kişisel veridir (cihaz parmak izi,
+    // konum sapması). TTL ile 30 güne kadar beklemeleri unutulma hakkıyla
+    // bağdaşmaz; talep onaylanınca kalıcı depodan da Redis'ten de silinirler.
+    await db.collection("sharing_signals").deleteMany({ userId: targetId });
+    await redis.del([
+      QR_LOC_KEY(targetIdStr),
+      QR_BLOCK_KEY(targetIdStr),
+      FP_CHURN_KEY(targetIdStr),
+      `og:mfa-fail:${targetIdStr}`,
+    ]);
     await markOutside(targetIdStr);
     // Geçmiş turnike kayıtları istatistik için tutulur, ancak kişisel veri
     // (KVKK) taşımamalıdır

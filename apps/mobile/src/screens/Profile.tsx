@@ -6,15 +6,26 @@ import {
   Pressable,
   StyleSheet,
   Text,
+  TextInput,
   View,
 } from "react-native";
 import * as ImagePicker from "expo-image-picker";
 import type {
+  MyBodyMetrics,
   MyProfile,
   MySubscription,
   ProfilePhotoResponse,
 } from "@opengym/shared";
 import { api, uploadBinary } from "../lib/api";
+import {
+  CALORIE_LIMITS,
+  formatEditable,
+  parseLocalizedNumber,
+} from "../lib/calorieCalculator";
+import {
+  loadCalorieCalculatorState,
+  saveCalorieCalculatorState,
+} from "../lib/calorieCalculatorStorage";
 import { Avatar } from "../components/Avatar";
 import { errorMessage } from "../i18n/errors";
 import { dateLocale } from "../i18n/format";
@@ -32,6 +43,7 @@ import {
 } from "../theme";
 import {
   Badge,
+  Button,
   Divider,
   IconButton,
   Plate,
@@ -64,6 +76,16 @@ export function Profile({
   const [photoError, setPhotoError] = useState<string | null>(null);
   const [photoPermissionDenied, setPhotoPermissionDenied] = useState(false);
   const [photoBusy, setPhotoBusy] = useState(false);
+  const language = i18n.resolvedLanguage;
+  const [bodyAge, setBodyAge] = useState("");
+  const [bodyHeight, setBodyHeight] = useState("");
+  const [bodyWeight, setBodyWeight] = useState("");
+  const [bodyMetricsHydrated, setBodyMetricsHydrated] = useState(false);
+  const [bodyMetricsSaving, setBodyMetricsSaving] = useState(false);
+  const [bodyMetricsSaved, setBodyMetricsSaved] = useState(false);
+  const [bodyMetricsError, setBodyMetricsError] = useState<string | null>(
+    null,
+  );
 
   const load = useCallback(async () => {
     const [profileResult, subscriptionResult] = await Promise.allSettled([
@@ -89,6 +111,102 @@ export function Profile({
   useEffect(() => {
     void load();
   }, [load]);
+
+  // Profil ilk yüklendiğinde sunucudaki değerlerle bir kez doldurur; sonraki
+  // yenilemelerde kullanıcının sürmekte olan düzenlemesinin üstüne yazmaz.
+  useEffect(() => {
+    if (bodyMetricsHydrated || !profile) return;
+    if (typeof profile.age === "number") setBodyAge(String(profile.age));
+    if (typeof profile.heightCm === "number") {
+      setBodyHeight(formatEditable(profile.heightCm, language));
+    }
+    if (typeof profile.weightKg === "number") {
+      setBodyWeight(formatEditable(profile.weightKg, language));
+    }
+    setBodyMetricsHydrated(true);
+  }, [profile, bodyMetricsHydrated, language]);
+
+  async function saveBodyMetrics() {
+    setBodyMetricsError(null);
+    setBodyMetricsSaved(false);
+
+    const ageValue = bodyAge.trim() ? parseLocalizedNumber(bodyAge) : null;
+    const heightValue = bodyHeight.trim()
+      ? parseLocalizedNumber(bodyHeight)
+      : null;
+    const weightValue = bodyWeight.trim()
+      ? parseLocalizedNumber(bodyWeight)
+      : null;
+
+    if (
+      bodyAge.trim() &&
+      (ageValue == null ||
+        !Number.isInteger(ageValue) ||
+        ageValue < CALORIE_LIMITS.age.min ||
+        ageValue > CALORIE_LIMITS.age.max)
+    ) {
+      setBodyMetricsError(t("18 ile 80 arasında tam bir yaş girin."));
+      return;
+    }
+    if (
+      bodyHeight.trim() &&
+      (heightValue == null ||
+        heightValue < CALORIE_LIMITS.heightCm.min ||
+        heightValue > CALORIE_LIMITS.heightCm.max)
+    ) {
+      setBodyMetricsError(t("120–230 cm aralığında geçerli bir boy girin."));
+      return;
+    }
+    if (
+      bodyWeight.trim() &&
+      (weightValue == null ||
+        weightValue < CALORIE_LIMITS.weightKg.min ||
+        weightValue > CALORIE_LIMITS.weightKg.max)
+    ) {
+      setBodyMetricsError(t("35–300 kg aralığında geçerli bir kilo girin."));
+      return;
+    }
+
+    const update: { age?: number; heightCm?: number; weightKg?: number } = {};
+    if (ageValue != null) update.age = ageValue;
+    if (heightValue != null) update.heightCm = heightValue;
+    if (weightValue != null) update.weightKg = weightValue;
+    if (Object.keys(update).length === 0) {
+      setBodyMetricsError(t("Kaydetmek için en az bir alan doldurun."));
+      return;
+    }
+
+    setBodyMetricsSaving(true);
+    try {
+      // Korumalı uç: `api()` 2xx dışında ApiError fırlatır, dolayısıyla
+      // başarısız yazma "Kaydedildi" olarak görünmez.
+      const saved = await api<MyBodyMetrics>("/api/me/body-metrics", {
+        method: "PATCH",
+        body: update,
+      });
+
+      // Hesaplayıcı cache'i üyeye özel anahtar altında tutulur; profil
+      // okunamamışsa güncellenecek bir cache de yok.
+      if (profile) {
+        const cached = await loadCalorieCalculatorState(profile.id);
+        if (cached) {
+          await saveCalorieCalculatorState(profile.id, {
+            ...cached,
+            ...update,
+          });
+        }
+      }
+
+      setProfile((current) => (current ? { ...current, ...saved } : current));
+      setBodyMetricsSaved(true);
+    } catch (error) {
+      setBodyMetricsError(
+        errorMessage(error, t, "Kaydedilemedi. Tekrar deneyin."),
+      );
+    } finally {
+      setBodyMetricsSaving(false);
+    }
+  }
 
   async function refresh() {
     setRefreshing(true);
@@ -352,6 +470,85 @@ export function Profile({
       </View>
 
       <View style={styles.section}>
+        <SectionHeading title={t("Vücut bilgileri")} />
+        <Plate>
+          <Text style={styles.metricsHint}>
+            {t(
+              "Kalori hesaplayıcısını otomatik doldurmak için kullanılır; boş bıraktığın alan değiştirilmez.",
+            )}
+          </Text>
+          <View style={styles.metricRow}>
+            <Text style={styles.factLabel}>{t("Yaş")}</Text>
+            <TextInput
+              value={bodyAge}
+              onChangeText={setBodyAge}
+              accessibilityLabel={t("Yaş")}
+              keyboardType="number-pad"
+              inputMode="numeric"
+              maxLength={3}
+              placeholder="—"
+              placeholderTextColor={theme.colors.textDisabled}
+              selectionColor={theme.colors.accent}
+              style={styles.metricInput}
+            />
+          </View>
+          <Divider />
+          <View style={styles.metricRow}>
+            <Text style={styles.factLabel}>{t("Boy (cm)")}</Text>
+            <TextInput
+              value={bodyHeight}
+              onChangeText={setBodyHeight}
+              accessibilityLabel={t("Boy")}
+              keyboardType="decimal-pad"
+              inputMode="decimal"
+              maxLength={6}
+              placeholder="—"
+              placeholderTextColor={theme.colors.textDisabled}
+              selectionColor={theme.colors.accent}
+              style={styles.metricInput}
+            />
+          </View>
+          <Divider />
+          <View style={styles.metricRow}>
+            <Text style={styles.factLabel}>{t("Kilo (kg)")}</Text>
+            <TextInput
+              value={bodyWeight}
+              onChangeText={setBodyWeight}
+              accessibilityLabel={t("Kilo")}
+              keyboardType="decimal-pad"
+              inputMode="decimal"
+              maxLength={6}
+              placeholder="—"
+              placeholderTextColor={theme.colors.textDisabled}
+              selectionColor={theme.colors.accent}
+              style={styles.metricInput}
+            />
+          </View>
+
+          {bodyMetricsError ? (
+            <StatusMessage
+              text={bodyMetricsError}
+              style={styles.metricsMessage}
+            />
+          ) : bodyMetricsSaved ? (
+            <StatusMessage
+              tone="success"
+              text={t("Kaydedildi.")}
+              style={styles.metricsMessage}
+            />
+          ) : null}
+
+          <Button
+            title={bodyMetricsSaving ? t("Kaydediliyor…") : t("Kaydet")}
+            variant="secondary"
+            onPress={() => void saveBodyMetrics()}
+            disabled={bodyMetricsSaving}
+            style={styles.metricsSaveButton}
+          />
+        </Plate>
+      </View>
+
+      <View style={styles.section}>
         <SectionHeading title={t("Hesap")} />
         <Plate padded={false}>
           <SettingRow
@@ -445,4 +642,28 @@ const profileStyles = (theme: Theme) =>
       fontWeight: "600",
       color: theme.colors.textPrimary,
     },
+
+    metricsHint: {
+      ...theme.type.supporting,
+      color: theme.colors.textTertiary,
+      marginBottom: theme.spacing.sm,
+    },
+    metricRow: {
+      minHeight: 44,
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+      gap: theme.spacing.md,
+    },
+    metricInput: {
+      ...theme.type.supporting,
+      ...tabularNumbers,
+      fontWeight: "600",
+      color: theme.colors.textPrimary,
+      textAlign: "right",
+      minWidth: 90,
+      paddingVertical: 6,
+    },
+    metricsMessage: { marginTop: theme.spacing.sm },
+    metricsSaveButton: { marginTop: theme.spacing.md },
   });
