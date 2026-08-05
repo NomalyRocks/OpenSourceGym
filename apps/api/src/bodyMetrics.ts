@@ -43,6 +43,30 @@ function assertInRange(
  * alanlarını doğrular. Bir alan istekte yoksa veya `null` ise dokunmaz — bu,
  * alanı temizlemek için kullanılabilir.
  */
+export const BODY_METRIC_FIELDS = ["age", "heightCm", "weightKg"] as const;
+export type BodyMetricField = (typeof BODY_METRIC_FIELDS)[number];
+
+/**
+ * PATCH gövdesini Mongo güncellemesine çevirir: alan gönderilmemişse
+ * dokunulmaz, `null` gönderilmişse `$unset` ile temizlenir, sayıysa `$set`.
+ */
+export function buildBodyMetricsUpdate(
+  input: Partial<Record<BodyMetricField, number | null>>,
+): {
+  set: Partial<Record<BodyMetricField, number>>;
+  unset: Partial<Record<BodyMetricField, "">>;
+} {
+  const set: Partial<Record<BodyMetricField, number>> = {};
+  const unset: Partial<Record<BodyMetricField, "">> = {};
+  for (const field of BODY_METRIC_FIELDS) {
+    const value = input[field];
+    if (value === undefined) continue;
+    if (value === null) unset[field] = "";
+    else set[field] = value;
+  }
+  return { set, unset };
+}
+
 export function assertValidBodyMetricsUpdate(input: {
   age?: unknown;
   heightCm?: unknown;

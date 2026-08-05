@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
   assertValidBodyMetricsUpdate,
+  buildBodyMetricsUpdate,
   InvalidBodyMetricError,
 } from "./bodyMetrics.js";
 
@@ -73,4 +74,26 @@ test("sayısal olmayan veya sonsuz değerler reddedilir", () => {
     () => assertValidBodyMetricsUpdate({ weightKg: Number.NaN }),
     InvalidBodyMetricError,
   );
+});
+
+test("gönderilmeyen alan güncellemeye girmez", () => {
+  const { set, unset } = buildBodyMetricsUpdate({ weightKg: 82 });
+  assert.deepEqual(set, { weightKg: 82 });
+  assert.deepEqual(unset, {});
+});
+
+test("null gönderilen alan temizlenir, sayı olan yazılır", () => {
+  const { set, unset } = buildBodyMetricsUpdate({
+    age: 30,
+    heightCm: null,
+    weightKg: 82.5,
+  });
+  assert.deepEqual(set, { age: 30, weightKg: 82.5 });
+  assert.deepEqual(unset, { heightCm: "" });
+});
+
+test("boş gövde hiçbir alana dokunmaz", () => {
+  const { set, unset } = buildBodyMetricsUpdate({});
+  assert.deepEqual(set, {});
+  assert.deepEqual(unset, {});
 });

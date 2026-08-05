@@ -254,6 +254,17 @@ export interface MyEntriesResponse {
   timeZone: string;
 }
 
+/**
+ * Üyenin kendi yaş/boy/kilosu. PATCH /api/me/body-metrics gövdesinde alan
+ * atlanırsa dokunulmaz, `null` gönderilirse temizlenir; yanıt her zaman
+ * güncel tam durumu döner.
+ */
+export interface MyBodyMetrics {
+  age: number | null;
+  heightCm: number | null;
+  weightKg: number | null;
+}
+
 /** Üyenin profildeki kilosunun bir andaki değeri (mobil takvim) */
 export interface MyWeightEntry {
   weightKg: number;

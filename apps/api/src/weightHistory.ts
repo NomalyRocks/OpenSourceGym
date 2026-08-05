@@ -30,9 +30,29 @@ export async function recordWeightHistoryIfChanged(
     weightKg,
     at: new Date(),
   });
+  await pruneWeightHistory(userId);
 }
 
 const WEIGHT_HISTORY_LIMIT = 500;
+
+/**
+ * Geçmiş üye başına sınırlıdır: aksi halde kiloyu ileri geri değiştiren bir
+ * üye sağlık verisi deposunu sınırsız büyütebilir. Okuma zaten aynı sınırı
+ * uyguladığı için taşan kayıtlar hiçbir zaman gösterilmiyordu.
+ */
+async function pruneWeightHistory(userId: string): Promise<void> {
+  const oldest = await weightHistoryCollection()
+    .find({ userId })
+    .sort({ at: -1 })
+    .skip(WEIGHT_HISTORY_LIMIT)
+    .limit(1)
+    .next();
+  if (!oldest) return;
+  await weightHistoryCollection().deleteMany({
+    userId,
+    at: { $lte: oldest.at },
+  });
+}
 
 /** Üyenin kilo geçmişi, artan zamana göre sıralı. */
 export async function listWeightHistory(
