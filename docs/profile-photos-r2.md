@@ -30,7 +30,7 @@ Türkçe `503` yanıtıyla bildirir.
 - Yanıt URL'sine güncelleme zamanı sürüm parametresi olarak eklenir.
 - R2 nesnesi `Cache-Control: public, max-age=300` ile yazılır. Değiştirilen veya
   kaldırılan eski görsel CDN cache'inde en fazla beş dakika kalabilir.
-- KVKK hesap silme onayı, R2 nesnesi silinmeden tamamlanmaz.
+- Hesap silme işlemi, R2 nesnesi silinmeden tamamlanmaz.
 
 API server-side S3 uç noktasını kullandığı için bucket'ta istemci upload CORS
 kuralı veya presigned PUT yapılandırması gerekmez.

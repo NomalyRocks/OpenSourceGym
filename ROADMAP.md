@@ -39,7 +39,7 @@
 
 - [x] BetterAuth entegrasyonu: e-posta + şifre, oturum/token yönetimi (Mongo adapter + Redis secondary storage)
 - [x] Üye kayıt API'si: isim, soyisim, E.164'e normalize ve tekilleştirilen telefon, e-posta, şifre; eski mükerrer telefonlar çatışma kaydıyla korunur
-- [x] KVKK aydınlatma metni + gizlilik sözleşmesi onayları (zaman damgalı kayıt, onaysız kayıt reddedilir)
+- [x] Veri işleme bildirimi ve gizlilik sözleşmesi onayları (zaman damgalı kayıt, onaysız kayıt reddedilir; metinler salon işletmecisi tarafından yönetilir — bkz. Faz 5)
 - [x] SMTP e-posta doğrulama: 6 haneli OTP, 10 dk geçerli; kod gönderimi, doğrulama ucu, kod yeniden gönderme (SMTP yapılandırılmamışsa dev'de konsola yazılır)
 - [x] Doğrulanmamış hesabın girişinin engellenmesi (403 EMAIL_NOT_VERIFIED)
 - [x] Şifre politikası: min. 8 karakter (BetterAuth `minPasswordLength`)
@@ -78,7 +78,7 @@
 **İş Kırılımı:**
 
 - [x] React Native (Expo SDK 57) iskelet + BetterAuth istemci entegrasyonu (`@better-auth/expo` + SecureStore)
-- [x] Kayıt ekranı: form alanları, KVKK/gizlilik onay kutuları, e-posta doğrulama (OTP) akışı + doğrulama sonrası otomatik giriş ve tamamlanan OTP durumunun sıfırlanması
+- [x] Kayıt ekranı: form alanları, veri işleme ve gizlilik onay kutuları, e-posta doğrulama (OTP) akışı + doğrulama sonrası otomatik giriş ve tamamlanan OTP durumunun sıfırlanması
 - [x] Giriş ekranı (doğrulanmamış hesapta OTP ekranına yönlendirme + kod yeniden gönderme; oturum kapanınca eski OTP ekranı yeniden açılmaz)
 - [x] Ana ekran: kalan gün sayısı, abonelik bitiş tarihi, pull-to-refresh (US-4 — doluluk oranı Faz 5'te)
 - [ ] KPI-2 ölçümü: kayıt akışı < 3 dk (manuel ölçüm bekliyor)
@@ -114,7 +114,7 @@
 
 ## Faz 5 — Güvenlik Sertleştirme ve Doluluk (v1.1 Kapanışı)
 
-**Hedef:** MFA ile hassas işlemlerin korunması, doluluk oranı, KVKK akışlarının tamamlanması (US-3 tam, US-4 tam).
+**Hedef:** MFA ile hassas işlemlerin korunması, doluluk oranı, veri koruma akışlarının tamamlanması (US-3 tam, US-4 tam).
 
 **Bağımlılıklar:** Faz 2 (rol sistemi), Faz 4 (turnike sayaçları — doluluk için).
 
@@ -124,10 +124,11 @@
 - [x] Rol atama işlemlerinde MFA etkinse zorunlu doğrulama (US-3 tamamlanır) (`mfaCode` + `mfaMethod` zorunlu; eksikse 403 MFA_REQUIRED, yanlışsa 403 MFA_INVALID; audit mfaVerified kaydı)
 - [x] Kurulum sihirbazına MFA etkinleştirme seçeneği (panelde "Güvenlik" sayfası: QR kurulum, bir kez yedek kodları, parola ile devre dışı)
 - [x] Doluluk oranı: turnike giriş/çıkış sayacından anlık içerideki üye sayısı (giriş +1 Redis og:inside, çıkış -1; çıkış cihazı yoksa ayarlar "otomatik çıkış süresi" varsayılan 4 saat) — mobil ana ekrana eklenir (US-4 tamamlanır)
-- [x] KVKK silme talebi akışı (üye mobilden talep → admin panelden "KVKK" sayfasında onay/red; onayda hesap/abonelikler/oturumlar/MFA silinir, geçişler anonimleştirilir)
+- [x] Hesap silme talebi akışı (üye mobilden talep → admin panelden "Veri Koruma" sayfasında onay/red; onayda hesap/abonelikler/oturumlar/MFA silinir, geçişler anonimleştirilir)
+- [x] Hukuki belgeler bölge-bağımsız yönetimi: üründen KVKK metni çıkarıldı; `settings.legal` bloğu ile salon işletmecisi veri işleme bildirimi ve gizlilik sözleşmesi URL'lerini kendi mevzuatına göre yönetir. Public `GET /api/legal` ucu ile mobil kayıt ekranı belgeleri alır; onay alanları `dataProcessingAccepted`/`privacyAccepted` olarak yeniden adlandırıldı. Denetim kaydı action adları `account-deletion-*` ile genelleştirildi. `docs/legal/` altında doldurulmaya hazır örnek şablonlar sağlanır (hukuki tavsiye değildir).
 - [x] KPI-4: Device Gateway uptime izlemesi (cihaz bağlantı/kopuş `device_status_log` koleksiyonuna; panelde Cihazlar sayfasında son 24 saat uptime %)
 
-**Definition of Done:** US-3 ve US-4 kabul kriterleri uçtan uca test edildi (2026-07-09): MFA enable → 2FA'lı giriş → rol atamada kod zorunluluğu (eksik/yanlış/doğru), giriş/çıkış taramasıyla doluluk 0→1→0, aboneliksiz üyenin girişi reddedildi ve çıkışa izin, KVKK talep→red→yeniden talep→onay→tam silme/anonimleştirme; uptime izleme panelde görünür.
+**Definition of Done:** US-3 ve US-4 kabul kriterleri uçtan uca test edildi (2026-07-09): MFA enable → 2FA'lı giriş → rol atamada kod zorunluluğu (eksik/yanlış/doğru), giriş/çıkış taramasıyla doluluk 0→1→0, aboneliksiz üyenin girişi reddedildi ve çıkışa izin, hesap silme talep→red→yeniden talep→onay→tam silme/anonimleştirme; uptime izleme panelde görünür.
 
 ---
 
@@ -160,7 +161,7 @@ personel panelinde görüntülenebilmesi.
 
 - [x] Galeriden kare fotoğraf seçme, değiştirme ve kaldırma akışı
 - [x] API tarafında 10 MB sınırı, güvenli görsel doğrulama ve 1024×1024 JPEG normalizasyonu
-- [x] Cloudflare R2 saklama, public CDN URL'si ve KVKK hesap silme temizliği
+- [x] Cloudflare R2 saklama, public CDN URL'si ve hesap silme temizliği
 - [x] Mobil ana ekran ve personel üye aramasında avatar/fallback gösterimi
 - [x] Backend testleri, lint, typecheck ve build doğrulaması
 

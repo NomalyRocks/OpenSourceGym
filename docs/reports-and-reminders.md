@@ -104,7 +104,7 @@ Yalnızca `admin` rolü şu uçtan CSV indirebilir:
 
 Her indirme `audit_logs` koleksiyonuna `data-exported` eylemiyle; veri kümesi,
 uygulanan `from` ve `to` değerleriyle birlikte yazılır. CSV dosyaları toplu
-kişisel veri içerir. KVKK kapsamında yalnızca iş amacıyla indirin, erişimi
+kişisel veri içerir. Veri koruma mevzuatınız kapsamında yalnızca iş amacıyla indirin, erişimi
 sınırlandırın ve gereğinden uzun saklamayın.
 
 Dosya, Türkçe karakterlerin Excel'de doğru açılması için UTF-8 BOM ile başlar.

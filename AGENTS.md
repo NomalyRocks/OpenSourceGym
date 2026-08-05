@@ -42,7 +42,7 @@ docker compose up                     # infra: mongo + redis (API runs on host v
 
 - Email+password with required email verification via 6-digit OTP (`emailOTP` plugin); `expo()` plugin for the mobile deep-link scheme `opengym://`.
 - Mongo adapter + Redis secondary storage (sessions) + Redis-backed rate limiting with per-route rules (signup, signin, OTP send/verify).
-- Custom user fields: `firstName`, `lastName`, normalized public `phone`, internal/non-returned `phoneE164`, `role` (`admin|staff|member`, `input: false`), `mustChangePassword`, KVKK/privacy consent flags. The `user.create.before` hook rejects signup without KVKK + privacy consent, normalizes/uniquifies phones, and stamps consent timestamps.
+- Custom user fields: `firstName`, `lastName`, normalized public `phone`, internal/non-returned `phoneE164`, `role` (`admin|staff|member`, `input: false`), `mustChangePassword`, data processing and privacy consent flags (`dataProcessingAccepted`, `privacyAccepted` + timestamps). The `user.create.before` hook rejects signup without both consents, normalizes/uniquifies phones, and stamps consent timestamps.
 - The BetterAuth catch-all is mounted **before** `express.json()` in `apps/api/src/index.ts` — moving it after breaks auth request bodies.
 - First boot seeds `admin@opengym.local` / `admin1234` with `mustChangePassword: true` (`apps/api/src/seed.ts`).
 
@@ -61,7 +61,7 @@ not schema migrations.
 - `subscriptions` — membership periods `{ userId, startsAt, endsAt, note, createdBy, createdAt }`
 - `phone_identity_conflicts` — unresolved legacy duplicate phones; resolved records are deleted
 - `migration_markers` — idempotent one-time data repair markers
-- `settings` — singleton gym config doc, `_id: "gym"`
+- `settings` — singleton gym config doc, `_id: "gym"`. Contains `legal: { dataProcessingUrl: string | null, privacyUrl: string | null, version: number }` — the product ships no legal text, only the operator's document URLs and version; managed via `GET/PUT /api/admin/settings` and read publicly through `GET /api/legal` (see `docs/legal/README.md`).
 - `audit_logs` — written via `logAudit()` (`apps/api/src/audit.ts`); **every sensitive admin mutation must call it**
 
 ### API surface
@@ -69,6 +69,7 @@ not schema migrations.
 - `/api/auth/*` — BetterAuth
 - `/api/admin/*` (`apps/api/src/routes/admin.ts`) — staff/admin: unified user search (`q`: phone/e-mail/name), role assignment, sequential subscriptions, settings, audit list
 - `/api/me/*` (`apps/api/src/routes/me.ts`) — own profile and subscription
+- `GET /api/legal` — public legal document URLs (data processing and privacy)
 - `GET /health`
 
 Request bodies are validated with zod. No OpenAPI/codegen: clients use hand-rolled `api<T>()` fetch wrappers and share response types via `@opengym/shared`.
