@@ -134,7 +134,15 @@ export function Settings({
     try {
       // The calculator's on-device health data is removed by the session-loss
       // effect in App.tsx: it is the only path that also handles revoked sessions.
-      await authClient.signOut();
+      // better-auth reports a failed sign-out by returning `error` rather than
+      // throwing, so checking only the catch block would leave the member
+      // believing the session ended while it is still open.
+      const { error } = await authClient.signOut();
+      if (error) {
+        setSignOutError(
+          errorMessage(error, t, "Could not sign out. Please try again."),
+        );
+      }
     } catch (error) {
       setSignOutError(
         errorMessage(error, t, "Could not sign out. Please try again."),

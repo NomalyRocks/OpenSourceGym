@@ -80,6 +80,34 @@ test("decodeCursor decodes a valid cursor", () => {
   assert.equal(decoded.at.getTime(), 1700000000000);
 });
 
+test("decodeCursor returns null past the upper Date bound", () => {
+  const encoded = Buffer.from(
+    "8640000000000001:0123456789abcdef01234567",
+    "utf8",
+  ).toString("base64url");
+  assert.equal(decodeCursor(encoded), null);
+});
+
+test("decodeCursor returns null past the lower Date bound", () => {
+  const encoded = Buffer.from(
+    "-8640000000000001:0123456789abcdef01234567",
+    "utf8",
+  ).toString("base64url");
+  assert.equal(decodeCursor(encoded), null);
+});
+
+test("decodeCursor accepts the Date range boundaries themselves", () => {
+  for (const milliseconds of [-8640000000000000, 8640000000000000]) {
+    const encoded = Buffer.from(
+      `${milliseconds}:0123456789abcdef01234567`,
+      "utf8",
+    ).toString("base64url");
+    const decoded = decodeCursor(encoded);
+    assert.ok(decoded != null);
+    assert.equal(decoded.at.getTime(), milliseconds);
+  }
+});
+
 test("cursorFilter returns the explicit correct $or structure", () => {
   const at = new Date();
   const id = new ObjectId();

@@ -77,12 +77,21 @@ async function probe(check: () => Promise<unknown>): Promise<ReadinessCheck> {
   }
 }
 
+// A hung dependency must fail the probe rather than hang it: without a timeout
+// the orchestrator waits on the response instead of reading the 503 it needs to
+// act on, which is the opposite of what readiness is for.
+const READINESS_PROBE_TIMEOUT_MS = 2000;
+
 // Readiness probes actual dependencies. If Mongo, Redis, or the turnstile event
 // consumer disconnects, return 503 even while the process is alive—no silent failure.
 app.get("/health/ready", async (_req, res) => {
   const [mongo, redisCheck] = await Promise.all([
-    probe(() => db.command({ ping: 1 })),
-    probe(() => redis.ping()),
+    probe(() =>
+      db.command({ ping: 1 }, { timeoutMS: READINESS_PROBE_TIMEOUT_MS }),
+    ),
+    probe(() =>
+      redis.withCommandOptions({ timeout: READINESS_PROBE_TIMEOUT_MS }).ping(),
+    ),
   ]);
   const consumerUp = entryEventConsumer?.isHealthy() ?? false;
   const entry: ReadinessCheck = consumerUp

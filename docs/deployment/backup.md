@@ -164,12 +164,14 @@ First, check the queue length and the dead-letter list:
 set -a
 . ./.env
 set +a
-docker compose -f docker-compose.prod.yml exec -T redis redis-cli -a "$REDIS_PASSWORD" LLEN og:entry-events
-docker compose -f docker-compose.prod.yml exec -T redis redis-cli -a "$REDIS_PASSWORD" LLEN og:entry-events:dead
+docker compose -f docker-compose.prod.yml exec -T redis redis-cli LLEN og:entry-events
+docker compose -f docker-compose.prod.yml exec -T redis redis-cli LLEN og:entry-events:dead
 ```
 
-`redis-cli -a` may expose the password in process arguments and leak it into the
-process list. Run the commands only on a trusted server and as an authorized user.
+`redis-cli` authenticates through the `REDISCLI_AUTH` variable that
+`docker-compose.prod.yml` sets on the redis service, so the password never
+reaches the process arguments where the container's process list would expose
+it. Do not add `-a "$REDIS_PASSWORD"` back to these commands.
 
 To take an RDB backup, have Redis write a synchronous snapshot and copy the file
 to the host:
@@ -180,7 +182,7 @@ set -a
 set +a
 mkdir -p backups
 export REDIS_BACKUP_FILE="backups/redis-$(date -u +%Y%m%dT%H%M%SZ).rdb"
-docker compose -f docker-compose.prod.yml exec -T redis redis-cli -a "$REDIS_PASSWORD" SAVE
+docker compose -f docker-compose.prod.yml exec -T redis redis-cli SAVE
 docker compose -f docker-compose.prod.yml cp redis:/data/dump.rdb "$REDIS_BACKUP_FILE"
 test -s "$REDIS_BACKUP_FILE"
 sha256sum "$REDIS_BACKUP_FILE" > "$REDIS_BACKUP_FILE.sha256"
@@ -201,8 +203,8 @@ docker compose -f docker-compose.prod.yml run --rm --no-deps \
   -v "$REDIS_BACKUP_FILE:/restore/dump.rdb:ro" \
   redis sh -c 'cp /restore/dump.rdb /data/dump.rdb && chown redis:redis /data/dump.rdb'
 docker compose -f docker-compose.prod.yml up -d redis
-docker compose -f docker-compose.prod.yml exec -T redis redis-cli -a "$REDIS_PASSWORD" PING
-docker compose -f docker-compose.prod.yml exec -T redis redis-cli -a "$REDIS_PASSWORD" LLEN og:entry-events
+docker compose -f docker-compose.prod.yml exec -T redis redis-cli PING
+docker compose -f docker-compose.prod.yml exec -T redis redis-cli LLEN og:entry-events
 ```
 
 This operation replaces the existing `dump.rdb` file in the `redis-data`

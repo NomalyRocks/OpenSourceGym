@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { AuditLogEntry, Page } from "@opengym/shared";
 import { api, isAbortError } from "../lib/api";
@@ -38,13 +38,22 @@ export function Audit() {
   const [action, setAction] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  // A filter change starts a new generation. Anything still in flight from an
+  // earlier one is ignored on arrival, so a slow first page cannot overwrite the
+  // list the user is actually looking at.
+  const generation = useRef(0);
+  const loadMore = useRef<AbortController | null>(null);
 
   /**
    * Without `cursor`, the first page is loaded (resetting the list); with it, the
    * next page is appended. A filter change invalidates the cursor, so loading restarts.
    */
   const load = useCallback(
-    async (cursor: string | null, signal?: AbortSignal) => {
+    async (
+      cursor: string | null,
+      signal: AbortSignal,
+      forGeneration: number,
+    ) => {
       setLoading(true);
       const params = new URLSearchParams();
       if (cursor) params.set("cursor", cursor);
@@ -54,14 +63,15 @@ export function Audit() {
           `/api/admin/audit?${params.toString()}`,
           { signal },
         );
+        if (forGeneration !== generation.current) return;
         setEntries((prev) => (cursor ? [...prev, ...page.items] : page.items));
         setNextCursor(page.nextCursor);
         setError(null);
       } catch (err) {
-        if (isAbortError(err)) return;
+        if (isAbortError(err) || forGeneration !== generation.current) return;
         setError(errorMessage(err, t, "Could not load data."));
       } finally {
-        setLoading(false);
+        if (forGeneration === generation.current) setLoading(false);
       }
     },
     [action, t],
@@ -69,9 +79,23 @@ export function Audit() {
 
   useEffect(() => {
     const controller = new AbortController();
-    void load(null, controller.signal);
+    const current = ++generation.current;
+    // The previous filter's "load more" would append its rows to the new list.
+    loadMore.current?.abort();
+    loadMore.current = null;
+    void load(null, controller.signal, current);
     return () => controller.abort();
   }, [load]);
+
+  useEffect(() => () => loadMore.current?.abort(), []);
+
+  function loadNextPage() {
+    if (!nextCursor) return;
+    loadMore.current?.abort();
+    const controller = new AbortController();
+    loadMore.current = controller;
+    void load(nextCursor, controller.signal, generation.current);
+  }
 
   return (
     <div className="stagger">
@@ -134,7 +158,7 @@ export function Audit() {
         </table>
         {nextCursor && (
           <button
-            onClick={() => void load(nextCursor)}
+            onClick={loadNextPage}
             disabled={loading}
             style={{ marginTop: 16 }}
           >

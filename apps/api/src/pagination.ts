@@ -55,7 +55,11 @@ export function decodeCursor(raw: string): PageCursor | null {
   if (!Number.isSafeInteger(milliseconds) || !OBJECT_ID_HEX.test(hex)) {
     return null;
   }
-  return { at: new Date(milliseconds), id: new ObjectId(hex) };
+  const at = new Date(milliseconds);
+  // The safe-integer range is wider than the ±8.64e15 ms Date supports. An
+  // Invalid Date reaching Mongo silently matches nothing or the wrong page.
+  if (!Number.isFinite(at.getTime())) return null;
+  return { at, id: new ObjectId(hex) };
 }
 
 /**
