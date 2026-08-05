@@ -42,6 +42,7 @@ import {
 } from "../sharing.js";
 import { countActiveMembers, countRenewalsDue } from "../reports.js";
 import { LEGAL_DEFAULTS } from "../legal.js";
+import { legalDocumentUrlSchema } from "../legalUrl.js";
 import { REMINDER_DEFAULTS } from "../renewalReminders.js";
 import {
   createSequentialSubscription,
@@ -371,7 +372,7 @@ const reminderSchema = z.object({
 // Boş string "temizle" demektir: panelde alan silinince URL null'a döner ve
 // onay kutusu linksiz gösterilmeye devam eder.
 const legalUrlSchema = z
-  .union([z.url(), z.literal("")])
+  .union([legalDocumentUrlSchema, z.literal("")])
   .nullish()
   .transform((value) => (value ? value : null));
 

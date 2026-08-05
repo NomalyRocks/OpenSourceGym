@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { legalDocumentUrlSchema } from "../legalUrl.js";
 
 const withId = <T extends z.ZodType>(schema: T, id: string): T =>
   schema.meta({ id }) as T;
@@ -136,8 +137,8 @@ export const sharingConfigSchema = withId(
 // belgelerin adresini girer (bkz. docs/legal/README.md).
 export const legalConfigSchema = withId(
   z.object({
-    dataProcessingUrl: z.url().nullable(),
-    privacyUrl: z.url().nullable(),
+    dataProcessingUrl: legalDocumentUrlSchema.nullable(),
+    privacyUrl: legalDocumentUrlSchema.nullable(),
     version: z.number().int().min(1),
   }),
   "LegalConfig",

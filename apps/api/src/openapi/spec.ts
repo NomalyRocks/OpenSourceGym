@@ -24,6 +24,7 @@ import {
   gymSettingsSchema,
   healthSchema,
   initialPasswordRequestSchema,
+  legalConfigSchema,
   myDeletionRequestSchema,
   myEntriesSchema,
   myBodyMetricsSchema,
@@ -274,6 +275,21 @@ export const openApiDocument: OpenApiDocument = createDocument({
           "301": {
             description: "Sonunda eğik çizgi bulunan UI yoluna yönlendirme",
           },
+        },
+      },
+    },
+    "/api/legal": {
+      get: {
+        tags: ["system"],
+        operationId: "getLegalConfig",
+        summary: "Yayımlanmış hukuki belge adresleri",
+        ...requiredRole(
+          "yok",
+          "Kayıt ekranının açacağı veri işleme ve gizlilik belgesi adreslerini döndürür",
+          false,
+        ),
+        responses: {
+          "200": jsonResponse("Hukuki belge yapılandırması", legalConfigSchema),
         },
       },
     },

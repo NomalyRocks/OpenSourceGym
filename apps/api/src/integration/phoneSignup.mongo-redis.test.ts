@@ -6,7 +6,7 @@ const mongoUri = process.env.TEST_MONGODB_URI;
 const redisUri = process.env.TEST_REDIS_URL;
 
 test(
-  "kayıt hook'u telefonu normalize eder ve farklı yazılmış mükerreri ayırır",
+  "kayıt hook'u eski onay anahtarını kabul eder, telefonu normalize eder ve farklı yazılmış mükerreri ayırır",
   {
     skip:
       mongoUri && redisUri
@@ -42,6 +42,7 @@ test(
     async function signUp(
       email: string,
       phone: string,
+      consentField: "current" | "legacy" = "current",
     ): Promise<{
       status: number;
       body: Record<string, unknown> & { code?: string; message?: string };
@@ -60,7 +61,9 @@ test(
             email,
             password: "test-password-1234",
             phone,
-            dataProcessingAccepted: true,
+            ...(consentField === "legacy"
+              ? { kvkkAccepted: true }
+              : { dataProcessingAccepted: true }),
             privacyAccepted: true,
           }),
         }),
@@ -137,21 +140,32 @@ test(
       await backfillLegacyUserPhones();
       await ensureIndexes();
 
-      const first = await signUp("phone-a@example.com", "532 123 45 67");
+      const first = await signUp(
+        "phone-a@example.com",
+        "532 123 45 67",
+        "legacy",
+      );
       assert.equal(first.status, 200);
       assert.doesNotMatch(JSON.stringify(first.body), /phoneE164/);
       assert.equal(
         (first.body.user as { phone?: string } | undefined)?.phone,
         "+905321234567",
       );
-      const stored = await db
-        .collection("user")
-        .findOne(
-          { email: "phone-a@example.com" },
-          { projection: { phone: 1, phoneE164: 1 } },
-        );
+      const stored = await db.collection("user").findOne(
+        { email: "phone-a@example.com" },
+        {
+          projection: {
+            phone: 1,
+            phoneE164: 1,
+            dataProcessingAccepted: 1,
+            kvkkAccepted: 1,
+          },
+        },
+      );
       assert.equal(stored?.phone, "+905321234567");
       assert.equal(stored?.phoneE164, "+905321234567");
+      assert.equal(stored?.dataProcessingAccepted, true);
+      assert.equal("kvkkAccepted" in (stored ?? {}), false);
 
       const duplicate = await signUp(
         "phone-b@example.com",

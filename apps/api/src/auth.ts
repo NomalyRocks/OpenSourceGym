@@ -1,5 +1,5 @@
 import { betterAuth } from "better-auth";
-import { APIError } from "better-auth/api";
+import { APIError, createAuthMiddleware } from "better-auth/api";
 import { mongodbAdapter } from "better-auth/adapters/mongodb";
 import { emailOTP, twoFactor } from "better-auth/plugins";
 import { expo } from "@better-auth/expo";
@@ -254,6 +254,22 @@ export const auth = betterAuth({
     additionalFields: {
       deviceFingerprint: { type: "string", required: false, input: false },
     },
+  },
+
+  // Mobil istemcinin önceki sürümü `kvkkAccepted` gönderir. BetterAuth ek
+  // alanların zorunluluğunu database hook'undan önce denetlediğinden, rollout
+  // süresince bu değeri istek aşamasında nötr alana taşırız. Eski alan şemada
+  // tanımlı değildir; böylece Mongo'ya yazılmaz veya kullanıcıya dönmez.
+  hooks: {
+    before: createAuthMiddleware(async (ctx) => {
+      if (
+        ctx.path === "/sign-up/email" &&
+        ctx.body.dataProcessingAccepted === undefined &&
+        ctx.body.kvkkAccepted === true
+      ) {
+        ctx.body.dataProcessingAccepted = true;
+      }
+    }),
   },
 
   databaseHooks: {
