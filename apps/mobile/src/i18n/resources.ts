@@ -386,6 +386,8 @@ const en = {
     "Estimate your daily calorie target and macro split with six quick questions.",
   "Girdiğin bilgiler bu cihazda saklanır; boy ve kilon, bir dahaki sefere otomatik dolması için profiline de kaydedilir.":
     "Your answers are stored on this device; your height and weight are also saved to your profile so they auto-fill next time.",
+  "Bilgilerin profiline kaydedilemedi; bu hesaplama geçerli ama alanlar bir dahaki sefere otomatik dolmayabilir.":
+    "Your details could not be saved to your profile; this calculation is still valid, but the fields may not auto-fill next time.",
   "Hesaplamada hangi biyolojik parametre kullanılsın?":
     "Which biological parameter should the calculation use?",
   "Mifflin–St Jeor denklemi kadın ve erkek için farklı sabitler kullanır.":

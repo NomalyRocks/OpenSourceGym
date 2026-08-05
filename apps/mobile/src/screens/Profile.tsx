@@ -11,12 +11,12 @@ import {
 } from "react-native";
 import * as ImagePicker from "expo-image-picker";
 import type {
+  MyBodyMetrics,
   MyProfile,
   MySubscription,
   ProfilePhotoResponse,
 } from "@opengym/shared";
 import { api, uploadBinary } from "../lib/api";
-import { authClient } from "../lib/auth";
 import {
   CALORIE_LIMITS,
   formatEditable,
@@ -178,14 +178,26 @@ export function Profile({
 
     setBodyMetricsSaving(true);
     try {
-      await authClient.updateUser(update);
+      // Korumalı uç: `api()` 2xx dışında ApiError fırlatır, dolayısıyla
+      // başarısız yazma "Kaydedildi" olarak görünmez.
+      const saved = await api<MyBodyMetrics>("/api/me/body-metrics", {
+        method: "PATCH",
+        body: update,
+      });
 
-      const cached = await loadCalorieCalculatorState();
-      if (cached) {
-        await saveCalorieCalculatorState({ ...cached, ...update });
+      // Hesaplayıcı cache'i üyeye özel anahtar altında tutulur; profil
+      // okunamamışsa güncellenecek bir cache de yok.
+      if (profile) {
+        const cached = await loadCalorieCalculatorState(profile.id);
+        if (cached) {
+          await saveCalorieCalculatorState(profile.id, {
+            ...cached,
+            ...update,
+          });
+        }
       }
 
-      setProfile((current) => (current ? { ...current, ...update } : current));
+      setProfile((current) => (current ? { ...current, ...saved } : current));
       setBodyMetricsSaved(true);
     } catch (error) {
       setBodyMetricsError(

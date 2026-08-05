@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { AppState, Pressable, StyleSheet, Text, View } from "react-native";
 import type {
   MyProfile,
   MySubscription,
@@ -55,6 +55,25 @@ function Perforation() {
 
 const HEADER_AVATAR = 46;
 
+function useCurrentDayKey() {
+  const [currentDayKey, setCurrentDayKey] = useState(() => dayKey(new Date()));
+
+  useEffect(() => {
+    const subscription = AppState.addEventListener("change", (nextState) => {
+      if (nextState !== "active") return;
+
+      const nextDayKey = dayKey(new Date());
+      setCurrentDayKey((previousDayKey) =>
+        previousDayKey === nextDayKey ? previousDayKey : nextDayKey,
+      );
+    });
+
+    return () => subscription.remove();
+  }, []);
+
+  return currentDayKey;
+}
+
 export function Home({
   userName,
   onOpenQr,
@@ -86,22 +105,29 @@ export function Home({
   const [attendanceLoaded, setAttendanceLoaded] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
 
-  const week = useMemo(() => buildWeek(new Date()), []);
-  const todayKey = dayKey(new Date());
+  const todayKey = useCurrentDayKey();
+  const week = useMemo(() => {
+    const [year, month, date] = todayKey.split("-").map(Number);
+    return buildWeek(new Date(year!, month! - 1, date!));
+  }, [todayKey]);
 
   const weekFrom = week[0]?.key;
   const weekTo = week[6]?.key;
 
   const load = useCallback(async () => {
-    const [profileResult, subscriptionResult, occupancyResult, attendanceResult] =
-      await Promise.allSettled([
-        api<MyProfile>("/api/me/profile"),
-        api<MySubscription>("/api/me/subscription"),
-        api<OccupancyResponse>("/api/me/occupancy"),
-        weekFrom && weekTo
-          ? fetchAttendance({ from: weekFrom, to: weekTo })
-          : Promise.resolve({ days: [], timeZone: "" }),
-      ]);
+    const [
+      profileResult,
+      subscriptionResult,
+      occupancyResult,
+      attendanceResult,
+    ] = await Promise.allSettled([
+      api<MyProfile>("/api/me/profile"),
+      api<MySubscription>("/api/me/subscription"),
+      api<OccupancyResponse>("/api/me/occupancy"),
+      weekFrom && weekTo
+        ? fetchAttendance({ from: weekFrom, to: weekTo })
+        : Promise.resolve({ days: [], timeZone: "" }),
+    ]);
 
     // Profil yalnızca başlıktaki görseli besler; okunamazsa Avatar baş
     // harflere düşer, bu yüzden ayrı bir hata mesajı göstermiyoruz.

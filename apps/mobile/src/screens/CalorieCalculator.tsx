@@ -15,10 +15,9 @@ import {
   useWindowDimensions,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import type { MyProfile } from "@opengym/shared";
+import type { MyBodyMetrics, MyProfile } from "@opengym/shared";
 import type { MobileTranslationKey } from "../i18n/resources";
 import { api } from "../lib/api";
-import { authClient } from "../lib/auth";
 import {
   CALORIE_LIMITS,
   calculateCaloriePlan,
@@ -283,6 +282,9 @@ export function CalorieCalculator({ onClose }: { onClose: () => void }) {
   const [weightLb, setWeightLb] = useState("");
   const [activity, setActivity] = useState<ActivityLevel | null>(null);
   const [goal, setGoal] = useState<CalorieGoal | null>(null);
+  // Cihaz cache'inin anahtarı üyeye özeldir; kimlik profil okumasından gelir.
+  const [userId, setUserId] = useState<string | null>(null);
+  const [profileSyncFailed, setProfileSyncFailed] = useState(false);
 
   const introArtworkSize = getCalorieIntroArtworkSize(viewport);
   const compactIntro = introArtworkSize < 228;
@@ -344,7 +346,21 @@ export function CalorieCalculator({ onClose }: { onClose: () => void }) {
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      const cached = await loadCalorieCalculatorState();
+      // Cihaz cache'i üyeye özel anahtar altında saklanır, bu yüzden önce
+      // kimlik gerekir: profil okunamazsa akış boş başlar.
+      let profile: MyProfile | null = null;
+      try {
+        profile = await api<MyProfile>("/api/me/profile");
+      } catch {
+        // Kimlik alınamadıysa ne cihaza ne profile yazabiliriz; sonuç
+        // ekranındaki uyarı bunu üyeye söyler, akış boş başlar.
+        if (!cancelled) setProfileSyncFailed(true);
+        return;
+      }
+      if (cancelled) return;
+      setUserId(profile.id);
+
+      const cached = await loadCalorieCalculatorState(profile.id);
       if (cancelled) return;
       if (cached) {
         setSex(cached.sex);
@@ -367,20 +383,16 @@ export function CalorieCalculator({ onClose }: { onClose: () => void }) {
         setGoal(cached.goal);
         return;
       }
-      try {
-        const profile = await api<MyProfile>("/api/me/profile");
-        if (cancelled) return;
-        if (typeof profile.age === "number") {
-          setAge(String(profile.age));
-        }
-        if (typeof profile.heightCm === "number") {
-          setHeightCm(formatEditable(profile.heightCm, language));
-        }
-        if (typeof profile.weightKg === "number") {
-          setWeightKg(formatEditable(profile.weightKg, language));
-        }
-      } catch {
-        // Profil alınamazsa akış boş başlar; kritik değil.
+      // Cihazda kayıt yoksa üyenin profiline yazdığı değerler o alanları
+      // doldurur; kullanıcıya sadece onaylamak/düzeltmek düşer.
+      if (typeof profile.age === "number") {
+        setAge(String(profile.age));
+      }
+      if (typeof profile.heightCm === "number") {
+        setHeightCm(formatEditable(profile.heightCm, language));
+      }
+      if (typeof profile.weightKg === "number") {
+        setWeightKg(formatEditable(profile.weightKg, language));
       }
     })();
     return () => {
@@ -404,7 +416,14 @@ export function CalorieCalculator({ onClose }: { onClose: () => void }) {
     ) {
       return;
     }
-    void saveCalorieCalculatorState({
+    // Cihaz cache'i üyeye özel anahtar altında; kimlik bilinmiyorsa yazılmaz
+    // ve bu durum sonuç ekranında uyarı olarak görünür.
+    if (userId == null) {
+      setProfileSyncFailed(true);
+      return;
+    }
+
+    void saveCalorieCalculatorState(userId, {
       sex,
       age: ageValue,
       heightCm: normalizedHeight,
@@ -414,17 +433,26 @@ export function CalorieCalculator({ onClose }: { onClose: () => void }) {
       heightUnit,
       weightUnit,
     });
-    void authClient
-      .updateUser({
-        age: ageValue,
-        heightCm: normalizedHeight,
-        weightKg: normalizedWeight,
-      })
-      .catch(() => {
-        // Sunucuya yazılamazsa hesaplama yine de gösterilir; kritik değil.
-      });
+    // Profile yazım sessizce yutulamaz: başarısız olursa üye bir dahaki sefere
+    // alanların neden boş geldiğini anlamalı. Hesaplama yine de gösterilir.
+    void (async () => {
+      try {
+        await api<MyBodyMetrics>("/api/me/body-metrics", {
+          method: "PATCH",
+          body: {
+            age: ageValue,
+            heightCm: normalizedHeight,
+            weightKg: normalizedWeight,
+          },
+        });
+        setProfileSyncFailed(false);
+      } catch {
+        setProfileSyncFailed(true);
+      }
+    })();
   }, [
     stage,
+    userId,
     sex,
     ageValue,
     normalizedHeight,
@@ -792,6 +820,17 @@ export function CalorieCalculator({ onClose }: { onClose: () => void }) {
                 ),
               })}
             </Text>
+
+            {profileSyncFailed ? (
+              <View style={styles.syncWarning}>
+                <StatusMessage
+                  tone="neutral"
+                  text={t(
+                    "Bilgilerin profiline kaydedilemedi; bu hesaplama geçerli ama alanlar bir dahaki sefere otomatik dolmayabilir.",
+                  )}
+                />
+              </View>
+            ) : null}
 
             <View style={styles.resultSection}>
               <Text style={styles.resultSectionTitle}>
@@ -1221,6 +1260,7 @@ const calculatorStyles = (theme: Theme) =>
       textAlign: "center",
       marginTop: theme.spacing.xxs,
     },
+    syncWarning: { marginTop: theme.spacing.md },
     resultSection: { marginTop: theme.spacing.xxl },
     resultSectionTitle: {
       ...theme.type.sectionTitle,

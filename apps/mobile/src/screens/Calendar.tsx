@@ -1,9 +1,14 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Pressable, StyleSheet, Text, View } from "react-native";
-import type { MySubscription } from "@opengym/shared";
+import type { MyProfile, MySubscription } from "@opengym/shared";
 import { api } from "../lib/api";
 import { fetchAttendance, type AttendanceDay } from "../lib/attendance";
+import { calculateCaloriePlan } from "../lib/calorieCalculator";
+import {
+  loadCalorieCalculatorState,
+  type StoredCalorieState,
+} from "../lib/calorieCalculatorStorage";
 import { dayKey, WEEK_START } from "../lib/dateKeys";
 import { fetchWeightHistory } from "../lib/weightHistory";
 import { resolveWeightForDay, type WeightEntry } from "../lib/weightResolve";
@@ -68,7 +73,7 @@ function buildGrid(month: Date): DayCell[] {
   return cells;
 }
 
-export function Calendar() {
+export function Calendar({ active = true }: { active?: boolean }) {
   const { t, i18n } = useTranslation();
   const theme = useTheme();
   const styles = useThemedStyles(calendarStyles);
@@ -85,6 +90,9 @@ export function Calendar() {
   const [attendanceError, setAttendanceError] = useState<string | null>(null);
   const [attendanceLoaded, setAttendanceLoaded] = useState(false);
   const [weightHistory, setWeightHistory] = useState<WeightEntry[]>([]);
+  const [calorieCalculatorState, setCalorieCalculatorState] =
+    useState<StoredCalorieState | null>(null);
+  const [userId, setUserId] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
 
   const todayKey = dayKey(new Date());
@@ -96,14 +104,19 @@ export function Calendar() {
     const from = monthDays[0]?.key;
     const to = monthDays[monthDays.length - 1]?.key;
 
-    const [subscriptionResult, attendanceResult, weightHistoryResult] =
-      await Promise.allSettled([
-        api<MySubscription>("/api/me/subscription"),
-        from && to
-          ? fetchAttendance({ from, to })
-          : Promise.resolve({ days: [], timeZone: "" }),
-        fetchWeightHistory(),
-      ]);
+    const [
+      subscriptionResult,
+      attendanceResult,
+      weightHistoryResult,
+      profileResult,
+    ] = await Promise.allSettled([
+      api<MySubscription>("/api/me/subscription"),
+      from && to
+        ? fetchAttendance({ from, to })
+        : Promise.resolve({ days: [], timeZone: "" }),
+      fetchWeightHistory(),
+      api<MyProfile>("/api/me/profile"),
+    ]);
 
     if (subscriptionResult.status === "fulfilled") {
       setSubscription(subscriptionResult.value);
@@ -131,11 +144,36 @@ export function Calendar() {
     if (weightHistoryResult.status === "fulfilled") {
       setWeightHistory(weightHistoryResult.value);
     }
+
+    // Kalori hedefi üyeye aittir; profil alınamazsa veya cihazda kayıtlı
+    // hesaplayıcı girdisi yoksa detay satırı sessizce gizlenir.
+    if (profileResult.status === "fulfilled") {
+      setUserId(profileResult.value.id);
+      setCalorieCalculatorState(
+        await loadCalorieCalculatorState(profileResult.value.id),
+      );
+    } else {
+      setCalorieCalculatorState(null);
+    }
   }, [month, t]);
 
   useEffect(() => {
     void load();
   }, [load]);
+
+  // Hesaplayıcı Araçlar sekmesinde çalışır ve bu ekran arka planda monte
+  // kalır; sekmeye her dönüşte cihazdaki hedefi yeniden okuyoruz, yoksa yeni
+  // hesaplanan hedef bir sonraki ay değişimine kadar görünmezdi.
+  useEffect(() => {
+    if (!active || userId == null) return;
+    let cancelled = false;
+    void loadCalorieCalculatorState(userId).then((state) => {
+      if (!cancelled) setCalorieCalculatorState(state);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [active, userId]);
 
   async function refresh() {
     setRefreshing(true);
@@ -194,6 +232,23 @@ export function Calendar() {
   const selectedWeightKg = useMemo(
     () => resolveWeightForDay(weightHistory, selected),
     [weightHistory, selected],
+  );
+  const calorieTarget = useMemo(() => {
+    if (calorieCalculatorState == null) return null;
+    try {
+      return calculateCaloriePlan(calorieCalculatorState).targetCalories;
+    } catch {
+      return null;
+    }
+  }, [calorieCalculatorState]);
+  const formattedCalorieTarget = useMemo(
+    () =>
+      calorieTarget == null
+        ? null
+        : new Intl.NumberFormat(i18n.resolvedLanguage, {
+            maximumFractionDigits: 0,
+          }).format(calorieTarget),
+    [calorieTarget, i18n.resolvedLanguage],
   );
 
   return (
@@ -371,6 +426,14 @@ export function Calendar() {
                   maximumFractionDigits: 1,
                 }).format(selectedWeightKg)}{" "}
                 {t("kg")}
+              </Text>
+            </View>
+          ) : null}
+          {formattedCalorieTarget != null ? (
+            <View style={styles.detailRow}>
+              <Text style={styles.detailLabel}>{t("Kalori hedefi")}</Text>
+              <Text style={styles.detailValue}>
+                {t("{{kcal}} kcal/gün", { kcal: formattedCalorieTarget })}
               </Text>
             </View>
           ) : null}
