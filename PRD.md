@@ -110,7 +110,7 @@ OpenGym: modern, self-hosted, açık kaynak bir spor salonu otomasyon sistemi (m
 - Cinsiyet, yaş, boy, kilo, hareket seviyesi ve hedef girdileri ayrı adımlarda alınır; metrik ve imperial birimler desteklenir.
 - Bakım kalorisi Mifflin–St Jeor denklemi ve beş hareket çarpanıyla; hedef kalorisi yağ kaybında -%15, korumada %0, kas kazanımında +%10 ile hesaplanır.
 - Sonuç hedef kaloriyi, bakım kalorisini ve hedefe göre protein/karbonhidrat/yağ gramlarını gösterir; genel yetişkinlere yönelik bir tahmin olduğu açıkça belirtilir.
-- Araç 18–80 yaş, 120–230 cm ve 35–300 kg aralıklarını doğrular. Tüm girdiler cihazda (SecureStore) saklanarak hesaplayıcı yeniden açılışında otomatik doldurulmaya olanak tanır; yaş, boy (cm) ve kilo (kg) ayrıca üyenin sunucu profiline yazılır ve Profil sayfasından da güncellenebilir. Takvim, hesaplanmış günlük kalori hedefini seçili günün detay kartında gösterir.
+- Araç 18–80 yaş, 120–230 cm ve 35–300 kg aralıklarını doğrular. Tüm girdiler cihazda (SecureStore) oturum açan üyeye özel bir anahtar altında saklanarak hesaplayıcı yeniden açılışında otomatik doldurulmaya olanak tanır ve çıkışta silinir; yaş, boy (cm) ve kilo (kg) ayrıca üyenin sunucu profiline yazılır ve Profil sayfasından da güncellenebilir. Bu alanların tek yazma yolu rol denetiminden geçen `PATCH /api/me/body-metrics` ucudur; kilo geçmişi üyenin hesabı silindiğinde birlikte silinir. Takvim, hesaplanmış günlük kalori hedefini seçili günün detay kartında gösterir.
 
 ### 2.3 Non-Goals (Kapsam Dışı)
 

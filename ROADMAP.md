@@ -197,7 +197,10 @@ sunucu profiline yazılır ve Profil sayfasından güncellenebilir.
 - [x] Cinsiyet, yaş, boy, kilo, hareket ve hedef için ayrı tam ekran adımlar; metrik/imperial dönüşümü
 - [x] OpenGym temasını izleyen ilerleme/geri akışı ve iki özgün low-poly ahtapot splash illüstrasyonu
 - [x] Sonuçta hedef kalorisi, bakım kalorisi, makro gram/yüzdeleri, yöntem ayrıntısı ve sağlık uyarısı
-- [x] Girdilerin cihazda (SecureStore) saklanması; yaş/boy/kilo ayrıca üyenin sunucu profiline yazılması, Profil sayfasındaki ayrı bir bölümden düzenlenebilmesi ve hesaplayıcı yeniden açılışında otomatik doldurulması
+- [x] Girdilerin cihazda (SecureStore) **üyeye özel anahtar altında** saklanması ve çıkışta silinmesi; yaş/boy/kilo ayrıca üyenin sunucu profiline `PATCH /api/me/body-metrics` ile yazılması, Profil sayfasındaki ayrı bir bölümden düzenlenebilmesi ve hesaplayıcı yeniden açılışında otomatik doldurulması
+- [x] Kilo geçmişinin hesap silme temizliğine dahil edilmesi, `{ userId, at }` indeksi, üye başına 500 kayıt sınırı ve yazma ucunda hız sınırı + kilit
+- [x] Vücut bilgisi yazımının audit'e düşmesi (yalnızca alan adları; değerler audit_logs'a kopyalanmaz)
+- [x] Hesap silmede paylaşım tespiti kayıtlarının (`sharing_signals` + ilgili Redis anahtarları) TTL beklenmeden silinmesi
 - [x] Takvimde seçili günün detay kartında, hesaplanmışsa günlük kalori hedefinin gösterilmesi
 - [x] TR/EN, açık/koyu tema, büyük yazı, ekran okuyucu, azaltılmış hareket ve Android sistem geri desteği
 - [x] Formül/birim/sınır testleri ile mobil lint, typecheck, test ve kök CI doğrulaması
