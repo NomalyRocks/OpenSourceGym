@@ -1,6 +1,6 @@
-# OpenGym ters vekili. Sertifikalar Let's Encrypt'ten otomatik alınır ve
-# yenilenir; bunun için 80 ve 443 portları dışarıdan erişilebilir olmalı ve
-# DOMAIN bu sunucuya çözülmelidir.
+# OpenGym reverse proxy. Certificates are obtained and renewed automatically
+# from Let's Encrypt, which requires ports 80 and 443 to be reachable from the
+# outside and DOMAIN to resolve to this server.
 {
 	email {$ACME_EMAIL}
 }
@@ -8,9 +8,9 @@
 {$DOMAIN} {
 	encode zstd gzip
 
-	# Panel ve API aynı origin'den servis edilir: panel API'ye göreli yollarla
-	# ve çerez tabanlı oturumla gider. Ayrı alt alan adları çerezleri üçüncü
-	# taraf yapar ve oturumu kırardı.
+	# The panel and the API are served from the same origin: the panel calls the
+	# API over relative paths with a cookie session. Separate subdomains would
+	# make those cookies third-party and break the session.
 	handle /api/* {
 		reverse_proxy api:3000
 	}
@@ -19,18 +19,18 @@
 		reverse_proxy web:80
 	}
 
-	# /health ve /health/ready dışarıya AÇILMAZ: readiness yanıtı hangi alt
-	# bileşenin düştüğünü söyler. İzleme için sunucu üzerinden:
+	# /health and /health/ready are NOT exposed publicly: the readiness response
+	# names the component that is down. Check them from the server instead:
 	#   docker compose -f docker-compose.prod.yml exec api \
 	#     node -e "fetch('http://127.0.0.1:3000/health/ready').then(r=>r.text()).then(console.log)"
 
 	header {
-		# HSTS: tarayıcı bu alan adına bir daha düz HTTP ile gitmesin.
+		# HSTS: stop the browser from ever reaching this domain over plain HTTP.
 		Strict-Transport-Security "max-age=31536000; includeSubDomains"
 		X-Content-Type-Options "nosniff"
 		X-Frame-Options "DENY"
 		Referrer-Policy "strict-origin-when-cross-origin"
-		# Sunucu sürümünü sızdırma
+		# Do not leak the server version
 		-Server
 	}
 

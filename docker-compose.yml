@@ -2,7 +2,7 @@ services:
   mongo:
     image: mongo:8
     ports:
-      # Yerel geliştirme erişimi; host 27017 ile çakışmasın diye 27018
+      # Local development access on 27018 to avoid clashing with a host 27017
       - "127.0.0.1:27018:27017"
     volumes:
       - mongo-data:/data/db
@@ -15,7 +15,7 @@ services:
   redis:
     image: redis:8-alpine
     ports:
-      # Yerel geliştirme erişimi; host 6379 ile çakışmasın diye 6380
+      # Local development access on 6380 to avoid clashing with a host 6379
       - "127.0.0.1:6380:6379"
     volumes:
       - redis-data:/data

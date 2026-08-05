@@ -11,8 +11,8 @@ COPY apps/web apps/web
 COPY packages/shared packages/shared
 RUN pnpm --filter @opengym/shared build && pnpm --filter @opengym/web build
 
-# Panel salt statik bir SPA: çalışma zamanında Node gerekmez, nginx yeterli.
-# Böylece image küçük kalır ve saldırı yüzeyi daralır.
+# The panel is a purely static SPA: it needs no Node at runtime, so nginx is
+# enough. That keeps the image small and narrows the attack surface.
 FROM nginx:1.29-alpine AS runtime
 COPY apps/web/nginx.conf /etc/nginx/conf.d/default.conf
 COPY --from=build /app/apps/web/dist /usr/share/nginx/html

@@ -1,36 +1,37 @@
-// OpenGym turnike ajanı — ESP32 referans uygulaması.
+// OpenGym turnstile agent — ESP32 reference implementation.
 //
-// Kütüphaneler (Arduino Library Manager):
+// Libraries (Arduino Library Manager):
 //   - "WebSockets" (Markus Sattler / links2004) >= 2.4
 //   - "ArduinoJson" >= 7
 //
-// Donanım varsayımı:
-//   - Röle modülü GPIO26'da (aktif HIGH), turnike tetik girişini sürer.
-//   - QR taraması artık cihazda değil, üyenin telefon uygulamasında yapılır;
-//     bu ajan yalnızca kimlik doğrular ve sunucudan gelen "open" komutuyla röleyi tetikler.
+// Hardware assumption:
+//   - A relay module on GPIO26 (active HIGH) drives the turnstile trigger input.
+//   - QR scanning no longer happens on the device but in the member's phone app;
+//     this agent only authenticates and fires the relay on the server's "open"
+//     command.
 //
-// Fail-closed: röle varsayılan LOW; yalnızca sunucudan "open" geldiğinde
-// openMs süresince HIGH. WiFi/sunucu yokken röle hiç tetiklenmez.
+// Fail-closed: the relay defaults to LOW and only goes HIGH for openMs when the
+// server sends "open". With no WiFi or no server, the relay never fires.
 
 #include <WiFi.h>
 #include <WebSocketsClient.h>
 #include <ArduinoJson.h>
 
-// ---- Yapılandırma (kendi değerlerinizle doldurun) ----
+// ---- Configuration (fill in your own values) ----
 const char* WIFI_SSID    = "SSID";
-const char* WIFI_PASS    = "PAROLA";
-const char* GW_HOST      = "192.168.1.10";               // API sunucusu
+const char* WIFI_PASS    = "PASSWORD";
+const char* GW_HOST      = "192.168.1.10";               // API server
 const uint16_t GW_PORT   = 3000;
 const char* GW_PATH      = "/api/device-gateway";
-const char* DEVICE_ID    = "CIHAZ_ID";                   // panelden
-const char* DEVICE_TOKEN = "og_...";                     // panelden, yalnızca bir kez gösterilir
+const char* DEVICE_ID    = "DEVICE_ID";                  // from the panel
+const char* DEVICE_TOKEN = "og_...";                     // from the panel, shown only once
 
 const int RELAY_PIN = 26;
 const unsigned long DEFAULT_OPEN_MS = 500;
 // ------------------------------------------------------
 
 WebSocketsClient webSocket;
-unsigned long relayOffAt = 0;  // 0 = röle kapalı/bekleyen kapama yok
+unsigned long relayOffAt = 0;  // 0 = relay off, no pending close
 
 void sendAuth() {
   JsonDocument doc;
@@ -81,7 +82,7 @@ void onWsEvent(WStype_t type, uint8_t* payload, size_t length) {
 
 void setup() {
   pinMode(RELAY_PIN, OUTPUT);
-  digitalWrite(RELAY_PIN, LOW);  // açılışta röle kapalı (fail-closed)
+  digitalWrite(RELAY_PIN, LOW);  // relay off at boot (fail-closed)
 
   Serial.begin(115200);
 
@@ -94,14 +95,14 @@ void setup() {
 
   webSocket.begin(GW_HOST, GW_PORT, GW_PATH);
   webSocket.onEvent(onWsEvent);
-  webSocket.setReconnectInterval(3000);  // otomatik yeniden bağlanma
-  // Sunucu 30 sn'de bir protokol ping'i atar; kütüphane otomatik pong yanıtlar.
+  webSocket.setReconnectInterval(3000);  // automatic reconnect
+  // The server sends a protocol ping every 30s; the library replies with a pong.
 }
 
 void loop() {
   webSocket.loop();
 
-  // Röleyi süresi dolunca kapat (bloklamadan)
+  // Close the relay once its window expires (without blocking)
   if (relayOffAt != 0 && (long)(millis() - relayOffAt) >= 0) {
     digitalWrite(RELAY_PIN, LOW);
     relayOffAt = 0;

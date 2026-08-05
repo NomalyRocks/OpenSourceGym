@@ -10,21 +10,21 @@ dist/
 PRD.md
 ROADMAP.md
 
-# Simülatör cihaz tokenları (fleet.mjs setup üretir)
+# Simulator device tokens (produced by fleet.mjs setup)
 agents/sim/devices.json
 
-# Obsidian mimari hafıza wiki'si (companion knowledge base, ürün koduna dahil değil)
+# Obsidian architecture memory wiki (companion knowledge base, not product code)
 docs/wiki/
 docs/.obsidian/
 
-# Güvenlik taraması çıktısı. Repo herkese açık: bulgu raporunu yayımlamak,
-# düzeltilmemiş bir zafiyeti saldırgana hazır halde sunmak demektir.
+# Security scan output. The repository is public: publishing a findings report
+# hands an attacker an unfixed vulnerability ready to use.
 sast/
 
-# Yerel çalışma artıkları — ürün kaynağı değil
+# Local working artifacts — not product source
 login-visual.png
 spor-salonu-ye-dashboard/
 sports-salon-dashboard-design/
 
-# Brainstorming görsel yardımcısının yerel oturum dosyaları
+# Local session files of the brainstorming visual helper
 .superpowers/
