@@ -16,7 +16,7 @@ Project facts you can rely on (re-verify only if the code contradicts them):
 - Pages live in `src/pages/` (Login, ChangePassword, Members, Settings, Audit). Styling is plain CSS in `src/styles.css` — no UI framework; match the existing class conventions.
 - Shared response types come from `@opengym/shared` (`import type`). If you need a new shared type, add it there and run `pnpm --filter @opengym/shared build`.
 - Dev proxy: `/api` → `http://localhost:3000` (`vite.config.ts`) — use relative `/api/...` paths, never absolute URLs.
-- All UI text is Turkish — match the tone and wording of the existing pages.
+- Everything you write in code is English — identifiers, comments, test titles, log lines. UI text goes through `t()` from react-i18next, and the key IS the English source string: `t("Overview")`. Add every new key to the `tr` map in `src/i18n/resources.ts` with its Turkish copy, matching the tone of the existing pages. Never hardcode a Turkish literal in a component.
 
 Workflow:
 

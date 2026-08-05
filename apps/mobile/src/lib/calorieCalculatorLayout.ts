@@ -5,9 +5,9 @@ export interface IntroArtworkViewport {
 }
 
 /**
- * Giriş illüstrasyonunu küçük ekranlarda başlık ilk görünümde kalacak şekilde
- * sınırlar. ScrollView, yatay ekran ve çok büyük yazı için emniyet olmaya devam
- * eder; normal telefonlarda akış kaydırmaya ihtiyaç duymaz.
+ * Constrains the intro illustration on small screens so the heading remains in
+ * the initial viewport. ScrollView remains a safeguard for landscape and very
+ * large text; the flow does not require scrolling on typical phones.
  */
 export function getCalorieIntroArtworkSize({
   width,

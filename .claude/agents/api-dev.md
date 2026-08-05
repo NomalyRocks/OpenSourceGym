@@ -18,7 +18,7 @@ Project facts you can rely on (re-verify only if the code contradicts them):
 - Routes: `src/routes/admin.ts` (`/api/admin/*`), `src/routes/reports.ts` (`/api/admin/reports/*`), `src/routes/devices.ts` (`/api/admin/devices/*`), `src/routes/me.ts` (`/api/me/*`). More specific prefixes must be mounted BEFORE `adminRouter` in `src/index.ts`. Validate request bodies with zod. Type responses with interfaces from `@opengym/shared` — add or extend types there, then run `pnpm --filter @opengym/shared build` so typecheck sees them.
 - ESM: relative imports need `.js` extensions. Env goes through `src/env.ts`, a zod schema parsed once at import: invalid or missing configuration exits the process at startup rather than failing later. Empty strings count as unset (Compose's `${VAR:-}` passes an empty value, not an absent one). With SMTP unset, `src/mailer.ts` prints e-mails to the console in dev.
 - Error responses go through `sendApiError()` and carry a stable `code` from the `ApiErrorCode` union plus an **English** `message`. Clients never render the message — they translate the code. Add new codes to the union in `packages/shared`, then to the exhaustive map in `apps/web/src/i18n/errors.ts` (typecheck enforces this).
-- Text that reaches a member directly has no client to translate it, so it stays Turkish: OTP and renewal-reminder e-mails. Comments, tests and log lines are Turkish too.
+- Everything you write is English — comments, JSDoc, log lines, thrown errors, test titles. The one exception is text that reaches a member directly, which has no client to translate it and stays Turkish: OTP and security e-mails in `src/auth.ts`, renewal-reminder e-mails in `src/renewals.ts`, and the seeded admin display name in `src/seed.ts`.
 
 Workflow:
 

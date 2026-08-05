@@ -43,7 +43,7 @@ OpenGym: modern, self-hosted, açık kaynak bir spor salonu otomasyon sistemi (m
 **Kabul Kriterleri:**
 
 - Kayıt formu alanları: isim, soyisim, telefon numarası, e-posta, şifre.
-- Gizlilik sözleşmesi ve KVKK aydınlatma metni onayları zorunlu (onaysız kayıt tamamlanamaz; onay zaman damgasıyla saklanır).
+- Veri işleme bildirimi ve gizlilik sözleşmesi onayları zorunlu (onaysız kayıt tamamlanamaz; onay zaman damgasıyla saklanır). Gerçek belgeler (URL ve içerik) salon sahibi tarafından kendi tabi olduğu mevzuata göre hazırlanır ve sistemi işleten kişi tarafından ayarlardan yönetilir.
 - SMTP ile e-posta doğrulama kodu gönderilir; doğrulanmamış hesap giriş yapamaz.
 - Şifre politikası: min. 8 karakter (BetterAuth `minPasswordLength`).
 
@@ -179,7 +179,7 @@ OpenGym Backend
 - BetterAuth ile oturum/token yönetimi.
 - Hassas uçlarda (giriş, rol atama, QR doğrulama) rate limiting.
 - MFA: authenticator (TOTP) veya SMTP kod; kurulumda opsiyonel, rol atama gibi hassas işlemlerde etkinse zorunlu.
-- KVKK uyumu: aydınlatma metni ve açık rıza kaydı, kişisel verilerin amaçla sınırlı işlenmesi, silme talebi akışı `TBD`.
+- Veri koruma mevzuatı uyumluluğu: salon sahibi, sistemi işleten ülkenin hukuki çerçevesine (KVKK, GDPR, CCPA vb.) tabi olur. OpenGym ürünü veri işleme bildirimi ve gizlilik sözleşmesi metni içermez; salon işletmecisi bunları kendi mevzuatına göre hazırlar ve sistemin hukuki belgeler bölümünden yönetir. Silme talebi akışı mevzuattan bağımsız olarak tüm üyeye sunulur: üye mobil uygulamadan talep başlatır, admin panelden onay/red verir, onayda hesap/abonelikler/oturumlar/MFA silinir ve geçişler anonimleştirilir.
 
 **İstemci tarafı önlemler:**
 

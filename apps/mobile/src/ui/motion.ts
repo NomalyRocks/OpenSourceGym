@@ -3,15 +3,15 @@ import { AccessibilityInfo, Animated, Easing } from "react-native";
 import { motion } from "../theme";
 
 /**
- * Üç eğri, üç süre. Hareket durum taşır (yükleniyor, geldi, seçildi);
- * dekorasyon için hareket yok.
+ * Three curves, three durations. Motion conveys state (loading, arrived,
+ * selected); there is no motion purely for decoration.
  */
 export const easing = {
-  /** ease-out-quart — girişler ve açılışlar. */
+  /** ease-out-quart—entrances and openings. */
   out: Easing.bezier(0.22, 1, 0.36, 1),
-  /** Çıkışlar. */
+  /** Exits. */
   in: Easing.bezier(0.55, 0, 1, 0.45),
-  /** Yer değiştiren şeyler (segment göstergesi, sekme çizgisi). */
+  /** Elements that change position (segment indicator, tab line). */
   inOut: Easing.bezier(0.65, 0, 0.35, 1),
 };
 
@@ -31,11 +31,11 @@ export function useReducedMotion(): boolean {
 }
 
 /**
- * Mount girişi: opaklık + küçük bir yukarı kayma.
+ * Mount entrance: opacity and a small upward shift.
  *
- * `prefers-reduced-motion` açıkken kayma düşer, yalnızca kısa bir crossfade
- * kalır — içerik hiçbir zaman animasyona bağlı olarak gizli kalmaz, başlangıç
- * değeri de görünürdür.
+ * With `prefers-reduced-motion`, the shift is removed and only a short crossfade
+ * remains—content is never left hidden because of animation, and its initial
+ * value is visible.
  */
 export function useEnter({
   delay = 0,

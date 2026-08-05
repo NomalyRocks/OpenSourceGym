@@ -1,23 +1,23 @@
 export const INITIAL_ADMIN_EMAIL = "admin@opengym.local";
 export const INITIAL_ADMIN_PASSWORD = "admin1234";
 
-// Gerçek bir üyeye ait olabilecek telefon numarasını rezerve etmemek için ilk
-// kurulum hesabı bu dahili sentineli kullanır. Yalnızca başlangıç hook'undaki
-// e-posta + telefon eşleşmesi bu değeri kabul eder.
+// The initial setup account uses this internal sentinel to avoid reserving a
+// phone number that could belong to a real member. Only the email and phone
+// match in the startup hook accepts this value.
 export const INITIAL_ADMIN_PHONE = "-";
 
 let seedInProgress = false;
 
 /**
- * Sentinel telefon yalnız sunucu dinlemeye başlamadan çalışan dahili seed
- * çağrısında kabul edilir. E-posta/telefon değerlerini bilen bir HTTP istemcisi
- * bu kapsamı etkinleştiremez.
+ * The sentinel phone is accepted only by the internal seed call that runs before
+ * the server starts listening. An HTTP client that knows the email and phone
+ * values cannot activate this scope.
  */
 export async function runAsInitialAdminSeed<T>(
   operation: () => Promise<T>,
 ): Promise<T> {
   if (seedInProgress) {
-    throw new Error("İlk admin seed işlemi zaten çalışıyor.");
+    throw new Error("Initial admin seed is already running.");
   }
   seedInProgress = true;
   try {

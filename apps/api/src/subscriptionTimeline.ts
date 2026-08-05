@@ -29,8 +29,9 @@ export interface SubscriptionSummary {
 }
 
 /**
- * Bir tarihe UTC takvim ayı ekler. Hedef ayda kaynak gün yoksa ayın
- * son gününe sıkıştırır (31 Ocak + 1 ay = 28/29 Şubat).
+ * Adds UTC calendar months to a date. If the source day does not exist in the
+ * target month, clamps it to the month's final day (January 31 + 1 month =
+ * February 28/29).
  */
 export function addUtcCalendarMonthsClamped(
   date: Date,
@@ -52,7 +53,7 @@ export function addUtcCalendarMonthsClamped(
   return result;
 }
 
-/** Yeni paketi son aboneliğin sonundan, abonelik bitmişse şimdiden başlatır. */
+/** Starts a new package after the latest subscription, or now if it has ended. */
 export function calculateSubscriptionPeriod(
   now: Date,
   latestEndsAt: Date | null,
@@ -71,9 +72,9 @@ export function calculateSubscriptionPeriod(
 }
 
 /**
- * Eski kayıtları oluşturulma sırasında tek bir zaman çizelgesine dizer.
- * İlk kayıt korunur; sonraki bir kayıt öncekiyle çakışıyorsa kendi
- * milisaniye süresi değişmeden önceki kaydın bitişine taşınır.
+ * Arranges legacy records into a single timeline in creation order. The first
+ * record is preserved; if a later record overlaps the previous one, it moves to
+ * the previous record's end without changing its millisecond duration.
  */
 export function planLegacySubscriptionRepairs(
   records: readonly SubscriptionTimelineRecord[],
@@ -92,7 +93,7 @@ export function planLegacySubscriptionRepairs(
   for (const record of sorted) {
     const durationMs = record.endsAt.getTime() - record.startsAt.getTime();
     if (!Number.isFinite(durationMs) || durationMs <= 0) {
-      throw new RangeError(`Geçersiz abonelik süresi: ${record.id}`);
+      throw new RangeError(`Invalid subscription duration: ${record.id}`);
     }
 
     if (record.userId !== previousUserId) {
@@ -115,7 +116,7 @@ export function planLegacySubscriptionRepairs(
   return repairs;
 }
 
-/** Aktif aralığı ve ona bitişik gelecek paketleri tek bir bitişe toplar. */
+/** Combines the active interval and contiguous future packages into one end. */
 export function summarizeSubscriptionTimeline(
   records: readonly Pick<SubscriptionTimelineRecord, "startsAt" | "endsAt">[],
   now: Date,

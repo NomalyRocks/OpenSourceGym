@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { runAuthAction } from "./authAction.js";
 
-test("başarılı akışta busy önce açılır sonra kapanır", async () => {
+test("sets busy before a successful flow and clears it afterward", async () => {
   const setBusyRecords: boolean[] = [];
   const onUnreachableCalls: number[] = [];
   const setBusy = (value: boolean) => setBusyRecords.push(value);
@@ -15,7 +15,7 @@ test("başarılı akışta busy önce açılır sonra kapanır", async () => {
   assert.equal(onUnreachableCalls.length, 0);
 });
 
-test("action hata fırlatsa bile busy kapatılır", async () => {
+test("clears busy even when the action throws", async () => {
   const setBusyRecords: boolean[] = [];
   const onUnreachableCalls: number[] = [];
   const consoleErrorCalls: unknown[] = [];
@@ -25,7 +25,7 @@ test("action hata fırlatsa bile busy kapatılır", async () => {
     const setBusy = (value: boolean) => setBusyRecords.push(value);
     const onUnreachable = () => onUnreachableCalls.push(1);
     const action = async () => {
-      throw new Error("ağ koptu");
+      throw new Error("network disconnected");
     };
 
     await runAuthAction(setBusy, onUnreachable, action);
@@ -34,15 +34,15 @@ test("action hata fırlatsa bile busy kapatılır", async () => {
     assert.equal(consoleErrorCalls.length, 1);
     const args = consoleErrorCalls[0] as unknown[];
     assert.equal(args.length, 2);
-    assert.equal(args[0], "kimlik doğrulama isteği başarısız:");
+    assert.equal(args[0], "authentication request failed:");
     assert.ok(args[1] instanceof Error);
-    assert.equal(args[1].message, "ağ koptu");
+    assert.equal(args[1].message, "network disconnected");
   } finally {
     console.error = originalError;
   }
 });
 
-test("action içindeki erken return busy'yi kapatır", async () => {
+test("clears busy after an early return from the action", async () => {
   const setBusyRecords: boolean[] = [];
   const onUnreachableCalls: number[] = [];
   const setBusy = (value: boolean) => setBusyRecords.push(value);
@@ -55,7 +55,7 @@ test("action içindeki erken return busy'yi kapatır", async () => {
   assert.equal(onUnreachableCalls.length, 0);
 });
 
-test("busy, action tamamlanmadan kapatılmaz", async () => {
+test("does not clear busy before the action completes", async () => {
   const setBusyRecords: boolean[] = [];
   let resolvePromise: (() => void) | undefined = () => {};
   const promise = new Promise<void>((resolve) => {

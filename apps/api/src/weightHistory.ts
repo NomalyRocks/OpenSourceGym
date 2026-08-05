@@ -1,12 +1,12 @@
 /**
- * Üyenin kilo geçmişi: profildeki `weightKg` her değiştiğinde tarihli bir
- * kayıt eklenir. Takvim, seçili gün için kaydı yoksa en son değişiklikten
- * itibaren geçerli değeri gösterebilsin diye geçmişin tamamı okunur.
+ * Member weight history: a timestamped record is added whenever `weightKg` in
+ * the profile changes. The full history is read so the calendar can show the
+ * value in effect since the latest change when the selected day has no record.
  */
 
 import { weightHistoryCollection } from "./db.js";
 
-/** Ardışık aynı değerle geçmişi şişirmemek için: yalnızca fark varsa kaydet. */
+/** Record only changes to avoid bloating history with repeated values. */
 export function shouldRecordWeightChange(
   lastWeightKg: number | null,
   nextWeightKg: number,
@@ -14,7 +14,7 @@ export function shouldRecordWeightChange(
   return lastWeightKg == null || lastWeightKg !== nextWeightKg;
 }
 
-/** BetterAuth `user.update.after` kancasından çağrılır. */
+/** Called from the BetterAuth `user.update.after` hook. */
 export async function recordWeightHistoryIfChanged(
   userId: string,
   weightKg: number,
@@ -36,9 +36,9 @@ export async function recordWeightHistoryIfChanged(
 const WEIGHT_HISTORY_LIMIT = 500;
 
 /**
- * Geçmiş üye başına sınırlıdır: aksi halde kiloyu ileri geri değiştiren bir
- * üye sağlık verisi deposunu sınırsız büyütebilir. Okuma zaten aynı sınırı
- * uyguladığı için taşan kayıtlar hiçbir zaman gösterilmiyordu.
+ * History is limited per member; otherwise, a member repeatedly changing their
+ * weight could grow the health data store without bound. Reads already apply
+ * the same limit, so excess records would never be displayed.
  */
 async function pruneWeightHistory(userId: string): Promise<void> {
   const oldest = await weightHistoryCollection()
@@ -54,7 +54,7 @@ async function pruneWeightHistory(userId: string): Promise<void> {
   });
 }
 
-/** Üyenin kilo geçmişi, artan zamana göre sıralı. */
+/** Member weight history sorted by ascending time. */
 export async function listWeightHistory(
   userId: string,
 ): Promise<{ weightKg: number; at: Date }[]> {

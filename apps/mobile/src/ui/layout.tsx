@@ -19,12 +19,12 @@ import { ChevronLeftGlyph } from "../components/icons";
 import authArtwork from "../../assets/auth-equipment.webp";
 
 /**
- * Ekran gövdelerinin alt tarafına eklenmesi gereken pay.
+ * Inset added to the bottom of screen bodies.
  *
- * Yüzen sekme çubuğu içeriğin üstünde durduğu için, altında kalan son satır
- * onun ardında kaybolur. Değeri sağlayan `SignedInApp`; `Screen` ve
- * `ScrollScreen` buradan okur, böylece her ekranda ayrı ayrı hatırlanması
- * gerekmez. Sekme çubuğunu kapatan itilen ekranlar payı 0'a çeker.
+ * Because the floating tab bar sits above the content, the last row beneath it
+ * disappears behind it. `SignedInApp` provides the value; `Screen` and
+ * `ScrollScreen` read it here so each screen does not need to handle it
+ * separately. Pushed screens that cover the tab bar set the inset to 0.
  */
 const BottomInsetContext = createContext(0);
 
@@ -42,13 +42,13 @@ export function BottomInsetProvider({
   );
 }
 
-/** Marka işareti: vurgu dolgulu squircle, üstünde sıkı aralıklı "oG". */
+/** Brand mark: accent-filled squircle with tightly spaced "oG" lettering. */
 export function LogoMark({
   size = 56,
   ringed = false,
 }: {
   size?: number;
-  /** Fotoğraf bandıyla sayfa arasında otururken sayfa renginde halka alır. */
+  /** Adds a page-colored ring when positioned between the photo band and page. */
   ringed?: boolean;
 }) {
   const theme = useTheme();
@@ -96,11 +96,11 @@ export function LogoMark({
 }
 
 /**
- * Kimlik ekranlarının kabuğu.
+ * Shell for authentication screens.
  *
- * Üstte sınırlı bir fotoğraf bandı, altında sayfa rengine inen degrade; marka
- * işareti tam sınırın üstünde oturur. Fotoğrafın hayalet gibi tüm arkaya
- * yayılması yerine bandın sınırlı olması iki temada da okunur kalmasını sağlar.
+ * A bounded photo band at the top fades into the page color below; the brand
+ * mark sits directly on the boundary. Bounding the photo rather than ghosting
+ * it across the entire background keeps both themes readable.
  */
 export function AuthShell({
   children,
@@ -191,7 +191,7 @@ export function AuthHeading({
   );
 }
 
-/** "Hesabın yok mu? Kayıt ol" gibi tek satırlık alt eylem. */
+/** Single-line footer action such as "Don't have an account? Sign up." */
 export function AuthFooterLink({
   prompt,
   actionLabel,
@@ -229,7 +229,7 @@ export function BackButton({ onPress }: { onPress: () => void }) {
   return (
     <Pressable
       accessibilityRole="button"
-      accessibilityLabel={t("Geri")}
+      accessibilityLabel={t("Back")}
       onPress={onPress}
       hitSlop={8}
       style={({ pressed }) => [styles.iconWell, pressed && styles.pressedWell]}
@@ -239,7 +239,7 @@ export function BackButton({ onPress }: { onPress: () => void }) {
   );
 }
 
-/** Sekme köklerinde ve itilen ekranlarda ortak başlık. */
+/** Shared header for tab roots and pushed screens. */
 export function ScreenHeader({
   title,
   subtitle,
@@ -275,7 +275,7 @@ export function ScreenHeader({
   );
 }
 
-/** Kaydırmayan ekran gövdesi. */
+/** Non-scrolling screen body. */
 export function Screen({
   children,
   style,
@@ -283,7 +283,7 @@ export function Screen({
 }: {
   children: ReactNode;
   style?: StyleProp<ViewStyle>;
-  /** Üst güvenli alan boşluğunu uygula. */
+  /** Apply the top safe-area inset. */
   edges?: boolean;
 }) {
   const theme = useTheme();
@@ -305,7 +305,7 @@ export function Screen({
   );
 }
 
-/** Kaydırılan ekran gövdesi; sekme köklerinin ortak kabı. */
+/** Scrolling screen body shared by tab roots. */
 export function ScrollScreen({
   children,
   refreshing,
@@ -351,8 +351,8 @@ export function ScrollScreen({
 }
 
 /**
- * Zeminden bir kademe yükselen yüzey. İç içe geçmez — bir plakanın içindeki
- * gruplama `Divider` ve boşlukla yapılır.
+ * Surface raised one level above the background. Plates do not nest—grouping
+ * within a plate uses `Divider` and spacing.
  */
 export function Plate({
   children,
@@ -414,7 +414,7 @@ export function Divider({ inset = 0 }: { inset?: number }) {
   return <View style={[styles.divider, { marginLeft: inset }]} />;
 }
 
-/** Boş durum: neyin olmadığını değil, ekranın ne yaptığını anlatır. */
+/** Empty state: explains what the screen does, not merely what is missing. */
 export function EmptyState({
   icon,
   title,
@@ -460,8 +460,8 @@ const layoutStyles = (theme: Theme) =>
       backgroundColor: theme.colors.surface,
       overflow: "hidden",
     },
-    // Fotoğraf bandının üstünde duruyor: ikon rengi tek başına her karede
-    // okunur olmayacağı için kendi opak zeminini taşır.
+    // Sits above the photo band: the icon color alone would not remain readable
+    // on every image, so it carries its own opaque background.
     authBack: {
       position: "absolute",
       left: theme.spacing.md,

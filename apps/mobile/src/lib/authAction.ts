@@ -1,14 +1,13 @@
 /**
- * Kimlik doğrulama ekranlarındaki "gönder" akışlarının ortak iskeleti.
+ * Shared structure for "submit" flows on authentication screens.
  *
- * BetterAuth istemcisi API hatalarını `{ error }` olarak DÖNDÜRÜR, ancak ağ/TLS
- * katmanındaki bir sorun istisna FIRLATIR. Ekranlar yalnızca `{ error }` yolunu
- * ele aldığı için, bağlantı koptuğunda `setBusy(false)` satırına hiç
- * ulaşılmıyordu: buton sonsuza kadar yükleniyor durumunda kalıyor ve kullanıcı
- * ekranı kapatmadan tekrar deneyemiyordu.
+ * The BetterAuth client RETURNS API errors as `{ error }`, but a network/TLS
+ * problem THROWS an exception. Because screens handled only the `{ error }`
+ * path, a dropped connection never reached `setBusy(false)`: the button stayed
+ * busy forever and the user could not retry without closing the screen.
  *
- * Burada busy bayrağı `finally` ile her koşulda geri alınır ve yakalanan
- * istisna kullanıcıya gösterilebilir bir mesaja çevrilir.
+ * Here, `finally` always resets the busy flag, and the caught exception is
+ * converted into a user-facing message.
  */
 export async function runAuthAction(
   setBusy: (value: boolean) => void,
@@ -19,9 +18,9 @@ export async function runAuthAction(
   try {
     await action();
   } catch (err) {
-    // Tüm istisnalar "bağlantı kurulamadı" olarak gösterilir; gerçek sebebi
-    // gizlememek için geliştirici konsoluna yazılır.
-    console.error("kimlik doğrulama isteği başarısız:", err);
+    // All exceptions are shown as "could not connect"; log the actual cause to
+    // the developer console so it is not hidden.
+    console.error("authentication request failed:", err);
     onUnreachable();
   } finally {
     setBusy(false);

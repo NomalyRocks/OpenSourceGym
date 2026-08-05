@@ -31,7 +31,7 @@ export function ForgotPassword({
   async function submit() {
     setError(null);
     if (!email) {
-      setEmailError(t("E-posta adresinizi girin."));
+      setEmailError(t("Enter your email address."));
       emailRef.current?.focus();
       return;
     }
@@ -39,9 +39,7 @@ export function ForgotPassword({
       setBusy,
       () =>
         setError(
-          t(
-            "Bağlantı kurulamadı. İnternet bağlantınızı kontrol edip tekrar deneyin.",
-          ),
+          t("Could not connect. Check your internet connection and try again."),
         ),
       async () => {
         const { error } = await authClient.emailOtp.requestPasswordReset({
@@ -50,8 +48,8 @@ export function ForgotPassword({
         if (error) {
           setError(
             error.status === 429
-              ? t("Çok fazla deneme. Lütfen bir dakika bekleyin.")
-              : t("İstek gönderilemedi. Lütfen tekrar deneyin."),
+              ? t("Too many attempts. Please wait one minute.")
+              : t("The request could not be sent. Please try again."),
           );
           return;
         }
@@ -65,16 +63,16 @@ export function ForgotPassword({
       onBack={onBack}
       footer={
         <AuthFooterLink
-          prompt={t("Şifreni hatırladın mı?")}
-          actionLabel={t("Giriş Yap")}
+          prompt={t("Remembered your password?")}
+          actionLabel={t("Sign In")}
           onPress={onBack}
         />
       }
     >
       <AuthHeading
-        title={t("Şifreni yenile")}
+        title={t("Reset your password")}
         subtitle={t(
-          "E-posta adresinizi girin, size bir şifre sıfırlama kodu gönderelim.",
+          "Enter your email address and we will send you a password reset code.",
         )}
       />
 
@@ -87,7 +85,7 @@ export function ForgotPassword({
       <View style={styles.fields}>
         <Field
           inputRef={emailRef}
-          label={t("E-posta")}
+          label={t("Email")}
           value={email}
           error={emailError}
           onChangeText={(value) => {
@@ -102,7 +100,7 @@ export function ForgotPassword({
         />
       </View>
 
-      <Button title={t("Sıfırlama kodu gönder")} onPress={submit} busy={busy} />
+      <Button title={t("Send reset code")} onPress={submit} busy={busy} />
     </AuthShell>
   );
 }

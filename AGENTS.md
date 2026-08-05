@@ -42,7 +42,7 @@ docker compose up                     # infra: mongo + redis (API runs on host v
 
 - Email+password with required email verification via 6-digit OTP (`emailOTP` plugin); `expo()` plugin for the mobile deep-link scheme `opengym://`.
 - Mongo adapter + Redis secondary storage (sessions) + Redis-backed rate limiting with per-route rules (signup, signin, OTP send/verify).
-- Custom user fields: `firstName`, `lastName`, normalized public `phone`, internal/non-returned `phoneE164`, `role` (`admin|staff|member`, `input: false`), `mustChangePassword`, KVKK/privacy consent flags. The `user.create.before` hook rejects signup without KVKK + privacy consent, normalizes/uniquifies phones, and stamps consent timestamps.
+- Custom user fields: `firstName`, `lastName`, normalized public `phone`, internal/non-returned `phoneE164`, `role` (`admin|staff|member`, `input: false`), `mustChangePassword`, data processing and privacy consent flags (`dataProcessingAccepted`, `privacyAccepted` + timestamps). The `user.create.before` hook rejects signup without both consents, normalizes/uniquifies phones, and stamps consent timestamps.
 - The BetterAuth catch-all is mounted **before** `express.json()` in `apps/api/src/index.ts` — moving it after breaks auth request bodies.
 - First boot seeds `admin@opengym.local` / `admin1234` with `mustChangePassword: true` (`apps/api/src/seed.ts`).
 
@@ -61,7 +61,7 @@ not schema migrations.
 - `subscriptions` — membership periods `{ userId, startsAt, endsAt, note, createdBy, createdAt }`
 - `phone_identity_conflicts` — unresolved legacy duplicate phones; resolved records are deleted
 - `migration_markers` — idempotent one-time data repair markers
-- `settings` — singleton gym config doc, `_id: "gym"`
+- `settings` — singleton gym config doc, `_id: "gym"`. Contains `legal: { dataProcessingUrl: string | null, privacyUrl: string | null, version: number }` — the product ships no legal text, only the operator's document URLs and version; managed via `GET/PUT /api/admin/settings` and read publicly through `GET /api/legal` (see `docs/legal/README.md`).
 - `audit_logs` — written via `logAudit()` (`apps/api/src/audit.ts`); **every sensitive admin mutation must call it**
 
 ### API surface
@@ -69,6 +69,7 @@ not schema migrations.
 - `/api/auth/*` — BetterAuth
 - `/api/admin/*` (`apps/api/src/routes/admin.ts`) — staff/admin: unified user search (`q`: phone/e-mail/name), role assignment, sequential subscriptions, settings, audit list
 - `/api/me/*` (`apps/api/src/routes/me.ts`) — own profile and subscription
+- `GET /api/legal` — public legal document URLs (data processing and privacy)
 - `GET /health`
 
 Request bodies are validated with zod. No OpenAPI/codegen: clients use hand-rolled `api<T>()` fetch wrappers and share response types via `@opengym/shared`.
@@ -81,7 +82,9 @@ Request bodies are validated with zod. No OpenAPI/codegen: clients use hand-roll
 ## Conventions & gotchas
 
 - `api` and `shared` are ESM (`"type": "module"`) — relative imports need `.js` extensions. `web` uses bundler resolution (no extensions). `mobile` is not ESM.
-- User-facing strings, code comments, and product docs are Turkish; identifiers and infra docs are English.
+- **Everything written in code is English**: identifiers, comments, JSDoc, log and thrown-error text, test titles, i18n keys, and infra docs. Product docs (`PRD.md`, `ROADMAP.md`) stay Turkish.
+- Turkish user-facing copy lives in exactly one place per client: the `tr` map in `apps/web/src/i18n/resources.ts` and `apps/mobile/src/i18n/resources.ts`. Translation keys are the English source strings; `t("Overview")` renders "Genel Bakış" under `tr` and falls back to the key itself under `en`. Never hardcode a Turkish literal in a component — add a key to the `tr` map instead.
+- The API has no i18n layer, so the little user-facing copy it owns stays Turkish and is deliberately excluded from the English rule: OTP/security e-mail subjects and bodies in `apps/api/src/auth.ts`, renewal reminder e-mails in `apps/api/src/renewals.ts`, and the seeded admin display name in `apps/api/src/seed.ts`. The same carve-out covers the default turnstile display names in `agents/sim/fleet.mjs`, which show up in the admin panel. Everything else in `apps/api` — including `sendApiError` messages, which clients never display because they map on the `code` — is English.
 - TS strict + `noUncheckedIndexedAccess` via `tsconfig.base.json`. `mobile` does not extend the base (it extends `expo/tsconfig.base`) and pins its own newer TypeScript.
 - Dev infra host ports are non-default to avoid collisions: Mongo `127.0.0.1:27018`, Redis `127.0.0.1:6380` (inside compose network the defaults 27017/6379 apply).
 - Expo work: consult the exact versioned docs at https://docs.expo.dev/versions/v57.0.0/ — see `apps/mobile/AGENTS.md`.

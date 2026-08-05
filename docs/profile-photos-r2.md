@@ -1,36 +1,36 @@
-# R2 profil fotoğrafı kurulumu
+# R2 profile photo setup
 
-Üye profil fotoğrafları Cloudflare R2'de saklanır ve public custom domain
-üzerinden okunur. Yüklemeler istemciden doğrudan R2'ye yapılmaz; API görseli
-doğrulayıp normalize ettikten sonra bucket'a yazar.
+Member profile photos are stored in Cloudflare R2 and read through a public
+custom domain. Clients do not upload directly to R2; the API validates and
+normalizes the image before writing it to the bucket.
 
-## Cloudflare yapılandırması
+## Cloudflare configuration
 
-1. Profil fotoğrafları için bir R2 bucket oluşturun.
-2. Yalnızca bu bucket'ta object read/write yetkisi olan bir R2 API token üretin.
-3. Bucket'a Cloudflare'da yönetilen bir custom domain bağlayın.
-4. Production ortamında public `r2.dev` adresini kapalı tutun. Bucket listeleme
-   public değildir; yalnızca tam nesne URL'sini bilenler görseli okuyabilir.
-5. Aşağıdaki ortam değişkenlerini API'ye tanımlayın:
+1. Create an R2 bucket for profile photos.
+2. Generate an R2 API token with object read/write permission for this bucket only.
+3. Attach a custom domain managed in Cloudflare to the bucket.
+4. Keep the public `r2.dev` address disabled in production. Bucket listing is
+   not public; only someone who knows the full object URL can read the image.
+5. Define the following environment variables for the API:
 
    - `R2_ACCOUNT_ID`
    - `R2_ACCESS_KEY_ID`
    - `R2_SECRET_ACCESS_KEY`
    - `R2_BUCKET_NAME`
-   - `R2_PUBLIC_BASE_URL` (ör. `https://media.example.com`)
+   - `R2_PUBLIC_BASE_URL` (e.g. `https://media.example.com`)
 
-Production'da bu değerlerden biri eksikse API fail-fast davranışıyla başlamaz.
-Development ortamında API çalışır; profil fotoğrafı uçları eksik yapılandırmayı
-Türkçe `503` yanıtıyla bildirir.
+If any of these values is missing in production, the API fails fast and does
+not start. In development, the API runs; the profile photo endpoints report
+the missing configuration with a `503` response.
 
-## Saklama ve cache davranışı
+## Storage and cache behavior
 
-- Nesne anahtarı ilk yüklemede rastgele üretilir ve sonraki değişikliklerde aynı
-  anahtarın üzerine yazılır.
-- Yanıt URL'sine güncelleme zamanı sürüm parametresi olarak eklenir.
-- R2 nesnesi `Cache-Control: public, max-age=300` ile yazılır. Değiştirilen veya
-  kaldırılan eski görsel CDN cache'inde en fazla beş dakika kalabilir.
-- KVKK hesap silme onayı, R2 nesnesi silinmeden tamamlanmaz.
+- The object key is generated randomly on the first upload, and subsequent
+  changes overwrite the same key.
+- The update time is added to the response URL as a version parameter.
+- The R2 object is written with `Cache-Control: public, max-age=300`. An old
+  image that was changed or removed may remain in the CDN cache for up to five minutes.
+- Account deletion does not complete until the R2 object is deleted.
 
-API server-side S3 uç noktasını kullandığı için bucket'ta istemci upload CORS
-kuralı veya presigned PUT yapılandırması gerekmez.
+Because the API uses the server-side S3 endpoint, the bucket does not require a
+client upload CORS rule or presigned PUT configuration.

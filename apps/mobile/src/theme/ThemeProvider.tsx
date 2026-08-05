@@ -19,12 +19,12 @@ function isThemeMode(value: unknown): value is ThemeMode {
 
 interface ThemeContextValue {
   theme: Theme;
-  /** Kullanıcının seçimi (`system` dâhil). */
+  /** User selection (including `system`). */
   mode: ThemeMode;
-  /** `mode === "system"` iken cihazdan çözülen ad. */
+  /** Name resolved from the device when `mode === "system"`. */
   resolvedName: ThemeName;
   setMode: (mode: ThemeMode) => void;
-  /** Depodan okuma bitti mi — splash bunu bekler, böylece tema takırdamaz. */
+  /** Whether storage loading is complete—the splash waits to prevent theme flicker. */
   ready: boolean;
 }
 
@@ -51,7 +51,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
 
   const setMode = useCallback((next: ThemeMode) => {
     setModeState(next);
-    // Yazma başarısız olursa seçim yine de bu oturum boyunca geçerli kalır.
+    // If the write fails, the selection remains valid for this session.
     void SecureStore.setItemAsync(STORAGE_KEY, next).catch(() => undefined);
   }, []);
 
@@ -95,10 +95,10 @@ export function useThemeMode(): Pick<
 }
 
 /**
- * Tema başına bir kez çalışan stil fabrikası.
+ * Style factory that runs once per theme.
  *
- * `factory` modül kapsamında tanımlanmalı (her render'da yeniden kurulan bir
- * arrow function memoizasyonu bozar).
+ * `factory` must be defined at module scope (an arrow function recreated on
+ * every render breaks memoization).
  */
 export function useThemedStyles<T>(factory: (theme: Theme) => T): T {
   const theme = useTheme();

@@ -7,8 +7,8 @@ import { setLanguage } from "./index";
 import type { Language } from "./core";
 
 /**
- * Dil seçimi. `floating` biçim kimlik ekranlarının fotoğraf bandı üzerinde
- * durur, normal biçim Ayarlar'da satır içinde kullanılır.
+ * Language selection. The `floating` variant sits over the photo band on auth
+ * screens; the regular variant is used inline in Settings.
  */
 export function LanguageSwitcher({ floating = false }: { floating?: boolean }) {
   const { t, i18n } = useTranslation();
@@ -36,7 +36,7 @@ export function LanguageSwitcher({ floating = false }: { floating?: boolean }) {
         options={options}
         value={active}
         onChange={(next) => void setLanguage(next)}
-        accessibilityLabel={t("Dil")}
+        accessibilityLabel={t("Language")}
       />
     </View>
   );
@@ -50,7 +50,7 @@ const switcherStyles = (theme: Theme) =>
       right: theme.spacing.md,
       width: 128,
       borderRadius: theme.radius.input,
-      // Fotoğraf bandının üstünde okunur kalması için kendi zemini var.
+      // Has its own background to remain readable above the photo band.
       backgroundColor: theme.colors.surface,
       ...theme.shadows.plate,
     },

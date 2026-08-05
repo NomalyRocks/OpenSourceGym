@@ -36,12 +36,12 @@ type ScanState =
   | { kind: "denied"; message: string; code?: string };
 
 const GATE_QR_PREFIX = "OGGATE1.";
-// Sunucudaki çift tarama kilidinden (3 sn) uzun olmalı; kamera kilit hâlâ
-// aktifken yeniden açılırsa başarılı geçiş 429 ile reddedilmiş gibi görünür
+// Must exceed the server's duplicate-scan lock (3 seconds); if the camera reopens
+// while the lock is active, a successful entry appears rejected with a 429.
 const RESCAN_DELAY_MS = 3500;
 const LOCATION_TIMEOUT_MS = 5000;
 
-/** Bulucu çerçevesinde gezen tarama çizgisi — "şu an okuyor" durumunu taşır. */
+/** Scan line moving through the finder frame—conveys the "reading now" state. */
 function ScanLine({ color }: { color: string }) {
   const reduced = useReducedMotion();
   const travel = useRef(new Animated.Value(0)).current;
@@ -142,8 +142,8 @@ export function GateScan() {
       try {
         const { granted } = await Location.requestForegroundPermissionsAsync();
         if (granted) {
-          // GPS bazen takılır — süresiz "doğrulanıyor" ekranı yerine zaman
-          // aşımında konumsuz devam edilir; kararı API verir
+          // GPS sometimes stalls—instead of showing "verifying" indefinitely,
+          // continue without location after timeout and let the API decide.
           const position = await Promise.race([
             Location.getCurrentPositionAsync({
               accuracy: Location.Accuracy.Balanced,
@@ -159,7 +159,7 @@ export function GateScan() {
           }
         }
       } catch {
-        // Konumsuz geçişe izin verilip verilmeyeceğine API karar verir.
+        // The API decides whether entry without location is allowed.
       }
 
       try {
@@ -181,14 +181,14 @@ export function GateScan() {
             message: errorMessage(
               error,
               t,
-              "Beklenmeyen bir hata oluştu. Lütfen tekrar deneyin.",
+              "An unexpected error occurred. Please try again.",
             ),
             code: error.code,
           });
         } else {
           setState({
             kind: "denied",
-            message: t("Bağlantı hatası. Tekrar deneyin."),
+            message: t("Connection error. Please try again."),
           });
         }
         notifyResult(false);
@@ -209,18 +209,20 @@ export function GateScan() {
     const canAskAgain = permission.canAskAgain !== false;
     return (
       <Screen>
-        <ScreenHeader title={t("QR Tara")} />
+        <ScreenHeader title={t("Scan QR")} />
         <View style={styles.permission}>
           <View style={styles.permissionIcon}>
             <QrGlyph size={28} color={theme.colors.accent} />
           </View>
-          <Text style={styles.resultTitle}>{t("Kamera erişimi gerekli")}</Text>
+          <Text style={styles.resultTitle}>
+            {t("Camera access is required")}
+          </Text>
           <Text style={styles.resultDetail}>
-            {t("Turnikedeki QR kodunu okutmak için kamera erişimi gerekir.")}
+            {t("Camera access is required to scan the turnstile QR code.")}
           </Text>
           <View style={styles.permissionAction}>
             <Button
-              title={canAskAgain ? t("İzin ver") : t("Ayarları aç")}
+              title={canAskAgain ? t("Allow") : t("Open settings")}
               onPress={() =>
                 canAskAgain
                   ? void requestPermission()
@@ -238,8 +240,8 @@ export function GateScan() {
   return (
     <Screen>
       <ScreenHeader
-        title={t("QR Tara")}
-        subtitle={t("Kamerayı turnikedeki OpenGym koduna doğrult.")}
+        title={t("Scan QR")}
+        subtitle={t("Point the camera at the OpenGym code on the turnstile.")}
       />
 
       {scanning ? (
@@ -269,15 +271,15 @@ export function GateScan() {
               <View style={styles.validating}>
                 <ActivityIndicator color={theme.colors.onAccent} />
                 <Text style={styles.validatingText}>
-                  {t("Giriş doğrulanıyor…")}
+                  {t("Validating entry…")}
                 </Text>
               </View>
             ) : null}
           </View>
           <Text style={styles.hint}>
             {state.kind === "validating"
-              ? t("Kodu kontrol ediyoruz, kısa bir an bekle.")
-              : t("Kod algılandığında doğrulama otomatik başlar.")}
+              ? t("We are checking the code. Please wait a moment.")
+              : t("Validation starts automatically when a code is detected.")}
           </Text>
         </View>
       ) : state.kind === "success" ? (
@@ -285,17 +287,17 @@ export function GateScan() {
           <View style={[styles.resultIcon, styles.resultIconSuccess]}>
             <CheckGlyph size={34} color={theme.colors.success} />
           </View>
-          <Text style={styles.resultTitle}>{t("Turnike açıldı")}</Text>
+          <Text style={styles.resultTitle}>{t("Turnstile opened")}</Text>
           <Text style={styles.resultDetail}>
-            {t("{{device}} için {{direction}} kaydı oluşturuldu.", {
+            {t("A {{direction}} record was created for {{device}}.", {
               device: state.data.deviceName,
               direction:
-                state.data.direction === "out" ? t("çıkış") : t("giriş"),
+                state.data.direction === "out" ? t("exit") : t("entry"),
             })}
           </Text>
           <StatusMessage
             tone="success"
-            text={t("Yeni tarama için kamera birazdan yeniden açılacak.")}
+            text={t("The camera will reopen shortly for a new scan.")}
           />
         </View>
       ) : (
@@ -303,11 +305,13 @@ export function GateScan() {
           <View style={[styles.resultIcon, styles.resultIconError]}>
             <AlertGlyph size={32} color={theme.colors.error} />
           </View>
-          <Text style={styles.resultTitle}>{t("Geçiş tamamlanamadı")}</Text>
+          <Text style={styles.resultTitle}>
+            {t("Entry could not be completed")}
+          </Text>
           <Text style={styles.resultDetail}>{state.message}</Text>
           <RecoveryHint code={state.code} />
           <View style={styles.resultAction}>
-            <Button title={t("Tekrar tara")} onPress={resetToScanning} />
+            <Button title={t("Scan again")} onPress={resetToScanning} />
           </View>
         </View>
       )}
@@ -319,14 +323,14 @@ function RecoveryHint({ code }: { code?: string }) {
   const { t } = useTranslation();
   const text =
     code === "LOCATION_REQUIRED"
-      ? t("Konum iznini etkinleştirip tekrar deneyin.")
+      ? t("Enable location permission and try again.")
       : code === "MOCK_LOCATION"
-        ? t("Sahte konum uygulamasını kapatıp tekrar deneyin.")
+        ? t("Disable the mock location app and try again.")
         : code === "SHARING_BLOCKED"
-          ? t("Hesap paylaşımı engeli için salon resepsiyonuna başvurun.")
+          ? t("Contact gym reception about the account-sharing block.")
           : code === "DEVICE_OFFLINE"
-            ? t("Turnike çevrimdışı. Salon resepsiyonundan yardım isteyin.")
-            : t("Sorun sürerse salon resepsiyonundan destek alın.");
+            ? t("The turnstile is offline. Ask gym reception for help.")
+            : t("Contact gym reception if the problem continues.");
 
   return <StatusMessage tone="neutral" text={text} />;
 }

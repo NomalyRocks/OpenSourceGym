@@ -25,11 +25,10 @@ async function readStoredLanguage(): Promise<string | null> {
   }
 }
 
-// `useTranslation()` kullanan bileşenler ilk React render'ında, yani
-// `useEffect` çalışmadan önce oluşturulabilir. Kaynaklar uygulamaya gömülü
-// olduğundan i18next'i burada senkron başlatıp react-i18next instance'ını
-// render başlamadan önce kaydediyoruz. SecureStore'daki kullanıcı tercihi
-// aşağıda ayrıca uygulanır.
+// Components using `useTranslation()` may be created during the first React
+// render, before `useEffect` runs. Because resources are bundled with the app,
+// initialize i18next synchronously here and register the react-i18next instance
+// before rendering begins. The user's SecureStore preference is applied below.
 void i18n.use(initReactI18next).init({
   resources,
   lng: resolveLanguage(null, deviceLanguages()),

@@ -132,7 +132,7 @@ export function Button({
   );
 }
 
-/** Yalnızca ikon taşıyan başlık eylemi; isteğe bağlı sayaç noktası. */
+/** Icon-only header action with an optional counter dot. */
 export function IconButton({
   label,
   onPress,
@@ -311,9 +311,7 @@ export function PasswordField({
         <Pressable
           onPress={() => setVisible((current) => !current)}
           accessibilityRole="button"
-          accessibilityLabel={
-            visible ? t("Şifreyi gizle") : t("Şifreyi göster")
-          }
+          accessibilityLabel={visible ? t("Hide password") : t("Show password")}
           hitSlop={10}
           style={({ pressed }) => [
             styles.trailingButton,
@@ -362,7 +360,7 @@ export function Checkbox({
   );
 }
 
-/** Sistem anahtarı; standart affordans, tema renkleriyle. */
+/** System switch with standard affordance and theme colors. */
 export function Toggle({
   value,
   onValueChange,
@@ -402,7 +400,7 @@ export interface SegmentOption<T extends string> {
   icon?: (color: string) => ReactNode;
 }
 
-/** Kayan göstergeli seçim şeridi — tema modu ve dil için. */
+/** Selection strip with a sliding indicator—for theme mode and language. */
 export function Segmented<T extends string>({
   options,
   value,
@@ -673,8 +671,8 @@ export function Skeleton({
 // ----------------------------------------------------------------- Meter
 
 /**
- * Doluluk çubuğu. Dolgu, soldan sabitlenmiş bir `translateX` ile açılır —
- * genişlik animasyonu yerleşimi her karede yeniden hesaplatırdı.
+ * Occupancy bar. The fill reveals with a left-anchored `translateX`—animating
+ * width would recalculate layout on every frame.
  */
 export function Meter({
   ratio,
@@ -682,7 +680,7 @@ export function Meter({
   label,
   valueText,
 }: {
-  /** 0–1 arası; null ise boş kanal çizilir. */
+  /** Between 0 and 1; draws an empty track when null. */
   ratio: number | null;
   color: string;
   label: string;
@@ -700,8 +698,8 @@ export function Meter({
       progress.setValue(1);
       return;
     }
-    // Değer yenilendiğinde dolgu yeniden açılır; aksi hâlde genişlik anında
-    // zıplar ve hareket hiçbir durumu taşımaz.
+    // Reveal the fill again when the value refreshes; otherwise the width jumps
+    // instantly and the motion conveys no state.
     progress.setValue(0);
     const animation = Animated.timing(progress, {
       toValue: 1,
@@ -754,7 +752,7 @@ export function Meter({
 
 // ------------------------------------------------------------ SettingRow
 
-/** Ayarlar ve profil listelerinin tek satır bileşeni. */
+/** Single-row component for settings and profile lists. */
 export function SettingRow({
   icon,
   title,

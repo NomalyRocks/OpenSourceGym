@@ -15,10 +15,10 @@ const mongoUri = process.env.TEST_MONGODB_URI;
 const BASE = Date.parse("2026-01-01T00:00:00.000Z");
 
 /**
- * Aynı zaman damgasını paylaşan kayıtlar kasıtlıdır: keyset sayfalamanın asıl
- * kırılma noktası eşit damgalardır. _id ile kırılmazsa aynı milisaniyeye düşen
- * kayıtlar sayfalar arasında ya tekrarlanır ya da atlanır — birim testlerin
- * göremediği, yalnızca gerçek sıralama altında ortaya çıkan bir hata.
+ * Records sharing a timestamp are intentional: equal timestamps are the main
+ * failure point for keyset pagination. Without an _id tie-breaker, records in
+ * the same millisecond are duplicated or skipped between pages, a bug visible
+ * only under real sorting rather than in unit tests.
  */
 const FIXTURES = [
   { offset: 0, kind: "a" },
@@ -39,7 +39,7 @@ const FIXTURES = [
 
 type Fixture = (typeof FIXTURES)[number];
 
-/** Beklenen sıra uygulamadan bağımsız hesaplanır: (at, _id) sözlük sırası. */
+/** Expected order is calculated independently: lexicographic (at, _id) order. */
 function expectedOrder(
   direction: PageDirection,
   rows: Fixture[] = FIXTURES,
@@ -59,7 +59,7 @@ interface DrainResult {
   pages: number;
 }
 
-/** İmleci sonuna kadar takip eder; sonsuz döngüye karşı sert bir tavan koyar. */
+/** Follows the cursor to the end with a hard cap against infinite loops. */
 async function drain(
   collection: Collection<Document>,
   options: { limit: number; direction?: PageDirection; filter?: Document },
@@ -81,16 +81,16 @@ async function drain(
 
     if (!page.nextCursor) break;
     cursor = page.nextCursor;
-    // Her sayfa en az bir kayıt ilerlemeli; ilerlemezse imleç filtresi bozuktur.
-    assert.ok(pages <= FIXTURES.length + 2, "sayfalama sonlanmadı");
+    // Each page must advance at least one record; otherwise the cursor filter is broken.
+    assert.ok(pages <= FIXTURES.length + 2, "pagination did not terminate");
   }
 
   return { ids, pages };
 }
 
 test(
-  "keyset sayfalama eşit zaman damgalarında kayıt tekrarlamaz ve atlamaz",
-  { skip: mongoUri ? false : "TEST_MONGODB_URI tanımlı değil" },
+  "keyset pagination neither duplicates nor skips records with equal timestamps",
+  { skip: mongoUri ? false : "TEST_MONGODB_URI is not defined" },
   async () => {
     const client = new MongoClient(mongoUri!);
     const database = client.db(
@@ -100,8 +100,8 @@ test(
 
     try {
       await client.connect();
-      // Ekleme sırası bilinçli olarak sıralamayla aynı değil: sonuç yalnızca
-      // sort anahtarına bağlı olmalı, doğal koleksiyon sırasına değil.
+      // Insertion order intentionally differs from sort order: the result must
+      // depend only on the sort key, not natural collection order.
       await events.insertMany([...FIXTURES].reverse());
 
       for (const direction of ["desc", "asc"] as const) {
@@ -112,26 +112,26 @@ test(
           assert.deepEqual(
             ids,
             expected,
-            `${direction}/limit=${limit} sırası bozuk`,
+            `${direction}/limit=${limit} order is incorrect`,
           );
           assert.equal(
             new Set(ids).size,
             ids.length,
-            `${direction}/limit=${limit} kayıt tekrarladı`,
+            `${direction}/limit=${limit} duplicated a record`,
           );
         }
       }
 
-      // Tek sayfaya sığan sonuç sonraki imleç üretmemeli.
+      // A result fitting on one page must not produce a next cursor.
       const single = await drain(events, { limit: FIXTURES.length });
       assert.equal(single.pages, 1);
 
-      // Toplam limitin tam katıysa sondaki boş sayfa okunmamalı:
-      // limit + 1 okuması bunu ayırt eder, ayrı bir sayım gerekmez.
+      // If the total is an exact multiple of the limit, no trailing empty page
+      // should be read; fetching limit + 1 distinguishes this without a count.
       const exact = await drain(events, { limit: FIXTURES.length / 2 });
       assert.equal(exact.pages, 2);
 
-      // Uca özgü filtre imleç filtresiyle birleşince de korunmalı.
+      // The endpoint-specific filter must remain when combined with the cursor filter.
       const filtered = await drain(events, {
         limit: 2,
         filter: { kind: "a" },
@@ -144,7 +144,7 @@ test(
         ),
       );
 
-      // Tarih aralığı filtresi de aynı şekilde birleşmeli.
+      // The date range filter must combine in the same way.
       const ranged = await drain(events, {
         limit: 2,
         filter: dateRangeFilter("at", new Date(BASE + 60_000)),
@@ -164,8 +164,8 @@ test(
 );
 
 test(
-  "bozuk imleç sorgu çalıştırmadan reddedilir",
-  { skip: mongoUri ? false : "TEST_MONGODB_URI tanımlı değil" },
+  "a malformed cursor is rejected without running a query",
+  { skip: mongoUri ? false : "TEST_MONGODB_URI is not defined" },
   async () => {
     const client = new MongoClient(mongoUri!);
     const database = client.db(
@@ -178,13 +178,13 @@ test(
       await events.insertMany(FIXTURES.slice(0, 3));
 
       const invalid = [
-        "ayraç-yok",
-        // Damga sayı değil.
+        "no-separator",
+        // The timestamp is not numeric.
         Buffer.from("abc:507f1f77bcf86cd799439011").toString("base64url"),
-        // ObjectId.isValid'in kabul ettiği 12 karakterlik ham biçim; buradan
-        // üretilen kimlik imlecin işaret ettiğinden başkasıdır.
+        // A raw 12-character form accepted by ObjectId.isValid; the resulting
+        // id differs from the one referenced by the cursor.
         Buffer.from(`${BASE}:aaaaaaaaaaaa`).toString("base64url"),
-        // Hex ama kısa.
+        // Hexadecimal, but too short.
         Buffer.from(`${BASE}:507f1f77bcf86cd7994390`).toString("base64url"),
       ];
 
@@ -192,7 +192,7 @@ test(
         await assert.rejects(
           () => findPage(events, { timeField: "at", limit: 5, cursor }),
           InvalidCursorError,
-          `imleç reddedilmedi: ${cursor}`,
+          `cursor was not rejected: ${cursor}`,
         );
       }
     } finally {

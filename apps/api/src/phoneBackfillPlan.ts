@@ -24,8 +24,8 @@ export interface LegacyPhoneBackfillPlan {
 }
 
 /**
- * Saf işlev: eski telefon belgelerini tekil atamalar, dokunulmayacak mükerrer
- * gruplar ve geçersiz girdiler olarak ayırır.
+ * Pure function: separates legacy phone documents into unique assignments,
+ * duplicate groups that must remain untouched, and invalid inputs.
  */
 export function planLegacyPhoneBackfill(
   records: readonly LegacyPhoneRecord[],
@@ -40,8 +40,9 @@ export function planLegacyPhoneBackfill(
     if (record.exempt) continue;
 
     const normalizedPhone = tryNormalizePhoneToE164(record.phone);
-    // Görünen telefon kaynak doğruluktur. Eski/yarım kalmış bir phoneE164
-    // değeri bozuk veya farklıysa tekil atama aşamasında güvenle yenilenir.
+    // The displayed phone number is authoritative. If a legacy or partial
+    // phoneE164 value is malformed or differs, the unique-assignment step can
+    // safely replace it.
     if (!normalizedPhone) {
       invalidUserIds.push(record.userId);
       continue;

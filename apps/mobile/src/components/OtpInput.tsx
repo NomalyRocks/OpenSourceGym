@@ -11,9 +11,9 @@ import {
 const CELL_COUNT = 6;
 
 /**
- * Altı hücre tek bir görünmez sayısal TextInput tarafından yönetilir. Bir
- * hücreye dokunmak girdiyi odaklar; imlecin bulunduğu hücre etkin kenarlığı
- * alır.
+ * Six cells are controlled by a single invisible numeric TextInput. Tapping a
+ * cell focuses the input; the cell containing the cursor receives the active
+ * border.
  */
 export function OtpInput({
   value,
@@ -34,7 +34,7 @@ export function OtpInput({
 
   return (
     <View style={styles.field}>
-      <Text style={styles.label}>{t("Doğrulama kodu")}</Text>
+      <Text style={styles.label}>{t("Verification code")}</Text>
       <Pressable
         accessibilityElementsHidden
         importantForAccessibility="no-hide-descendants"
@@ -61,7 +61,7 @@ export function OtpInput({
         })}
       </Pressable>
       <TextInput
-        accessibilityLabel={t("Doğrulama kodu")}
+        accessibilityLabel={t("Verification code")}
         accessibilityHint={error ?? undefined}
         ref={inputRef}
         value={value}

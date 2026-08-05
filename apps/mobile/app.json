@@ -15,8 +15,8 @@
     "ios": {
       "supportsTablet": true,
       "infoPlist": {
-        "NSCameraUsageDescription": "Turnikedeki QR kodunu okutmak için kamera erişimi gereklidir.",
-        "NSLocationWhenInUseUsageDescription": "Salonda olduğunuzu doğrulamak için konum erişimi gereklidir."
+        "NSCameraUsageDescription": "Camera access is required to scan the turnstile QR code.",
+        "NSLocationWhenInUseUsageDescription": "Your location is used only to verify that you are at the gym."
       }
     },
     "android": {
@@ -50,13 +50,13 @@
       [
         "expo-location",
         {
-          "locationWhenInUsePermission": "Salonda olduğunuzu doğrulamak için konum erişimi gereklidir."
+          "locationWhenInUsePermission": "Your location is used only to verify that you are at the gym."
         }
       ],
       [
         "expo-camera",
         {
-          "cameraPermission": "Turnikedeki QR kodunu okutmak için kamera erişimi gereklidir.",
+          "cameraPermission": "Camera access is required to scan the turnstile QR code.",
           "microphonePermission": false,
           "recordAudioAndroid": false
         }

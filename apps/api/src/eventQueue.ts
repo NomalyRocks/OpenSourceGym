@@ -14,21 +14,21 @@ export interface EntryEventInput {
   reason: GateRejectCode | null;
   at: Date;
   /**
-   * Taramanın yönü, olay anındaki cihaz kaydından. Kalıcı yazılır ki cihaz
-   * sonradan silinirse (`/api/me/entries` artık ona bakamaz hale gelse de)
-   * geçmiş taramanın giriş/çıkış sınıflandırması bozulmasın.
+   * Scan direction from the device record at event time. Persisted so deleting
+   * the device later does not corrupt the historical scan's entry/exit
+   * classification, even though `/api/me/entries` can no longer look it up.
    */
   direction: DeviceDirection;
 }
 
-// Turnike geçiş olayını Redis kuyruğuna iter (fire-and-forget) — API yanıtını bekletmez
+// Pushes a turnstile event to the Redis queue (fire-and-forget)—does not delay the API response
 export function enqueueEntryEvent(ev: EntryEventInput): void {
   const serialized = JSON.stringify({ ...ev, at: ev.at.toISOString() });
   redis.lPush(QUEUE_KEY, serialized).catch(console.error);
 }
 
 const RETRY_DELAY_MS = 1000;
-/** Bir olay bu kadar denemeden sonra dead-letter listesine taşınır. */
+/** An event moves to the dead-letter list after this many attempts. */
 const MAX_WRITE_ATTEMPTS = 5;
 
 function wait(ms: number): Promise<void> {
@@ -36,35 +36,35 @@ function wait(ms: number): Promise<void> {
 }
 
 export interface EntryEventConsumer {
-  /** Döngüyü durdurup tüketiciye ait Redis bağlantısını kapatır. */
+  /** Stops the loop and closes the consumer's Redis connection. */
   stop(): Promise<void>;
-  /** Readiness için: döngü ayakta ve Redis bağlantısı açık mı. */
+  /** For readiness: whether the loop is running and Redis is connected. */
   isHealthy(): boolean;
 }
 
-// Kuyruktaki geçiş olaylarını arka planda tüketip entry_events koleksiyonuna yazar
+// Consumes queued turnstile events in the background and writes them to entry_events
 export async function startEntryEventConsumer(): Promise<EntryEventConsumer> {
-  // Bu iki bayrak 'error' dinleyicisinden ÖNCE tanımlanmalı: connect() sırasında
-  // Redis hata verirse dinleyici hemen tetiklenir ve bayraklar TDZ'de olsaydı
-  // handler ReferenceError fırlatıp süreci düşürürdü — yani dinleyicinin
-  // engellemesi gereken şeyin ta kendisini yapardı.
+  // These two flags must be defined BEFORE the 'error' listener: if Redis errors
+  // during connect(), the listener fires immediately, and flags in the TDZ would
+  // make the handler throw ReferenceError and crash the process—the exact event
+  // the listener is intended to prevent.
   let stopping = false;
   let running = true;
 
   const consumer = redis.duplicate();
-  // duplicate() dinleyicileri kopyalamaz. 'error' dinleyicisi olmayan bir
-  // EventEmitter'da soket hatası Node tarafından fırlatılır ve TÜM API süreci
-  // düşer — Redis kısa süreli kesintiye girdiğinde bu yaşanıyordu.
+  // duplicate() does not copy listeners. An EventEmitter socket error without
+  // an 'error' listener is thrown by Node and crashes the ENTIRE API
+  // process—this occurred during brief Redis outages.
   consumer.on("error", (err) => {
-    if (stopping) return; // kapanışta beklenen soket hatası, gürültü yapma
-    console.error("entry event tüketici redis hatası:", err);
+    if (stopping) return; // Expected socket error during shutdown; stay quiet
+    console.error("entry event consumer Redis error:", err);
   });
   await consumer.connect();
 
   const loop = (async () => {
     while (!stopping) {
-      // Döngünün TAMAMI korunur: brPop bağlantı düştüğünde reject eder ve
-      // yakalanmayan bir promise Node'da tüm API sürecini düşürürdü.
+      // Guard the ENTIRE loop: brPop rejects when the connection drops, and an
+      // unhandled promise would crash the entire API process in Node.
       try {
         const result = await consumer.brPop(QUEUE_KEY, 5);
         if (!result) {
@@ -76,26 +76,23 @@ export async function startEntryEventConsumer(): Promise<EntryEventConsumer> {
         try {
           parsed = JSON.parse(raw) as EntryEventInput & { at: string };
         } catch (err) {
-          // raw loglanmaz: içerik üye kimlik bilgisi (PII) taşıyabilir
-          console.error("çözümlenemeyen entry event, atlanıyor:", err);
+          // Do not log raw: the content may contain member identity data (PII)
+          console.error("unparseable entry event skipped:", err);
           continue;
         }
 
         await writeEvent(raw, parsed);
       } catch (err) {
         if (stopping) break;
-        console.error(
-          "entry event tüketicisi hata aldı, yeniden denenecek:",
-          err,
-        );
+        console.error("entry event consumer failed; retrying:", err);
         await wait(RETRY_DELAY_MS);
       }
     }
     running = false;
   })();
 
-  // Kalıcı olarak yazılamayan olay kuyruğun başına sonsuza dek geri konmamalı:
-  // tek bir bozuk kayıt tüm geçiş olay akışını durdururdu.
+  // An event that cannot be persisted must not return to the queue head forever:
+  // one bad record would stop the entire turnstile event stream.
   async function writeEvent(
     raw: string,
     parsed: EntryEventInput & { at: string },
@@ -108,32 +105,32 @@ export async function startEntryEventConsumer(): Promise<EntryEventConsumer> {
         return;
       } catch (err) {
         console.error(
-          `entry event yazılamadı (deneme ${attempt}/${MAX_WRITE_ATTEMPTS}):`,
+          `entry event write failed (attempt ${attempt}/${MAX_WRITE_ATTEMPTS}):`,
           err,
         );
         if (stopping) {
-          // Kapanıyoruz: olayı kaybetmemek için kuyruğa geri koy
+          // Shutting down: return the event to the queue to avoid losing it
           await redis.lPush(QUEUE_KEY, raw).catch(console.error);
           return;
         }
         await wait(RETRY_DELAY_MS);
       }
     }
-    console.error("entry event dead-letter listesine taşındı");
+    console.error("entry event moved to the dead-letter list");
     await redis.lPush(DEAD_LETTER_KEY, raw).catch(console.error);
   }
 
   return {
     async stop() {
       stopping = true;
-      // quit() sunucuya komut göndermeye çalışır; Redis erişilemezken süresiz
-      // asılır ve kapanışı kilitler. Kısa süre bekleyip destroy() ile soketi
-      // koparıyoruz — kapanış en çok Redis bozukken güvenilir olmalı.
+      // quit() tries to send a server command; while Redis is unreachable it can
+      // hang indefinitely and block shutdown. Wait briefly, then sever the socket
+      // with destroy()—shutdown must be most reliable when Redis is unhealthy.
       await Promise.race([consumer.quit().catch(() => {}), wait(2000)]);
       try {
         consumer.destroy();
       } catch {
-        // zaten kapalıysa sorun değil
+        // Fine if already closed
       }
       await Promise.race([loop, wait(2000)]);
     },

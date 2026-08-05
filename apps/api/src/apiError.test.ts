@@ -4,7 +4,7 @@ import type { ApiErrorResponse } from "@opengym/shared";
 import type { Response } from "express";
 import { sendApiError } from "./apiError.js";
 
-test("API hatası kararlı code ve geriye dönük message alanlarını döndürür", () => {
+test("API error returns stable code and backward-compatible message fields", () => {
   let status: number | undefined;
   let body: ApiErrorResponse | undefined;
   const response = {

@@ -13,8 +13,8 @@ export async function connectRedis(): Promise<void> {
   }
 }
 
-// Kilidi yalnızca hâlâ çağıranın token'ı duruyorsa siler. Lease süresi dolup
-// kilit başka bir isteğe geçtiyse o isteğin kilidi yanlışlıkla açılmaz.
+// Deletes the lock only while it still holds the caller's token. If the lease
+// expires and another request acquires it, that request's lock is not released.
 const RELEASE_LOCK_SCRIPT = `
 if redis.call("get", KEYS[1]) == ARGV[1] then
   return redis.call("del", KEYS[1])
@@ -22,7 +22,7 @@ end
 return 0
 `;
 
-/** Sahiplik token'lı kilidi kurar; kilit başkasındaysa false döner. */
+/** Acquires a lock with an ownership token; returns false if already held. */
 export async function acquireLock(
   key: string,
   token: string,
@@ -35,7 +35,7 @@ export async function acquireLock(
   return acquired === "OK";
 }
 
-/** acquireLock ile alınmış kilidi bırakır (sahibi değilse hiçbir şey yapmaz). */
+/** Releases a lock acquired with acquireLock (does nothing if not the owner). */
 export async function releaseLock(key: string, token: string): Promise<void> {
   await redis.eval(RELEASE_LOCK_SCRIPT, { keys: [key], arguments: [token] });
 }

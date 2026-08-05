@@ -25,6 +25,8 @@ import {
   startEntryEventConsumer,
   type EntryEventConsumer,
 } from "./eventQueue.js";
+import { renameLegacyConsentFields } from "./consentFieldRename.js";
+import { getLegalConfig } from "./legal.js";
 import { backfillLegacyUserPhones } from "./phoneBackfill.js";
 import { repairLegacySubscriptionOverlaps } from "./subscriptions.js";
 import { assertProductionProfilePhotoConfig } from "./profilePhoto.js";
@@ -33,21 +35,27 @@ import { openApiRouter } from "./openapi/router.js";
 
 const app = express();
 
-// BetterAuth kendi body parsing'ini yapar; express.json()'dan ÖNCE mount edilmeli
+// BetterAuth parses its own body; it must be mounted BEFORE express.json()
 app.all("/api/auth/{*splat}", toNodeHandler(auth));
 
 app.use(express.json());
 
 app.use("/api", openApiRouter);
 app.use("/api/admin/devices", devicesRouter);
-// adminRouter'dan ÖNCE: adminRouter geniş yollar tanımlıyor, daha özel olan
-// önek önce eşleşmeli.
+// BEFORE adminRouter: adminRouter defines broad paths, so the more specific
+// prefix must match first.
 app.use("/api/admin/reports", reportsRouter);
 app.use("/api/admin", adminRouter);
 app.use("/api/me", meRouter);
 
-// Liveness: yalnızca sürecin yanıt verdiğini söyler. Orchestrator'ın süreci
-// yeniden başlatmasına karar verdiği uçtur, bu yüzden bağımlılık yoklamaz.
+// The registration screen must show consent text before sign-in: this returns
+// only operator-published legal document URLs and contains no personal data.
+app.get("/api/legal", async (_req, res) => {
+  res.json(await getLegalConfig());
+});
+
+// Liveness only reports that the process responds. The orchestrator uses it to
+// decide whether to restart the process, so it does not probe dependencies.
 app.get("/health", (_req, res) => {
   const body: HealthResponse = {
     status: "ok",
@@ -62,15 +70,15 @@ async function probe(check: () => Promise<unknown>): Promise<ReadinessCheck> {
     await check();
     return { status: "up" };
   } catch (err) {
-    // Redis soket hataları boş message ile gelebiliyor; alan hiç yoksa
-    // "down" sebebi tamamen kaybolur.
+    // Redis socket errors can have an empty message; if the field is absent,
+    // the reason for being "down" disappears completely.
     const message = err instanceof Error ? err.message : String(err);
-    return { status: "down", error: message || "bilinmeyen hata" };
+    return { status: "down", error: message || "unknown error" };
   }
 }
 
-// Readiness: bağımlılıklar gerçekten yoklanır. Mongo, Redis veya geçiş olayı
-// tüketicisi koptuysa süreç ayakta olsa bile 503 döner — sessiz arıza olmaz.
+// Readiness probes actual dependencies. If Mongo, Redis, or the turnstile event
+// consumer disconnects, return 503 even while the process is alive—no silent failure.
 app.get("/health/ready", async (_req, res) => {
   const [mongo, redisCheck] = await Promise.all([
     probe(() => db.command({ ping: 1 })),
@@ -79,7 +87,7 @@ app.get("/health/ready", async (_req, res) => {
   const consumerUp = entryEventConsumer?.isHealthy() ?? false;
   const entry: ReadinessCheck = consumerUp
     ? { status: "up" }
-    : { status: "down", error: "geçiş olayı tüketicisi çalışmıyor" };
+    : { status: "down", error: "turnstile event consumer is not running" };
 
   const checks = { mongo, redis: redisCheck, entryEventConsumer: entry };
   const healthy = Object.values(checks).every((c) => c.status === "up");
@@ -98,9 +106,9 @@ function bodyParserErrorType(error: unknown): string | null {
     : null;
 }
 
-// Terminal hata handler'ı: yanıtlar her koşulda {code, message} sözleşmesine
-// uymalı. Aksi halde Express'in varsayılan handler'ı HTML döndürür ve
-// production dışında yığın izini (stack trace) istemciye sızdırır.
+// Terminal error handler: responses must always follow the {code, message}
+// contract. Otherwise Express's default handler returns HTML and leaks the stack
+// trace to the client outside production.
 app.use(
   (
     error: unknown,
@@ -122,9 +130,9 @@ app.use(
       return;
     }
 
-    console.error(`istek hatası: ${req.method} ${req.originalUrl}`, error);
+    console.error(`request error: ${req.method} ${req.originalUrl}`, error);
 
-    // Yanıt akışı başladıysa gövde değiştirilemez; bağlantıyı Express kapatsın
+    // Once response streaming starts, the body cannot change; let Express close it
     if (res.headersSent) {
       next(error);
       return;
@@ -151,6 +159,7 @@ async function main() {
   assertProductionProfilePhotoConfig();
   await mongoClient.connect();
   await backfillLegacyUserPhones();
+  await renameLegacyConsentFields();
   await ensureIndexes();
   await connectRedis();
   await repairLegacySubscriptionOverlaps();
@@ -163,58 +172,58 @@ async function main() {
   });
 }
 
-/** Kapanış bu süreden uzun sürerse süreç zorla sonlandırılır. */
+/** Force-terminates the process when shutdown exceeds this duration. */
 const SHUTDOWN_TIMEOUT_MS = 15_000;
 
 let shuttingDown = false;
 
-// SIGTERM olmadan `docker stop`/deploy uçuşan istekleri ortasından keser ve
-// geçiş olayı tüketicisi yarım kalır. Sıra önemli: önce yeni istek kabulünü
-// durdur, sonra arka plan işçisini, en son veri bağlantılarını kapat.
+// Without SIGTERM handling, `docker stop` and deploy cut in-flight requests short
+// and leave the turnstile event consumer unfinished. Order matters: first stop
+// accepting requests, then stop the background worker, and close data connections last.
 async function shutdown(signal: string): Promise<void> {
   if (shuttingDown) return;
   shuttingDown = true;
-  console.log(`${signal} alındı, kapanış başlıyor`);
+  console.log(`${signal} received; shutdown starting`);
 
   const forceExit = setTimeout(() => {
-    console.error("kapanış zaman aşımına uğradı, süreç zorla sonlandırılıyor");
+    console.error("shutdown timed out; force-terminating process");
     process.exit(1);
   }, SHUTDOWN_TIMEOUT_MS);
-  // Kapanışı bekleyen tek iş bu zamanlayıcıysa süreç yine de çıkabilmeli
+  // The process must still exit if this timer is the only task awaiting shutdown
   forceExit.unref();
 
   await step("http sunucusu", 5000, () => {
     return new Promise<void>((resolve) => {
       server.close(() => resolve());
-      // Keep-alive bağlantıları kendiliğinden kapanmayabilir
+      // Keep-alive connections may not close on their own
       server.closeIdleConnections();
     });
   });
-  // Zamanlayıcı Redis ve Mongo'yu kullanıyor; süren tur bitmeden onlar
-  // kapanırsa yazılmış ama gönderilmemiş bir hatırlatma kaydı kalabilir.
-  await step("hatırlatma zamanlayıcısı", 10_000, () =>
+  // The scheduler uses Redis and Mongo; closing them before the active run ends
+  // can leave a reminder record written but not sent.
+  await step("reminder scheduler", 10_000, () =>
     reminderScheduler ? reminderScheduler.stop() : Promise.resolve(),
   );
-  await step("geçiş olayı tüketicisi", 5000, () =>
+  await step("turnstile event consumer", 5000, () =>
     entryEventConsumer ? entryEventConsumer.stop() : Promise.resolve(),
   );
   await step("redis", 3000, () => redis.quit().then(() => undefined));
   try {
     redis.destroy();
   } catch {
-    // quit() başarılı olduysa bağlantı zaten kapalıdır
+    // The connection is already closed if quit() succeeded
   }
   await step("mongo", 5000, () => mongoClient.close());
 
-  console.log("kapanış tamamlandı");
+  console.log("shutdown complete");
   clearTimeout(forceExit);
   process.exit(0);
 }
 
 /**
- * Tek bir kapanış adımını süre sınırıyla çalıştırır. Bir adımın takılması
- * (ör. Redis erişilemezken quit()) sonraki adımları engellememeli; aksi halde
- * süreç force-exit'e düşer ve Mongo bağlantısı düzgün kapanmaz.
+ * Runs one shutdown step with a time limit. A stuck step (for example, quit()
+ * while Redis is unreachable) must not block later steps; otherwise the process
+ * reaches force-exit without closing the Mongo connection cleanly.
  */
 async function step(
   name: string,
@@ -226,13 +235,13 @@ async function step(
       run(),
       new Promise<never>((_, reject) => {
         setTimeout(
-          () => reject(new Error(`${ms}ms içinde tamamlanmadı`)),
+          () => reject(new Error(`did not complete within ${ms}ms`)),
           ms,
         ).unref();
       }),
     ]);
   } catch (err) {
-    console.error(`kapanış adımı başarısız (${name}):`, err);
+    console.error(`shutdown step failed (${name}):`, err);
   }
 }
 

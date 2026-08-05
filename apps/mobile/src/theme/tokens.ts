@@ -1,32 +1,32 @@
 /**
- * OpenGym tasarım jetonları.
+ * OpenGym design tokens.
  *
- * Renkler OKLCH'te tasarlandı, RN'in kabul ettiği sRGB hex'e çevrildi. Marka
- * tonu 268° (ültramarin): salonun "geçiş kartı" işi burada — vurgu rengi
- * yeşil/kehribar/kırmızı durum üçlüsünden hue olarak uzakta durur, böylece bir
- * rozetin "durum" mu yoksa "marka" mı olduğu asla karışmaz.
+ * Colors were designed in OKLCH and converted to sRGB hex accepted by RN. The
+ * brand hue is 268° (ultramarine): it represents the gym's "access pass"—far
+ * from the green/amber/red status triad, so a badge is never ambiguous between
+ * "status" and "brand."
  *
- * Ölçek ve boşluklar temadan bağımsızdır; yalnızca `ThemeColors` ve `shadow`
- * açık/koyu arasında değişir.
+ * Scale and spacing are theme-independent; only `ThemeColors` and `shadow`
+ * change between light and dark.
  */
 
 export type ThemeName = "light" | "dark";
-/** Kullanıcının seçimi: cihazı takip et ya da sabitle. */
+/** User selection: follow the device or use a fixed mode. */
 export type ThemeMode = "system" | "light" | "dark";
 
 export interface ThemeColors {
   /** Sayfa zemini. */
   background: string;
-  /** Zeminden bir kademe yükselen panel/plaka. */
+  /** Panel/plate raised one level above the background. */
   surface: string;
-  /** Panel içindeki ikinci kademe (çip, segment, avatar kuyusu). */
+  /** Second level within a panel (chip, segment, avatar well). */
   surfaceRaised: string;
   /** Form girdisi zemini. */
   surfaceInput: string;
 
-  /** Dekoratif ayraç ve kenarlık. */
+  /** Decorative divider and border. */
   outline: string;
-  /** Etkileşimli kontrol kenarlığı. */
+  /** Interactive control border. */
   outlineStrong: string;
 
   textPrimary: string;
@@ -34,10 +34,10 @@ export interface ThemeColors {
   textTertiary: string;
   textDisabled: string;
 
-  /** Marka vurgusu: birincil eylem, seçili durum, odak halkası. Dekorasyon değil. */
+  /** Brand accent: primary action, selected state, focus ring. Not decoration. */
   accent: string;
   accentPressed: string;
-  /** Vurgunun düşük opaklıklı zemini (seçili satır, ikon kuyusu). */
+  /** Low-opacity accent background (selected row, icon well). */
   accentSurface: string;
   accentBorder: string;
   onAccent: string;
@@ -49,12 +49,12 @@ export interface ThemeColors {
   error: string;
   errorSurface: string;
 
-  /** Modal arkası karartma. */
+  /** Modal backdrop scrim. */
   scrim: string;
-  /** Basılı hâl için üste binen ton. */
+  /** Overlay tint for the pressed state. */
   pressedOverlay: string;
   skeleton: string;
-  /** Kamera/QR gibi her zaman koyu kalan yüzeyler. */
+  /** Surfaces that always remain dark, such as camera/QR views. */
   alwaysDarkSurface: string;
   onAlwaysDark: string;
 }
@@ -128,8 +128,8 @@ const lightColors: ThemeColors = {
 };
 
 /**
- * `#rrggbb` jetonunu `rgba()`'ya çevirir — degrade duraklarında ve üste binen
- * tonlarda gerekiyor, çünkü RN renk dizgilerinde alfa ayrı verilemiyor.
+ * Converts a `#rrggbb` token to `rgba()`—needed for gradient stops and overlay
+ * tints because RN color strings cannot specify alpha separately.
  */
 export function withAlpha(hex: string, alpha: number): string {
   const value = hex.replace("#", "");
@@ -148,9 +148,9 @@ export interface ShadowStyle {
 }
 
 export interface ThemeShadows {
-  /** Zeminden ayrılan plaka. */
+  /** Plate separated from the background. */
   plate: ShadowStyle;
-  /** Sekme çubuğu / yapışkan başlık gibi üstte duran katman. */
+  /** Elevated layer such as a tab bar or sticky header. */
   raised: ShadowStyle;
 }
 
@@ -162,8 +162,8 @@ const noShadow: ShadowStyle = {
   elevation: 0,
 };
 
-// Koyu temada derinliği gölge değil yüzey açıklığı taşır: siyah üstüne gölge
-// görünmez, `elevation` ise Android'de yüzeyi gri yapar.
+// In dark mode, surface brightness rather than shadow conveys depth: shadows are
+// invisible on black, while `elevation` makes the surface gray on Android.
 const darkShadows: ThemeShadows = { plate: noShadow, raised: noShadow };
 
 const lightShadows: ThemeShadows = {
@@ -174,7 +174,7 @@ const lightShadows: ThemeShadows = {
     shadowOffset: { width: 0, height: 2 },
     elevation: 2,
   },
-  // Yüzen sekme çubuğu: gölge aşağı düşer, zeminden ayrıldığı okunsun.
+  // Floating tab bar: the shadow falls downward to separate it from the background.
   raised: {
     shadowColor: "#0b1020",
     shadowOpacity: 0.14,
@@ -193,7 +193,7 @@ export const radius = {
   tiny: 8,
 } as const;
 
-/** 4pt ölçek. */
+/** 4 pt scale. */
 export const spacing = {
   xxs: 4,
   xs: 8,
@@ -203,13 +203,13 @@ export const spacing = {
   xl: 24,
   xxl: 32,
   xxxl: 40,
-  /** Ekran kenar boşluğu. */
+  /** Screen edge spacing. */
   gutter: 20,
 } as const;
 
 /**
- * Tek aile (sistem sans), sabit ölçek, ~1.15 adım oranı. Ürün arayüzü
- * display/body eşleşmesi istemez; ayrım ağırlık ve renkle taşınır.
+ * One family (system sans), fixed scale, ~1.15 step ratio. The product UI does
+ * not need a display/body pairing; weight and color provide distinction.
  */
 export const type = {
   display: {
@@ -245,7 +245,7 @@ export const type = {
   body: { fontSize: 16, lineHeight: 24, fontWeight: "400" as const },
   supporting: { fontSize: 14, lineHeight: 20, fontWeight: "400" as const },
   label: { fontSize: 13, lineHeight: 18, fontWeight: "600" as const },
-  /** Yalnızca rozet ve durum çipi. Bölüm başlığı üstünde etiket olarak kullanma. */
+  /** Badges and status chips only. Do not use as a label above section headings. */
   micro: {
     fontSize: 11,
     lineHeight: 15,
@@ -254,7 +254,7 @@ export const type = {
   },
 } as const;
 
-/** Sayaç, tarih ve süre metinleri zıplamasın diye. */
+/** Prevents counters, dates, and durations from jumping. */
 export const tabularNumbers = { fontVariant: ["tabular-nums" as const] };
 
 export const motion = {
@@ -262,7 +262,7 @@ export const motion = {
   quick: 140,
   standard: 200,
   slow: 280,
-  /** Splash markası için tek seferlik daha uzun süre. */
+  /** One-time longer duration for the splash brand. */
   splash: 420,
 } as const;
 
@@ -274,7 +274,7 @@ export interface Theme {
   spacing: typeof spacing;
   type: typeof type;
   motion: typeof motion;
-  /** expo-status-bar `style` değeri. */
+  /** expo-status-bar `style` value. */
   statusBarStyle: "light" | "dark";
 }
 

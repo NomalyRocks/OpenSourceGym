@@ -14,13 +14,13 @@ declare global {
   namespace Express {
     interface Request {
       user?: SessionUser;
-      /** Faz 6: BetterAuth oturum token'ı — cihaz kimliği fallback'i olarak kullanılır */
+      /** Phase 6: BetterAuth session token—used as a device-identity fallback */
       sessionToken?: string;
     }
   }
 }
 
-/** requireRole'den geçmiş bir isteğin garanti alanları. */
+/** Guaranteed fields on a request that has passed requireRole. */
 export interface AuthedRequest extends Request {
   user: SessionUser;
   sessionToken: string;
@@ -33,10 +33,10 @@ export type AuthedHandler = (
 ) => void | Promise<void>;
 
 /**
- * requireRole'den SONRA gelen handler'ları sarar: gövdede `req.user` her
- * istekte doludur, bu yüzden non-null assertion gerekmez. Handler'ın dönüşü
- * aynen iletilir — Express 5 reject olan promise'i ancak böyle görüp hata
- * middleware'ine aktarabilir.
+ * Wraps handlers that run AFTER requireRole: `req.user` is populated on every
+ * request, so no non-null assertion is needed. The handler return value is
+ * forwarded unchanged—only then can Express 5 observe a rejected promise and
+ * pass it to error middleware.
  */
 export function authed(handler: AuthedHandler): RequestHandler {
   return (req, res, next) => handler(req as AuthedRequest, res, next);
@@ -52,8 +52,8 @@ export function requireRole(...roles: Role[]) {
       return;
     }
     req.sessionToken = session.session.token;
-    // Session cache'i (Redis) rol/bayrak değişikliklerini geriden takip eder;
-    // yetki kararları her istekte DB'deki güncel kayda göre verilir
+    // The session cache (Redis) lags behind role and flag changes; authorization
+    // decisions use the current database record on every request
     const doc = await userCollection().findOne({
       _id: new ObjectId(session.user.id),
     });
@@ -85,8 +85,8 @@ export function requireRole(...roles: Role[]) {
       );
       return;
     }
-    // US-2: zorunlu şifre değişimi yapılmadan yalnızca şifre değiştirme ve
-    // profil uçları çalışır
+    // US-2: only password-change and profile endpoints work before the required
+    // password change
     const exemptPaths = ["/initial-password", "/profile"];
     if (user.mustChangePassword && !exemptPaths.includes(req.path)) {
       sendApiError(

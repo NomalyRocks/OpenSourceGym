@@ -23,12 +23,12 @@ export function Renewals() {
   const [sendingFor, setSendingFor] = useState<string | null>(null);
 
   /**
-   * `cursor` verilmezse ilk sayfa (liste sıfırlanır), verilirse sonraki sayfa
-   * eklenir. Pencere değişince imleç geçersizdir, bu yüzden baştan yüklenir.
+   * Without `cursor`, the first page is loaded (resetting the list); with it, the
+   * next page is appended. A window change invalidates the cursor, so loading restarts.
    *
-   * "Daha fazla yükle" isteği de iptal edilebilir olmalı: pencere değişirken
-   * uçuşta olan bir sonraki sayfa yanıtı, artık başka bir sorguya ait yeni
-   * listenin üstüne eklenir ve hem tekrar hem yanlış imleç üretirdi.
+   * The "Load more" request must also be cancelable: if a next-page response is
+   * in flight when the window changes, it would be appended to the new list for
+   * a different query, producing both duplicates and an incorrect cursor.
    */
   const inFlight = useRef<AbortController | null>(null);
 
@@ -50,9 +50,9 @@ export function Renewals() {
         setError(null);
       } catch (err) {
         if (isAbortError(err)) return;
-        setError(errorMessage(err, t, "Yüklenemedi."));
+        setError(errorMessage(err, t, "Could not load data."));
       } finally {
-        // İptal edilen istek, yerine geçen isteğin yükleme durumunu silmemeli.
+        // A canceled request must not clear the replacement request's loading state.
         if (inFlight.current === controller) setLoading(false);
       }
     },
@@ -72,8 +72,8 @@ export function Renewals() {
         `/api/admin/reports/renewals/${member.userId}/remind`,
         { method: "POST" },
       );
-      // Satırı yerinde güncelliyoruz: tüm listeyi yeniden çekmek kullanıcının
-      // yüklediği sonraki sayfaları da atardı.
+      // Update the row in place: refetching the full list would discard the
+      // additional pages loaded by the user.
       setMembers((prev) =>
         prev.map((row) =>
           row.userId === member.userId
@@ -81,11 +81,11 @@ export function Renewals() {
             : row,
         ),
       );
-      setNotice(t("Hatırlatma gönderildi."));
+      setNotice(t("Reminder sent."));
       setError(null);
     } catch (err) {
       if (isAbortError(err)) return;
-      setError(errorMessage(err, t, "Yüklenemedi."));
+      setError(errorMessage(err, t, "Could not load data."));
     } finally {
       setSendingFor(null);
     }
@@ -93,11 +93,11 @@ export function Renewals() {
 
   return (
     <div className="stagger">
-      <h1>{t("Yenilemeler")}</h1>
+      <h1>{t("Renewals")}</h1>
 
       <div className="row" style={{ marginBottom: 16 }}>
         <div className="field">
-          <label htmlFor="renewal-window">{t("Kalan gün")}</label>
+          <label htmlFor="renewal-window">{t("Days left")}</label>
           <select
             id="renewal-window"
             value={withinDays}
@@ -105,7 +105,7 @@ export function Renewals() {
           >
             {WINDOWS.map((days) => (
               <option key={days} value={days}>
-                {t("{{days}} gün içinde", { days })}
+                {t("Within {{days}} days", { days })}
               </option>
             ))}
           </select>
@@ -119,12 +119,12 @@ export function Renewals() {
         <table>
           <thead>
             <tr>
-              <th>{t("Ad Soyad")}</th>
-              <th>{t("Telefon")}</th>
-              <th>{t("E-posta")}</th>
-              <th>{t("Bitiş tarihi")}</th>
-              <th>{t("Kalan gün")}</th>
-              <th>{t("Son hatırlatma")}</th>
+              <th>{t("Full name")}</th>
+              <th>{t("Phone")}</th>
+              <th>{t("Email")}</th>
+              <th>{t("Ends on")}</th>
+              <th>{t("Days left")}</th>
+              <th>{t("Last reminder")}</th>
               <th />
             </tr>
           </thead>
@@ -139,13 +139,13 @@ export function Renewals() {
                 <td>{new Date(member.endsAt).toLocaleDateString(locale)}</td>
                 <td>
                   {member.remainingDays === 0
-                    ? t("Bugün")
+                    ? t("Today")
                     : member.remainingDays}
                 </td>
                 <td>
                   {member.lastReminderAt
                     ? new Date(member.lastReminderAt).toLocaleString(locale)
-                    : t("Hiç")}
+                    : t("Never")}
                 </td>
                 <td>
                   <button
@@ -154,20 +154,20 @@ export function Renewals() {
                     disabled={sendingFor !== null}
                   >
                     {sendingFor === member.userId
-                      ? t("Gönderiliyor…")
-                      : t("Hatırlatma gönder")}
+                      ? t("Sending…")
+                      : t("Send reminder")}
                   </button>
                 </td>
               </tr>
             ))}
             {members.length === 0 && !error && !loading && (
               <tr>
-                <td colSpan={7}>{t("Yenilemesi yaklaşan üye yok.")}</td>
+                <td colSpan={7}>{t("No upcoming renewals.")}</td>
               </tr>
             )}
             {loading && (
               <tr>
-                <td colSpan={7}>{t("Yükleniyor…")}</td>
+                <td colSpan={7}>{t("Loading…")}</td>
               </tr>
             )}
           </tbody>
@@ -178,7 +178,7 @@ export function Renewals() {
             disabled={loading}
             style={{ marginTop: 16 }}
           >
-            {t("Daha fazla yükle")}
+            {t("Load more")}
           </button>
         )}
       </div>

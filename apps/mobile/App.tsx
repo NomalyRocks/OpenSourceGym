@@ -72,7 +72,7 @@ type ScreenState =
   | { name: "forgot" }
   | { name: "reset"; email: string };
 
-/** Sekmelerin üstüne itilen tam ekran katman (Bildirimler, Ayarlar). */
+/** Full-screen layer pushed above the tabs (Notifications, Settings). */
 type Overlay = "notifications" | "settings" | null;
 
 function PushedScreen({
@@ -110,8 +110,8 @@ function PushedScreen({
         StyleSheet.absoluteFill,
         {
           backgroundColor: theme.colors.background,
-          // Android'de `elevation` sıralamada `zIndex`i ezer; yüzen sekme
-          // çubuğu elevation 10 taşıdığı için burada daha yükseği gerekiyor.
+          // On Android, `elevation` overrides `zIndex` ordering; because the
+          // floating tab bar has elevation 10, this needs a higher value.
           zIndex: 30,
           elevation: 24,
           opacity: progress,
@@ -141,20 +141,20 @@ function DeviceBlocked({ onHome }: { onHome: () => void }) {
     <Screen style={styles.blockedScreen}>
       <LogoMark size={52} />
       <Text accessibilityRole="header" style={styles.blockedTitle}>
-        {t("Bu cihazda QR kullanılamıyor")}
+        {t("QR is unavailable on this device")}
       </Text>
       <Text style={styles.blockedBody}>
         {t(
-          "Cihazınızda güvenlik riski tespit edildi (root/jailbreak veya hata ayıklama). Güvenlik nedeniyle QR ile giriş bu cihazda kullanılamaz.",
+          "A security risk was detected on your device (root/jailbreak or debugging). QR entry is unavailable on this device for security reasons.",
         )}
       </Text>
       <View style={styles.blockedNote}>
         <StatusMessage
           tone="warning"
-          text={t("Yardım için salon resepsiyonuna başvurun.")}
+          text={t("Contact gym reception for assistance.")}
         />
       </View>
-      <Button title={t("Ana sayfaya dön")} onPress={onHome} />
+      <Button title={t("Return to Home")} onPress={onHome} />
     </Screen>
   );
 }
@@ -203,7 +203,7 @@ function SignedInApp({
     return () => animation.stop();
   }, [activeTab, opacity, reducedMotion, theme.motion.standard]);
 
-  // Android geri tuşu itilen ekranı kapatır; sekmelerdeyken sistem davranışı kalır.
+  // The Android back button closes the pushed screen; system behavior remains on tabs.
   useEffect(() => {
     if (!overlay) return;
     const subscription = BackHandler.addEventListener(
@@ -238,7 +238,7 @@ function SignedInApp({
             </View>
           ) : null}
 
-          {/* Kamera yalnızca sekme etkinken monte edilir. */}
+          {/* The camera mounts only while its tab is active. */}
           {activeTab === "scan" ? (
             integrity === null ? (
               <View style={styles.loading}>
@@ -272,7 +272,7 @@ function SignedInApp({
         )}
       </BottomInsetProvider>
 
-      {/* İtilen ekranlar sekme çubuğunu kapatır; alt pay onlara uygulanmaz. */}
+      {/* Pushed screens cover the tab bar, so the bottom inset does not apply. */}
       <BottomInsetProvider value={0}>
         <PushedScreen visible={overlay === "notifications"}>
           <Notifications center={center} onBack={() => setOverlay(null)} />
@@ -320,10 +320,10 @@ function AppContent() {
     }
     if (hadSession.current) {
       hadSession.current = false;
-      // Oturumun kaybolduğu her yol buradan geçer: elle çıkış, hesap silme
-      // onayı, paylaşım tespitiyle iptal, süre dolması. Sağlık verisi cihazda
-      // oturumdan uzun yaşamamalı, bu yüzden temizlik Ayarlar ekranında değil
-      // burada duruyor — oturum zaten iptal edilmişken kimlik okunamaz.
+      // Every path that loses the session passes through here: manual sign-out,
+      // account deletion approval, revocation after sharing detection, or expiry.
+      // Health data must not outlive the session on the device, so cleanup lives
+      // here instead of Settings—the user ID is unavailable once the session ends.
       const userId = lastUserId.current;
       lastUserId.current = null;
       if (userId) void clearCalorieCalculatorState(userId);

@@ -18,9 +18,9 @@ import {
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 /**
- * Aynı aboneliğe iki hatırlatma arasında geçmesi gereken en kısa süre.
- * Hem elle gönderim hem otomatik süpürme buna uyar: personel az önce aradıysa
- * üyeye aynı gün ikinci bir posta gitmemeli.
+ * Minimum interval between two reminders for the same subscription. Manual
+ * sends and automatic sweeps both honor it: if staff just called, the member
+ * must not receive a second email that day.
  */
 export const REMINDER_COOLDOWN_MS = 24 * 60 * 60 * 1000;
 
@@ -29,15 +29,15 @@ export const MAX_RENEWAL_WINDOW_DAYS = 90;
 interface RenewalReminderFields {
   userId: ObjectId;
   subscriptionId: ObjectId;
-  /** Kaç gün kala gönderildi; elle gönderimde null. */
+  /** Days remaining when sent; null for manual sends. */
   thresholdDays: number | null;
   /**
-   * Otomatik süpürmenin ürettiği kayıtlar tekilleştirilir; elle gönderimler
-   * (personel aksiyonu) tekrarlanabilir olduğu için indeksin dışında kalır.
+   * Records produced by the automatic sweep are unique; manual sends (a staff
+   * action) are excluded from the index because they must be repeatable.
    */
   automatic: boolean;
   sentAt: Date;
-  /** Elle gönderen personelin e-postası; otomatikte null. */
+  /** Email of the staff member who sent it manually; null when automatic. */
   sentBy: string | null;
 }
 
@@ -50,12 +50,12 @@ export function renewalReminderCollection(
 }
 
 /**
- * Bitişe kalan TAKVİM günü sayısı (bugün bitiyorsa 0), salonun saat dilimine
- * göre.
+ * Number of CALENDAR days until expiration (0 when ending today), in the gym's
+ * time zone.
  *
- * Ham 24 saatlik fark kullanılamaz: 28 Temmuz 09:00'da 29 Temmuz 08:00'de
- * bitecek bir abonelik 23 saat uzaktadır ve tabana yuvarlanınca 0 çıkar —
- * üyeye "bugün sona eriyor" yazan bir posta giderdi, oysa yarın bitiyor.
+ * A raw 24-hour difference cannot be used: at 09:00 on July 28, a subscription
+ * ending at 08:00 on July 29 is 23 hours away and floors to 0—an email would say
+ * it ends today even though it ends tomorrow.
  */
 export function remainingDays(
   endsAt: Date,
@@ -68,11 +68,11 @@ export function remainingDays(
 }
 
 /**
- * Üyenin EN GEÇ aboneliğini bulan ortak boru hattı.
+ * Shared pipeline that finds the member's LATEST subscription.
  *
- * `$max` yerine sıralayıp `$first` alıyoruz: yalnızca bitiş tarihi değil o
- * aboneliğin kimliği de gerekli — hatırlatma tekilliği abonelik kimliğine
- * bağlı, en geç bitişli belge ise `$max: "$_id"` ile bulunamaz.
+ * Sort and take `$first` rather than `$max`: both the end date and subscription
+ * identity are needed—reminder uniqueness depends on the subscription ID, and
+ * `$max: "$_id"` cannot identify the document with the latest end date.
  */
 function latestSubscriptionStages(): Document[] {
   return [
@@ -113,9 +113,8 @@ export interface RenewalsPage {
 }
 
 /**
- * Aboneliği `withinDays` gün içinde bitecek üyeleri en yakın bitiş önce
- * sıralayarak sayfalar.
- * @throws InvalidCursorError imleç çözümlenemezse.
+ * Pages members whose subscriptions end within `withinDays`, nearest end first.
+ * @throws InvalidCursorError when the cursor cannot be decoded.
  */
 export async function listRenewalsDue(
   params: ListRenewalsParams,
@@ -136,7 +135,7 @@ export async function listRenewalsDue(
         : match,
     },
     { $sort: sortSpec("endsAt", "asc") },
-    // limit + 1: fazladan satır gelirse sonraki sayfa var demektir.
+    // limit + 1: an extra row means another page exists.
     { $limit: params.limit + 1 },
     {
       $lookup: {
@@ -202,7 +201,7 @@ export interface RenewalTarget {
   firstName: string;
 }
 
-/** Bir üyenin en geç aboneliğini hatırlatma için okur. */
+/** Reads a member's latest subscription for a reminder. */
 export async function findRenewalTarget(
   userId: ObjectId,
   database: Db = db,
@@ -245,17 +244,17 @@ export interface ReminderMailInput {
   firstName: string;
   endsAt: Date;
   remainingDays: number;
-  /** Tarih etiketinin yazıldığı saat dilimi; varsayılan salonun bölgesi. */
+  /** Time zone used for the date label; defaults to the gym's zone. */
   timeZone?: string;
 }
 
 /**
- * Hatırlatma e-postasının gövdesi. Üyeye doğrudan gider ve çeviri yapabilecek
- * bir istemci yoktur; bu yüzden metin Türkçedir (API hata mesajlarının aksine).
+ * Reminder email body. It goes directly to the member with no client available
+ * to translate it, so the localized Turkish content is retained intentionally.
  *
- * Tarih etiketi `remainingDays` ile AYNI saat dilimine yazılmalıdır. Bölge
- * sabitlenirse, salonu başka bir bölgeye kurulmuş bir işletmede "2 gün kaldı"
- * ile yanındaki tarih bir gün ayrışır ve posta kendi içinde çelişir.
+ * The date label must use the SAME time zone as `remainingDays`. If the zone is
+ * fixed, an operator running the gym in another region could show "2 days left"
+ * beside a date one day apart, making the email contradict itself.
  */
 export function buildReminderMail(input: ReminderMailInput): {
   subject: string;
@@ -270,8 +269,8 @@ export function buildReminderMail(input: ReminderMailInput): {
     input.remainingDays === 0
       ? "bugün sona eriyor"
       : `${input.remainingDays} gün sonra sona eriyor`;
-  // Konu satırındaki kalıp gövdede tekrarlanmaz: "31 Temmuz tarihinde 2 gün
-  // sonra sona eriyor" bozuk bir cümle olurdu.
+  // Do not repeat the subject pattern in the body: combining an explicit date
+  // with "ends in 2 days" in the same clause would be ungrammatical.
   const sentence =
     input.remainingDays === 0
       ? `${input.gymName} üyeliğiniz bugün (${endsAtLabel}) sona eriyor.`
@@ -300,14 +299,14 @@ export interface RecordReminderInput {
 }
 
 /**
- * Hatırlatmayı önce kaydeder, sonra postayı gönderir.
+ * Records the reminder before sending the email.
  *
- * Sıralama bilinçli: kayıt unique indekse çarparsa aynı eşik için ikinci bir
- * posta hiç gönderilmez. Posta gönderimi başarısız olursa kayıt geri alınır ki
- * bir sonraki süpürme yeniden denesin — aksi halde tek bir SMTP kesintisi
- * üyeyi hatırlatmasız bırakırdı.
+ * The order is intentional: if the record hits the unique index, no second email
+ * is sent for the same threshold. If sending fails, roll back the record so the
+ * next sweep retries—otherwise one SMTP outage would leave the member without a
+ * reminder.
  *
- * @returns Gönderildiyse kaydın zamanı; bu eşik için zaten gönderilmişse null.
+ * @returns Record time when sent, or null if already sent for this threshold.
  */
 export async function recordAndSendReminder(
   input: RecordReminderInput,
@@ -335,9 +334,9 @@ export async function recordAndSendReminder(
     await sendMail(mail);
   } catch (err) {
     await collection.deleteOne({ _id: insertedId }).catch((cleanupError) => {
-      // Temizlik başarısız olursa en kötü ihtimalle bu eşik atlanır; asıl
-      // gönderim hatasını gölgelememesi için yalnızca loglanır.
-      console.error("hatırlatma kaydı geri alınamadı:", cleanupError);
+      // If cleanup fails, this threshold is skipped in the worst case; only log
+      // it so it does not obscure the underlying send error.
+      console.error("reminder record could not be rolled back:", cleanupError);
     });
     throw err;
   }
@@ -345,7 +344,7 @@ export async function recordAndSendReminder(
   return input.sentAt;
 }
 
-/** Bu abonelik için en son gönderilen hatırlatmanın zamanı. */
+/** Time of the latest reminder sent for this subscription. */
 export async function findLastReminderAt(
   subscriptionId: ObjectId,
   database: Db = db,
@@ -357,14 +356,14 @@ export async function findLastReminderAt(
   return doc?.sentAt ?? null;
 }
 
-/** Bir hatırlatma denemesinin sonucu. */
+/** Outcome of a reminder attempt. */
 export type ReminderOutcome =
   | { status: "sent"; sentAt: Date }
-  /** Son 24 saatte zaten hatırlatılmış. */
+  /** Already reminded within the last 24 hours. */
   | { status: "cooled-down"; lastSentAt: Date }
-  /** Bu abonelik + eşik için otomatik posta zaten gönderilmiş. */
+  /** Automatic email already sent for this subscription and threshold. */
   | { status: "already-sent" }
-  /** Aynı abonelik için başka bir gönderim tam şu an sürüyor. */
+  /** Another send for the same subscription is currently in progress. */
   | { status: "busy" };
 
 export interface SendReminderInput {
@@ -374,7 +373,7 @@ export interface SendReminderInput {
   email: string;
   firstName: string;
   gymName: string;
-  /** Otomatik süpürmede eşik günü; elle gönderimde null. */
+  /** Threshold day in an automatic sweep; null for a manual send. */
   thresholdDays: number | null;
   automatic: boolean;
   sentBy: string | null;
@@ -384,13 +383,12 @@ export interface SendReminderInput {
 const SEND_LOCK_LEASE_MS = 30_000;
 
 /**
- * Bir aboneliğe hatırlatma göndermenin TEK giriş noktası.
+ * SINGLE entry point for sending a subscription reminder.
  *
- * Bekleme süresi kontrolü ile kaydın yazılması arasındaki boşluk abonelik
- * başına bir Redis kilidiyle kapatılır. Kilit olmadan iki personelin aynı anda
- * bastığı düğme (veya elle gönderimle çakışan süpürme turu) kontrolü birlikte
- * geçer ve üyeye iki posta giderdi; elle gönderilen kayıtlar kısmi unique
- * indeksin dışında olduğu için veritabanı bunu kendiliğinden engellemez.
+ * A per-subscription Redis lock closes the gap between the cooldown check and
+ * record creation. Without it, two staff clicks at once (or a sweep overlapping
+ * a manual send) could both pass the check and send two emails; because manual
+ * records are outside the partial unique index, the database cannot prevent it.
  */
 export async function sendRenewalReminder(
   input: SendReminderInput,
@@ -398,8 +396,8 @@ export async function sendRenewalReminder(
 ): Promise<ReminderOutcome> {
   const key = `og:lock:reminder:${input.subscriptionId.toHexString()}`;
   const token = randomUUID();
-  // Beklemeden vazgeçilir: kilit birindeyse o gönderim zaten bu aboneliği
-  // ele almış demektir, sıraya girmenin faydası yok.
+  // Give up without waiting: a held lock means that send is already handling
+  // this subscription, so queuing provides no benefit.
   if (!(await acquireLock(key, token, SEND_LOCK_LEASE_MS))) {
     return { status: "busy" };
   }
@@ -436,9 +434,9 @@ export async function sendRenewalReminder(
     return sentAt ? { status: "sent", sentAt } : { status: "already-sent" };
   } finally {
     await releaseLock(key, token).catch((err: unknown) => {
-      // Kilit lease ile kendiliğinden düşer; temizlik hatası asıl sonucu
-      // gölgelememeli.
-      console.error("hatırlatma kilidi bırakılamadı:", err);
+      // The lease releases the lock automatically; a cleanup error must not
+      // obscure the underlying result.
+      console.error("reminder lock could not be released:", err);
     });
   }
 }

@@ -1,18 +1,18 @@
 /**
- * Üyenin kendi profilinde sakladığı yaş/boy/kilo — mobil kalori
- * hesaplayıcının bu alanları otomatik doldurabilmesi için. Aralıklar
- * mobildeki `CALORIE_LIMITS` ile aynı (18–80 yaş, 120–230 cm, 35–300 kg);
- * paketler arası çalışma zamanı kodu paylaşılmadığından (`@opengym/shared`
- * yalnızca tip taşır) sınırlar burada ayrıca tanımlanır.
+ * Age, height, and weight stored in the member's profile so the mobile calorie
+ * calculator can populate these fields automatically. The ranges match
+ * `CALORIE_LIMITS` in mobile (ages 18–80, 120–230 cm, 35–300 kg); because no
+ * runtime code is shared across packages (`@opengym/shared` contains types
+ * only), the limits are also defined here.
  */
 
 export const AGE_RANGE = { min: 18, max: 80 } as const;
 export const HEIGHT_CM_RANGE = { min: 120, max: 230 } as const;
 export const WEIGHT_KG_RANGE = { min: 35, max: 300 } as const;
 
-export const INVALID_AGE_MESSAGE = "Yaş 18-80 aralığında tam sayı olmalı.";
-export const INVALID_HEIGHT_MESSAGE = "Boy 120-230 cm aralığında olmalı.";
-export const INVALID_WEIGHT_MESSAGE = "Kilo 35-300 kg aralığında olmalı.";
+export const INVALID_AGE_MESSAGE = "Age must be an integer between 18 and 80.";
+export const INVALID_HEIGHT_MESSAGE = "Height must be between 120 and 230 cm.";
+export const INVALID_WEIGHT_MESSAGE = "Weight must be between 35 and 300 kg.";
 
 export class InvalidBodyMetricError extends Error {
   constructor(message: string) {
@@ -39,16 +39,16 @@ function assertInRange(
 }
 
 /**
- * BetterAuth `update-user` gövdesinden gelen `age`/`heightCm`/`weightKg`
- * alanlarını doğrular. Bir alan istekte yoksa veya `null` ise dokunmaz — bu,
- * alanı temizlemek için kullanılabilir.
+ * Validates the `age`/`heightCm`/`weightKg` fields from the BetterAuth
+ * `update-user` body. A field is left untouched when absent or `null`, which
+ * can be used to clear it.
  */
 export const BODY_METRIC_FIELDS = ["age", "heightCm", "weightKg"] as const;
 export type BodyMetricField = (typeof BODY_METRIC_FIELDS)[number];
 
 /**
- * PATCH gövdesini Mongo güncellemesine çevirir: alan gönderilmemişse
- * dokunulmaz, `null` gönderilmişse `$unset` ile temizlenir, sayıysa `$set`.
+ * Converts the PATCH body into a Mongo update: an omitted field is left
+ * untouched, `null` clears it with `$unset`, and a number uses `$set`.
  */
 export function buildBodyMetricsUpdate(
   input: Partial<Record<BodyMetricField, number | null>>,

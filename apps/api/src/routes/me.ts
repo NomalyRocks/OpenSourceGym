@@ -62,7 +62,7 @@ import {
 
 export const meRouter: Router = Router();
 
-// Oturumdaki kullanıcının güncel profili (rol/bayrak DB'den taze okunur)
+// Current profile of the signed-in user (role/flags are read fresh from the DB)
 meRouter.get(
   "/profile",
   requireRole("admin", "staff", "member"),
@@ -71,7 +71,7 @@ meRouter.get(
   }),
 );
 
-// Üyenin kendi profil fotoğrafı: API görseli normalize edip R2'ye yazar.
+// Member's own profile photo: the API normalizes the image and writes it to R2.
 meRouter.put(
   "/profile-photo",
   requireRole("member"),
@@ -82,7 +82,7 @@ meRouter.put(
         res,
         400,
         "PROFILE_PHOTO_MISSING",
-        "Fotoğraf verisi gönderilmedi.",
+        "No photo data was provided.",
       );
       return;
     }
@@ -112,12 +112,12 @@ meRouter.put(
         sendApiError(res, 503, "PROFILE_PHOTO_UNAVAILABLE", error.message);
         return;
       }
-      console.error("Profil fotoğrafı yüklenemedi", error);
+      console.error("Failed to upload profile photo", error);
       sendApiError(
         res,
         503,
         "PROFILE_PHOTO_UNAVAILABLE",
-        "Profil fotoğrafı yüklenemedi. Lütfen tekrar deneyin.",
+        "Profile photo could not be uploaded. Please try again.",
       );
     }
   }),
@@ -141,18 +141,18 @@ meRouter.delete(
         sendApiError(res, 503, "PROFILE_PHOTO_UNAVAILABLE", error.message);
         return;
       }
-      console.error("Profil fotoğrafı kaldırılamadı", error);
+      console.error("Failed to remove profile photo", error);
       sendApiError(
         res,
         503,
         "PROFILE_PHOTO_UNAVAILABLE",
-        "Profil fotoğrafı kaldırılamadı. Lütfen tekrar deneyin.",
+        "Profile photo could not be removed. Please try again.",
       );
     }
   }),
 );
 
-// US-4: üyenin kendi abonelik durumu (mobil ana ekran)
+// US-4: member's own subscription status (mobile home screen)
 meRouter.get(
   "/subscription",
   requireRole("admin", "staff", "member"),
@@ -168,14 +168,13 @@ const myEntriesQuerySchema = z.object({
 });
 
 /**
- * Mobil takvimin geliş katmanı: üyenin KENDİ geçiş günleri.
+ * Attendance layer for the mobile calendar: the member's OWN entry days.
  *
- * Yalnızca izin verilen ve giriş yönündeki taramalar sayılır — çıkış turnikesi
- * taraması aynı güne ikinci bir geliş gibi yazılırdı. Yön artık taranan anda
- * `entry_events.direction` olarak kalıcı yazılır (cihaz sonradan silinse de
- * geçmiş kayıt doğru sınıflandırılmış kalır). Bu alan eklenmeden ÖNCE yazılmış
- * eski kayıtlarda `direction` yoktur; onlar için tek seferlik geriye dönük
- * uyum olarak hâlâ mevcut cihazların kimlik listesine bakılır.
+ * Only allowed scans in the entry direction count; otherwise an exit-gate scan
+ * would look like a second entry on the same day. Direction is now persisted as
+ * `entry_events.direction` at scan time, so history remains classified even if
+ * the device is later deleted. Legacy records written BEFORE this field lack
+ * `direction`; as a one-time compatibility fallback, use current device ids.
  */
 meRouter.get(
   "/entries",
@@ -183,13 +182,13 @@ meRouter.get(
   authed(async (req, res) => {
     const query = myEntriesQuerySchema.safeParse(req.query);
     if (!query.success) {
-      sendApiError(res, 400, "INVALID_REQUEST", "Geçersiz tarih aralığı.");
+      sendApiError(res, 400, "INVALID_REQUEST", "Invalid date range.");
       return;
     }
     const { from, to } = query.data;
     const span = dayLabelSpan(from, to);
     if (!Number.isFinite(span) || span < 0 || span > MAX_ENTRY_RANGE_DAYS) {
-      sendApiError(res, 400, "INVALID_REQUEST", "Geçersiz tarih aralığı.");
+      sendApiError(res, 400, "INVALID_REQUEST", "Invalid date range.");
       return;
     }
 
@@ -211,9 +210,9 @@ meRouter.get(
             allowed: true,
             at: { $gte: start, $lte: end },
             $or: [
-              // Yön kalıcı yazılmış (güncel kayıt) — cihaz silinmiş olsa da geçerli.
+              // Direction is persisted (current record), valid even if the device was deleted.
               { direction: "in" },
-              // Eski kayıt: yön yok, mevcut cihaz kimlik listesine bakılır.
+              // Legacy record: no direction, so consult the current device id list.
               {
                 direction: { $exists: false },
                 ...(outDeviceIds.length > 0
@@ -246,7 +245,7 @@ meRouter.get(
   }),
 );
 
-// Mobil takvimin kilo katmanı: weightKg her değiştiğinde eklenen geçmiş.
+// Weight layer for the mobile calendar: history appended whenever weightKg changes.
 meRouter.get(
   "/weight-history",
   requireRole("admin", "staff", "member"),
@@ -262,10 +261,10 @@ meRouter.get(
   }),
 );
 
-// Üyenin kendi yaş/boy/kilosu. BetterAuth'un `update-user` ucu yerine burada
-// duruyor: yazma yolu `requireRole` üzerinden geçmeli ki kullanıcı her istekte
-// Mongo'dan yeniden okunsun ve `mustChangePassword` bekleyen hesaplar
-// yazamasın (bkz. AGENTS.md, auth.ts additionalFields `input: false`).
+// Member's own age/height/weight. This lives here instead of BetterAuth's
+// `update-user` endpoint: writes must pass through `requireRole` so the user is
+// re-read from Mongo on every request and accounts with `mustChangePassword`
+// cannot write (see AGENTS.md, auth.ts additionalFields `input: false`).
 const bodyMetricsSchema = z
   .object({
     age: z.number().int().min(AGE_RANGE.min).max(AGE_RANGE.max).nullable(),
@@ -286,7 +285,7 @@ const BODY_METRICS_RATE_LIMIT = 10;
 const BODY_METRICS_RATE_WINDOW_SECONDS = 60;
 const BODY_METRICS_LOCK_TTL_MS = 5000;
 
-/** Kilo geçmişi her değişimde büyür; yazma ucu kullanıcı başına sınırlanır. */
+/** Weight history grows with every change; writes are rate-limited per user. */
 async function isBodyMetricsRateLimited(userId: string): Promise<boolean> {
   const key = `og:rl:body-metrics:${userId}`;
   const count = await redis.incr(key);
@@ -309,9 +308,9 @@ meRouter.patch(
       return;
     }
 
-    // Boşluk denetimi şemadan sonra: zod `{ age: undefined }` gövdesini
-    // geçirebilir ve geriye boş bir güncelleme kalır — updateOne boş belgeyle
-    // hata fırlatır. Kararı üretilen güncelleme belgesine göre veriyoruz.
+    // Check for emptiness after the schema: Zod may accept `{ age: undefined }`
+    // and leave an empty update, causing updateOne to throw on an empty document.
+    // Base the decision on the generated update document.
     const { set, unset } = buildBodyMetricsUpdate(parsed.data);
     if (Object.keys(set).length === 0 && Object.keys(unset).length === 0) {
       sendApiError(
@@ -333,9 +332,9 @@ meRouter.patch(
       return;
     }
 
-    // Kilit, profil yazımı ile kilo geçmişi eklemesini tek parça yapar:
-    // aynı üyenin eşzamanlı iki isteği araya girip geçmişi profildekiyle
-    // çelişen bir sırayla büyütemesin.
+    // The lock makes the profile write and weight-history append one unit, so
+    // two concurrent requests for one member cannot interleave and append
+    // history in an order inconsistent with the profile.
     const lockKey = `og:lock:body-metrics:${req.user.id}`;
     const lockToken = randomUUID();
     if (!(await acquireLock(lockKey, lockToken, BODY_METRICS_LOCK_TTL_MS))) {
@@ -356,29 +355,29 @@ meRouter.patch(
           ...(Object.keys(unset).length > 0 ? { $unset: unset } : {}),
         },
       );
-      // Hesap silme onayı bu istekle yarışmış olabilir. Eşleşen belge yoksa
-      // kullanıcı artık yok; geçmişe kayıt eklemek silinen sağlık verisini
-      // yeniden yaratırdı.
+      // Account deletion approval may have raced this request. If no document
+      // matched, the user is gone; appending history would recreate deleted
+      // health data.
       if (result.matchedCount !== 1) {
         sendApiError(res, 401, "AUTH_REQUIRED", "Account is no longer active.");
         return;
       }
 
-      // Kilo geçmişi yalnızca gerçek bir değer yazıldığında büyür; temizleme
-      // (null) geçmişe kayıt eklemez.
+      // Weight history grows only when a real value is written; clearing with
+      // null does not append a history record.
       if (typeof set.weightKg === "number") {
         await recordWeightHistoryIfChanged(req.user.id, set.weightKg);
       }
 
-      // Yanıt, yalnızca bu istekte yazılanları değil güncel tam durumu döner:
-      // istemci tek alan gönderdiğinde diğerlerini "temizlenmiş" sanmasın.
+      // Return the complete current state, not only fields written by this
+      // request, so the client does not treat other fields as cleared.
       const doc = await userCollection().findOne(
         { _id: new ObjectId(req.user.id) },
         { projection: { age: 1, heightCm: 1, weightKg: 1 } },
       );
-      // Sağlık verisi yazımı denetlenebilir olmalı (KVKK m.6 özel nitelikli
-      // veri). Yalnızca alan adları yazılır — audit_logs süresiz saklanır,
-      // değerlerin oraya kopyalanması silme hakkını delerdi.
+      // Health-data writes must be auditable (often sensitive-category data).
+      // Record only field names: audit_logs are retained indefinitely, and
+      // copying values there would undermine the right to erasure.
       await logAudit(req.user, "body-metrics-updated", req.user.id, {
         fields: [...Object.keys(set), ...Object.keys(unset)],
       });
@@ -399,7 +398,7 @@ const gateScanSchema = z.object({
   qr: z.string().min(1).max(200),
   lat: z.number().optional(),
   lng: z.number().optional(),
-  /** Android: expo-location sahte konum (mock location) tespiti — Faz 6 */
+  /** Android: expo-location mock-location detection — Phase 6 */
   mocked: z.boolean().optional(),
 });
 
@@ -414,25 +413,25 @@ const LOCATION_DRIFT_THRESHOLD_M = 1000;
 const GEOFENCE_MESSAGES: Record<"LOCATION_REQUIRED" | "OUT_OF_RANGE", string> =
   {
     LOCATION_REQUIRED:
-      "Konum bilgisi alınamadı. Konum servisini açıp tekrar deneyin.",
+      "Location information is unavailable. Enable location services and try again.",
     OUT_OF_RANGE:
-      "Salon konumunda görünmüyorsunuz. Geçiş yalnızca salonda yapılabilir.",
+      "You do not appear to be at the gym. Entry is allowed only on site.",
   };
 
-/** Basit hız sınırı: kullanıcı başına dakikada 30 tarama isteği. */
+/** Simple rate limit: 30 scan requests per user per minute. */
 async function isGateScanRateLimited(userId: string): Promise<boolean> {
   const key = `og:rl:gate-scan:${userId}`;
   const count = await redis.incr(key);
-  // NX: TTL yalnızca yoksa yazılır; incr/expire arasında çökme olursa sonraki
-  // istek TTL'i onarır (aksi halde anahtar süresiz kalıp kullanıcıyı kilitler)
+  // NX: set the TTL only when absent; if a crash occurs between incr and expire,
+  // the next request repairs it, avoiding a permanent key that locks the user.
   await redis.expire(key, GATE_SCAN_RATE_WINDOW_SECONDS, "NX");
   return count > GATE_SCAN_RATE_LIMIT;
 }
 
 /**
- * İsteği yapan cihazın kimliği. Ham oturum token'ı hiçbir zaman sinyal/audit
- * kaydına yazılmaz — parmak izi header'ı yoksa (ör. iOS, web) token'ın
- * SHA-256 hash'i cihaz kimliği yerine geçer (geri döndürülemez, tek yönlü).
+ * Identity of the requesting device. The raw session token is never written to
+ * signal/audit records. Without a fingerprint header (for example iOS or web),
+ * a one-way SHA-256 token hash stands in for the device identity.
  */
 function resolveDeviceFingerprint(req: AuthedRequest): string | null {
   const headerFp = req.header("x-device-fingerprint");
@@ -443,9 +442,9 @@ function resolveDeviceFingerprint(req: AuthedRequest): string | null {
 }
 
 /**
- * Faz 6: iki farklı cihazdan kısa aralıkla, birbirinden uzak konumlarda tarama
- * istekleri gelmesi hesap paylaşımı şüphesi olarak kaydedilir (istek
- * reddedilmez — yalnızca sinyal olarak işlenir).
+ * Phase 6: scan requests from two devices at distant locations within a short
+ * interval are recorded as suspected account sharing. The request is not
+ * rejected; it is processed only as a signal.
  */
 async function recordLocationDrift(
   req: AuthedRequest,
@@ -484,14 +483,14 @@ async function recordLocationDrift(
   );
 }
 
-/** Salon konumu tanımlıysa mesafe kontrolü; geçerse null döner. */
+/** Checks distance when the gym location is configured; returns null on success. */
 async function checkGymGeofence(
   lat: number | undefined,
   lng: number | undefined,
 ): Promise<"LOCATION_REQUIRED" | "OUT_OF_RANGE" | null> {
   const settings = await findGymSettings();
   const location = settings?.location;
-  // Operatör konum doğrulamayı yapılandırmamışsa mesafe kontrolü atlanır
+  // Skip the distance check if the operator has not configured location validation.
   if (!location) return null;
   if (typeof lat !== "number" || typeof lng !== "number") {
     return "LOCATION_REQUIRED";
@@ -500,14 +499,14 @@ async function checkGymGeofence(
   return distance > location.radiusM ? "OUT_OF_RANGE" : null;
 }
 
-// US-7: üyenin turnikeye yapıştırılmış statik QR'ı okutup geçiş talep etmesi
+// US-7: member scans the static QR attached to the gate to request entry
 meRouter.post(
   "/gate-scan",
   requireRole("admin", "staff", "member"),
   authed(async (req, res) => {
     const parsed = gateScanSchema.safeParse(req.body ?? {});
     if (!parsed.success) {
-      sendApiError(res, 400, "INVALID_REQUEST", "Geçersiz istek.");
+      sendApiError(res, 400, "INVALID_REQUEST", "Invalid request.");
       return;
     }
     const { qr, lat, lng, mocked } = parsed.data;
@@ -517,14 +516,14 @@ meRouter.post(
         res,
         429,
         "RATE_LIMITED",
-        "Çok fazla istek. Lütfen biraz bekleyin.",
+        "Too many requests. Please wait a moment.",
       );
       return;
     }
 
     const verified = verifyGateQr(qr);
     if (!verified.ok) {
-      // Cihaz çözülemedi — olay yine de denetim izine boş cihazla yazılır
+      // Device could not be resolved; still record the event with an empty device.
       enqueueEntryEvent({
         deviceId: "",
         deviceName: "",
@@ -539,21 +538,21 @@ meRouter.post(
         res,
         403,
         "INVALID_QR",
-        "Geçersiz QR kodu. Turnikedeki kodu tekrar okutun.",
+        "Invalid QR code. Scan the code on the gate again.",
       );
       return;
     }
     const { deviceId } = verified;
 
-    // Cihaz, sonraki tüm ret kayıtlarında adıyla görünebilsin diye reddetme
-    // kontrollerinden önce okunur
+    // Read the device before rejection checks so its name appears in every
+    // subsequent denial record.
     const device = await db
       .collection("devices")
       .findOne({ _id: new ObjectId(deviceId) });
     const deviceName = device ? (device.name as string) : "";
     const direction = (device?.direction as "in" | "out" | undefined) ?? "in";
 
-    // Her ret hem yanıtı hem entry_events denetim kaydını üretir
+    // Every denial produces both a response and an entry_events audit record.
     const deny = (reason: GateRejectCode, message: string): void => {
       enqueueEntryEvent({
         deviceId,
@@ -571,39 +570,38 @@ meRouter.post(
     if (!device) {
       deny(
         "UNKNOWN_DEVICE",
-        "Bu turnike artık kayıtlı değil. Resepsiyona başvurun.",
+        "This gate is no longer registered. Contact reception.",
       );
       return;
     }
 
-    // Faz 6: eskalasyon eşiğini aşan hesaplarda geçiş geçici olarak kapalıdır
+    // Phase 6: gate access is temporarily blocked for accounts above the escalation threshold.
     if (await isQrBlocked(req.user.id)) {
       deny(
         "SHARING_BLOCKED",
-        "Hesabınızda olağan dışı kullanım tespit edildi. Geçiş geçici olarak kapatıldı. Lütfen resepsiyona başvurun.",
+        "Unusual activity was detected on your account. Entry is temporarily blocked. Contact reception.",
       );
       return;
     }
 
-    // Faz 6: expo-location "mocked" bayrağı true ise sahte konum uygulaması
-    // tespit edilmiştir — geçiş reddedilir. Bu kontrol salon konumu
-    // yapılandırılmamış olsa bile çalışır ve konum geçmişi (QR_LOC_KEY)
-    // yazılmadan ÖNCE yapılır: sahte koordinatlar konum tutarsızlığı
-    // sinyalini beslememeli
+    // Phase 6: expo-location's "mocked" flag identifies fake-location apps and
+    // denies entry. This works even without a configured gym location and runs
+    // BEFORE writing location history (QR_LOC_KEY), so fake coordinates do not
+    // feed the location-inconsistency signal.
     if (mocked === true) {
       await recordSharingSignal(req.user, "mock-location", { lat, lng });
       deny(
         "MOCK_LOCATION",
-        "Sahte konum tespit edildi. Konum taklit uygulamalarını kapatıp tekrar deneyin.",
+        "Mock location detected. Disable location-spoofing apps and try again.",
       );
       return;
     }
 
-    // Çıkışta abonelik aranmaz — süresi bitmiş üye de dışarı çıkabilmeli
+    // Do not check subscriptions on exit; a member with an expired subscription must be able to leave.
     if (direction === "in" && !(await hasActiveSubscription(req.user.id))) {
       deny(
         "NO_ACTIVE_SUBSCRIPTION",
-        "Aktif aboneliğiniz yok. Salon resepsiyonuna başvurun.",
+        "You do not have an active subscription. Contact gym reception.",
       );
       return;
     }
@@ -618,7 +616,7 @@ meRouter.post(
       return;
     }
 
-    // Kısa süreli çift tarama kilidi: aynı üye+cihaz için ard arda taramalar
+    // Short duplicate-scan lock for consecutive scans by the same member and device.
     const lockKey = `og:gate-open:${req.user.id}:${deviceId}`;
     const lockToken = randomUUID();
     if (!(await acquireLock(lockKey, lockToken, GATE_OPEN_LOCK_TTL_MS))) {
@@ -626,19 +624,16 @@ meRouter.post(
         res,
         429,
         "RATE_LIMITED",
-        "Çok fazla istek. Lütfen biraz bekleyin.",
+        "Too many requests. Please wait a moment.",
       );
       return;
     }
 
     if (!openDevice(deviceId, GATE_OPEN_MS)) {
-      // Kapı açılmadı — kilit tutulmasın ki üye bağlantı gelince hemen
-      // yeniden deneyebilsin
+      // The gate did not open; release the lock so the member can retry as soon
+      // as the connection returns.
       await releaseLock(lockKey, lockToken);
-      deny(
-        "DEVICE_OFFLINE",
-        "Turnike bağlantısı yok. Lütfen resepsiyona başvurun.",
-      );
+      deny("DEVICE_OFFLINE", "The gate is offline. Contact reception.");
       return;
     }
 
@@ -668,7 +663,7 @@ meRouter.post(
   }),
 );
 
-// Faz 5 — US-4: anlık salon doluluğu
+// Phase 5 — US-4: live gym occupancy
 meRouter.get(
   "/occupancy",
   requireRole("admin", "staff", "member"),
@@ -685,7 +680,7 @@ meRouter.get(
   },
 );
 
-// Faz 5 — KVKK: üyenin kendi hesap silme talebi durumu
+// Phase 5 — Data protection: member's own account deletion request status
 meRouter.get(
   "/deletion-request",
   requireRole("admin", "staff", "member"),
@@ -713,7 +708,7 @@ meRouter.get(
   }),
 );
 
-// KVKK: hesap silme talebi oluşturma — yalnızca üye rolü kendi hesabı için talep açabilir
+// Data protection: create an account deletion request — members may request only for their own account
 meRouter.post(
   "/deletion-request",
   requireRole("admin", "staff", "member"),
@@ -728,10 +723,10 @@ meRouter.post(
       return;
     }
     const userId = new ObjectId(req.user.id);
-    // Tekilliği garanti eden şey bu kontrol değil, deletion_requests üzerindeki
-    // partial unique index'tir: "önce oku sonra yaz" atomik olmadığından
-    // eşzamanlı iki istek aynı üyeye iki bekleyen talep açabilirdi. Buradaki
-    // ön kontrol yalnızca yaygın durumda daha ucuz bir yol.
+    // This check does not guarantee uniqueness; the partial unique index on
+    // deletion_requests does. Read-then-write is not atomic, so concurrent
+    // requests could create two pending requests for one member. This precheck
+    // is only a cheaper path for the common case.
     const existingPending = await db
       .collection("deletion_requests")
       .findOne({ userId, status: "pending" });
@@ -766,12 +761,12 @@ meRouter.post(
       }
       throw err;
     }
-    await logAudit(req.user, "kvkk-deletion-requested");
+    await logAudit(req.user, "account-deletion-requested");
     res.json({ ok: true });
   }),
 );
 
-// KVKK: bekleyen silme talebini geri çekme
+// Data protection: withdraw a pending deletion request
 meRouter.delete(
   "/deletion-request",
   requireRole("admin", "staff", "member"),
@@ -785,11 +780,11 @@ meRouter.delete(
         res,
         404,
         "DELETION_NOT_PENDING",
-        "Bekleyen bir silme talebi bulunamadı.",
+        "No pending deletion request was found.",
       );
       return;
     }
-    await logAudit(req.user, "kvkk-deletion-cancelled");
+    await logAudit(req.user, "account-deletion-cancelled");
     res.json({ ok: true });
   }),
 );

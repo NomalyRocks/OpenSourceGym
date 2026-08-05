@@ -4,7 +4,7 @@ function toRadians(deg: number): number {
   return (deg * Math.PI) / 180;
 }
 
-// Haversine formülü ile iki koordinat arası kuş uçuşu mesafe (metre)
+// Straight-line distance between two coordinates using the Haversine formula (meters)
 export function distanceMeters(
   lat1: number,
   lng1: number,

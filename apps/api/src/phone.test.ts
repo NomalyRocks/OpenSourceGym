@@ -7,7 +7,7 @@ import {
 } from "./phone.js";
 import { planLegacyPhoneBackfill } from "./phoneBackfillPlan.js";
 
-test("Türkiye numaralarının yaygın yazımları aynı E.164 değerine dönüşür", () => {
+test("common Turkish phone formats normalize to the same E.164 value", () => {
   for (const input of [
     "5301234567",
     "05301234567",
@@ -18,11 +18,11 @@ test("Türkiye numaralarının yaygın yazımları aynı E.164 değerine dönü�
   }
 });
 
-test("artı işaretli geçerli uluslararası numara korunur", () => {
+test("preserves a valid international number with a plus sign", () => {
   assert.equal(normalizePhoneToE164("+1 213 373 4253"), "+12133734253");
 });
 
-test("geçersiz numaralar ve metin içinden ayıklama reddedilir", () => {
+test("rejects invalid numbers and extraction from text", () => {
   for (const input of [
     "",
     "123",
@@ -34,7 +34,7 @@ test("geçersiz numaralar ve metin içinden ayıklama reddedilir", () => {
   }
 });
 
-test("eski tekil telefonlar atanır, mükerrerler değiştirilmeden raporlanır", () => {
+test("assigns unique legacy phones and reports duplicates unchanged", () => {
   const plan = planLegacyPhoneBackfill([
     { userId: "unique", phone: "05301234567" },
     { userId: "duplicate-a", phone: "532 123 45 67" },
@@ -55,7 +55,7 @@ test("eski tekil telefonlar atanır, mükerrerler değiştirilmeden raporlanır"
   assert.deepEqual(plan.invalidUserIds, ["invalid"]);
 });
 
-test("önceden normalize edilmiş tekil belge ikinci çalışmada değişmez", () => {
+test("a previously normalized unique document is unchanged on the second run", () => {
   assert.deepEqual(
     planLegacyPhoneBackfill([
       {

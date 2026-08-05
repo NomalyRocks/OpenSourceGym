@@ -49,15 +49,15 @@ interface DayCell {
   inMonth: boolean;
 }
 
-/** Ayı, kenarları komşu aylardan tamamlanmış 7'lik satırlara böler. */
+/** Splits the month into seven-day rows padded with adjacent-month days. */
 function buildGrid(month: Date): DayCell[] {
   const first = startOfMonth(month);
   const leading = (first.getDay() - WEEK_START + 7) % 7;
   const cells: DayCell[] = [];
   const cursor = new Date(first.getFullYear(), first.getMonth(), 1 - leading);
 
-  // 6 satır × 7 gün: ay uzunluğu değişse de ızgara yüksekliği sabit kalır,
-  // aylar arasında geçerken yerleşim zıplamaz.
+  // 6 rows × 7 days: the grid height stays fixed as month length changes, so
+  // the layout does not jump when moving between months.
   for (let index = 0; index < 42; index += 1) {
     const date = new Date(
       cursor.getFullYear(),
@@ -123,7 +123,11 @@ export function Calendar({ active = true }: { active?: boolean }) {
       setSubscriptionError(null);
     } else {
       setSubscriptionError(
-        errorMessage(subscriptionResult.reason, t, "Üyelik bilgisi alınamadı."),
+        errorMessage(
+          subscriptionResult.reason,
+          t,
+          "Membership data could not be loaded.",
+        ),
       );
     }
     setSubscriptionLoaded(true);
@@ -134,19 +138,23 @@ export function Calendar({ active = true }: { active?: boolean }) {
     } else {
       setAttendance([]);
       setAttendanceError(
-        errorMessage(attendanceResult.reason, t, "Geliş geçmişi alınamadı."),
+        errorMessage(
+          attendanceResult.reason,
+          t,
+          "Visit history could not be loaded.",
+        ),
       );
     }
     setAttendanceLoaded(true);
 
-    // Kilo geçmişi ikincil bir gösterim: çekilemezse detay satırı sessizce
-    // gizlenir, önceki değer korunur.
+    // Weight history is secondary: if it cannot load, hide the detail row
+    // silently and retain the previous value.
     if (weightHistoryResult.status === "fulfilled") {
       setWeightHistory(weightHistoryResult.value);
     }
 
-    // Kalori hedefi üyeye aittir; profil alınamazsa veya cihazda kayıtlı
-    // hesaplayıcı girdisi yoksa detay satırı sessizce gizlenir.
+    // The calorie target belongs to the member; if the profile cannot be loaded
+    // or the device has no saved calculator input, hide the detail row silently.
     if (profileResult.status === "fulfilled") {
       setUserId(profileResult.value.id);
       setCalorieCalculatorState(
@@ -161,9 +169,9 @@ export function Calendar({ active = true }: { active?: boolean }) {
     void load();
   }, [load]);
 
-  // Hesaplayıcı Araçlar sekmesinde çalışır ve bu ekran arka planda monte
-  // kalır; sekmeye her dönüşte cihazdaki hedefi yeniden okuyoruz, yoksa yeni
-  // hesaplanan hedef bir sonraki ay değişimine kadar görünmezdi.
+  // The calculator runs in the Tools tab while this screen remains mounted in
+  // the background; reread the on-device target whenever the tab becomes active,
+  // or a newly calculated target would remain hidden until the next month change.
   useEffect(() => {
     if (!active || userId == null) return;
     let cancelled = false;
@@ -203,7 +211,7 @@ export function Calendar({ active = true }: { active?: boolean }) {
 
   const weekdayLabels = useMemo(() => {
     const formatter = new Intl.DateTimeFormat(locale, { weekday: "short" });
-    // 2024-01-01 bir pazartesidir; hafta başlangıcından itibaren yedi gün.
+    // 2024-01-01 is a Monday; seven days from the start of the week.
     return Array.from({ length: 7 }, (_, index) =>
       formatter.format(new Date(2024, 0, 1 + index)),
     );
@@ -254,13 +262,13 @@ export function Calendar({ active = true }: { active?: boolean }) {
   return (
     <ScrollScreen refreshing={refreshing} onRefresh={refresh}>
       <ScreenHeader
-        title={t("Takvim")}
-        subtitle={t("Üyelik dönemini ve salon geçmişini gün gün gör.")}
+        title={t("Calendar")}
+        subtitle={t("See your membership period and gym history day by day.")}
       />
 
       <StatusMessage
         text={subscriptionError ?? attendanceError}
-        actionLabel={t("Tekrar dene")}
+        actionLabel={t("Try again")}
         onAction={() => void load()}
       />
 
@@ -268,7 +276,7 @@ export function Calendar({ active = true }: { active?: boolean }) {
         <View style={styles.monthBar}>
           <Pressable
             accessibilityRole="button"
-            accessibilityLabel={t("Önceki ay")}
+            accessibilityLabel={t("Previous month")}
             onPress={() => setMonth((current) => addMonths(current, -1))}
             style={({ pressed }) => [
               styles.monthNav,
@@ -282,7 +290,7 @@ export function Calendar({ active = true }: { active?: boolean }) {
           </Text>
           <Pressable
             accessibilityRole="button"
-            accessibilityLabel={t("Sonraki ay")}
+            accessibilityLabel={t("Next month")}
             onPress={() => setMonth((current) => addMonths(current, 1))}
             style={({ pressed }) => [
               styles.monthNav,
@@ -314,8 +322,8 @@ export function Calendar({ active = true }: { active?: boolean }) {
               const isToday = cell.key === todayKey;
               const isSelected = cell.key === selected;
               const entries = attendanceByDay.get(cell.key) ?? 0;
-              // Geliş yalnızca ayın kendi günlerinde işaretlenir: komşu ay
-              // günleri için veri çekilmiyor, yeşil kenar boşluğu yanıltırdı.
+              // Mark visits only on days belonging to the current month: data
+              // is not fetched for adjacent-month days, so a green border would mislead.
               const visited = entries > 0 && cell.inMonth;
               const isBoundary =
                 membership != null &&
@@ -331,14 +339,14 @@ export function Calendar({ active = true }: { active?: boolean }) {
                       day: "numeric",
                       month: "long",
                     }).format(cell.date),
-                    visited ? t("{{n}} geliş", { n: entries }) : null,
+                    visited ? t("{{n}} visits", { n: entries }) : null,
                   ]
                     .filter(Boolean)
                     .join(", ")}
                   onPress={() => setSelected(cell.key)}
-                  // Geliş, üyelik/bugün/seçim katmanlarının HEPSİNİN üstüne
-                  // yazar: bu katmanlar vurgu rengini taşıdığından altta
-                  // kalsaydı gelinen gün mavi görünür, sinyal kaybolurdu.
+                  // Attendance overrides ALL membership/today/selection layers:
+                  // because those layers use the accent color, placing it below
+                  // them would make a visited day look blue and lose the signal.
                   style={({ pressed }) => [
                     styles.cell,
                     covered && cell.inMonth && styles.cellCovered,
@@ -377,15 +385,15 @@ export function Calendar({ active = true }: { active?: boolean }) {
         <View style={styles.legend}>
           <View style={styles.legendItem}>
             <View style={[styles.legendSwatch, styles.legendCovered]} />
-            <Text style={styles.legendLabel}>{t("Üyelik dönemi")}</Text>
+            <Text style={styles.legendLabel}>{t("Membership period")}</Text>
           </View>
           <View style={styles.legendItem}>
             <View style={[styles.legendSwatch, styles.legendToday]} />
-            <Text style={styles.legendLabel}>{t("Bugün")}</Text>
+            <Text style={styles.legendLabel}>{t("Today")}</Text>
           </View>
           <View style={styles.legendItem}>
             <View style={[styles.legendSwatch, styles.legendVisited]} />
-            <Text style={styles.legendLabel}>{t("Geliş")}</Text>
+            <Text style={styles.legendLabel}>{t("Visit")}</Text>
           </View>
         </View>
       </Plate>
@@ -394,17 +402,17 @@ export function Calendar({ active = true }: { active?: boolean }) {
         <SectionHeading title={selectedLabel} />
         <Plate>
           <View style={styles.detailRow}>
-            <Text style={styles.detailLabel}>{t("Üyelik")}</Text>
+            <Text style={styles.detailLabel}>{t("Membership")}</Text>
             <Text style={styles.detailValue}>
               {membership == null
-                ? t("Tanımlı değil")
+                ? t("Not set")
                 : inMembership(selected)
-                  ? t("Kapsam içinde")
-                  : t("Kapsam dışında")}
+                  ? t("Within coverage")
+                  : t("Outside coverage")}
             </Text>
           </View>
           <View style={styles.detailRow}>
-            <Text style={styles.detailLabel}>{t("Geliş")}</Text>
+            <Text style={styles.detailLabel}>{t("Visit")}</Text>
             <Text
               style={[
                 styles.detailValue,
@@ -414,13 +422,13 @@ export function Calendar({ active = true }: { active?: boolean }) {
               {attendanceError != null
                 ? "—"
                 : selectedEntries > 0
-                  ? t("{{n}} kayıt", { n: selectedEntries })
-                  : t("Geliş yok")}
+                  ? t("{{n}} records", { n: selectedEntries })
+                  : t("No visit")}
             </Text>
           </View>
           {selectedWeightKg != null ? (
             <View style={styles.detailRow}>
-              <Text style={styles.detailLabel}>{t("Kilo")}</Text>
+              <Text style={styles.detailLabel}>{t("Weight")}</Text>
               <Text style={styles.detailValue}>
                 {new Intl.NumberFormat(i18n.resolvedLanguage, {
                   maximumFractionDigits: 1,
@@ -431,9 +439,9 @@ export function Calendar({ active = true }: { active?: boolean }) {
           ) : null}
           {formattedCalorieTarget != null ? (
             <View style={styles.detailRow}>
-              <Text style={styles.detailLabel}>{t("Kalori hedefi")}</Text>
+              <Text style={styles.detailLabel}>{t("Calorie target")}</Text>
               <Text style={styles.detailValue}>
-                {t("{{kcal}} kcal/gün", { kcal: formattedCalorieTarget })}
+                {t("{{kcal}} kcal/day", { kcal: formattedCalorieTarget })}
               </Text>
             </View>
           ) : null}
@@ -445,9 +453,9 @@ export function Calendar({ active = true }: { active?: boolean }) {
       attendance.length === 0 ? (
         <EmptyState
           icon={<CalendarGlyph size={24} color={theme.colors.textTertiary} />}
-          title={t("Bu ay geliş kaydın yok")}
+          title={t("No visits recorded this month")}
           body={t(
-            "Turnikeden her geçişin bu takvimde yeşil işaretlenir. Antrenmana başladığında günler burada dolmaya başlar.",
+            "Every turnstile entry is marked green on this calendar. Days start filling in here once you begin training.",
           )}
         />
       ) : null}
@@ -516,18 +524,18 @@ const calendarStyles = (theme: Theme) =>
       gap: 2,
     },
     cellCovered: { backgroundColor: theme.colors.accentSurface },
-    // Geliş, üyelik tonunun üzerine yazar: gün gerçekten kullanıldıysa takvimde
-    // öne çıkan sinyal budur.
+    // Attendance overrides the membership tint: when the day was actually used,
+    // that is the primary signal on the calendar.
     cellVisited: {
       backgroundColor: theme.colors.successSurface,
       borderColor: theme.colors.success,
     },
-    // Bugün gelinmişse yeşil kalır; "bugün" işareti kenar kalınlığına düşer.
-    // Kenar içeriye çizilir, hücre ölçüsü değişmez.
+    // A visited today remains green; the "today" marker falls back to border
+    // thickness. The border draws inward, so the cell dimensions do not change.
     cellVisitedToday: { borderWidth: 2 },
-    // Seçili gün gelinmişse zemin de yeşile döner: vurgu mavisi burada gelişi
-    // gizlerdi. Yazı/nokta `onAccent` — jeton hem vurgu hem başarı renginin
-    // üstünde okunacak polariteye sahip.
+    // If the selected day was visited, its background also turns green: accent
+    // blue would hide the visit. Text/dot use `onAccent`—the token has a polarity
+    // readable on both accent and success colors.
     cellVisitedSelected: {
       backgroundColor: theme.colors.success,
       borderColor: theme.colors.success,
@@ -554,7 +562,7 @@ const calendarStyles = (theme: Theme) =>
       backgroundColor: "transparent",
     },
     cellDotOn: { backgroundColor: theme.colors.success },
-    // Seçili gün zemini vurgu rengine döner; yeşil nokta orada okunmaz.
+    // The selected day's background becomes the accent color; a green dot is unreadable there.
     cellDotOnSelected: { backgroundColor: theme.colors.onAccent },
 
     legend: {

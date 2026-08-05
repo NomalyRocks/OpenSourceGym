@@ -17,13 +17,13 @@ const PING_INTERVAL_MS = 30_000;
 interface DeviceSocket extends WebSocket {
   deviceId?: string;
   deviceName?: string;
-  // Turnike yönü: "in" giriş (doluluk +1, abonelik kontrolü var), "out" çıkış
-  // (doluluk -1, abonelik kontrolü yok)
+  // Turnstile direction: "in" means entry (occupancy +1, subscription checked),
+  // "out" means exit (occupancy -1, no subscription check)
   direction?: DeviceDirection;
   isAlive?: boolean;
 }
 
-// Kimliği doğrulanmış turnike cihazı bağlantıları — deviceId -> soket
+// Authenticated turnstile device connections—deviceId -> socket
 const devices = new Map<string, DeviceSocket>();
 
 function send(ws: WebSocket, msg: DeviceServerMessage): void {
@@ -39,7 +39,7 @@ function touchLastSeen(deviceId: string): void {
     .catch(console.error);
 }
 
-// Aynı cihaz kimliğiyle yeni bir bağlantı geldiğinde eskisini kapatıp yenisini kaydeder
+// Closes the old connection and registers the new one for the same device ID
 function registerDevice(id: string, ws: DeviceSocket): void {
   const existing = devices.get(id);
   if (existing && existing !== ws) {
@@ -48,8 +48,8 @@ function registerDevice(id: string, ws: DeviceSocket): void {
   devices.set(id, ws);
 }
 
-// Registry'den yalnızca hâlâ aynı soketi işaret ediyorsa siler (yer değiştirmiş
-// bağlantıyı bozmaz); kayıt gerçekten kaldırıldığında KPI-4 için "offline" loglanır
+// Deletes from the registry only if it still points to the same socket (does not
+// disrupt a replacement connection); logs "offline" for KPI-4 only on actual removal
 function unregisterDevice(id: string, ws: DeviceSocket): void {
   if (devices.get(id) === ws) {
     devices.delete(id);
@@ -70,7 +70,7 @@ export function disconnectDevice(id: string): void {
   }
 }
 
-// Bağlı cihaza röle açma komutu gönderir; cihaz bağlı/açık değilse false döner
+// Sends a relay-open command to a connected device; returns false if unavailable
 export function openDevice(id: string, openMs: number): boolean {
   const ws = devices.get(id);
   if (!ws || ws.readyState !== WebSocket.OPEN) {
@@ -80,8 +80,8 @@ export function openDevice(id: string, openMs: number): boolean {
   return true;
 }
 
-// Kimlik doğrulama başarısızlığı: sebep ne olursa olsun (kötü mesaj, bilinmeyen
-// cihaz, yanlış token, zaman aşımı) istemciye aynı mesaj gönderilip bağlantı kapatılır
+// Authentication failure: regardless of cause (bad message, unknown device,
+// invalid token, timeout), send the same message to the client and close the connection
 function failAuth(ws: WebSocket): void {
   send(ws, {
     type: "auth_error",
@@ -109,13 +109,13 @@ async function authenticate(
   try {
     const msg: unknown = JSON.parse(raw.toString());
     if (!isAuthMessage(msg) || !ObjectId.isValid(msg.deviceId)) {
-      throw new Error("geçersiz kimlik doğrulama mesajı");
+      throw new Error("invalid authentication message");
     }
     const device = await db
       .collection("devices")
       .findOne({ _id: new ObjectId(msg.deviceId) });
     if (!device) {
-      throw new Error("bilinmeyen cihaz");
+      throw new Error("unknown device");
     }
     const tokenHash = createHash("sha256").update(msg.token).digest();
     const storedHash = Buffer.from(String(device.tokenHash), "hex");
@@ -123,7 +123,7 @@ async function authenticate(
       tokenHash.length !== storedHash.length ||
       !timingSafeEqual(tokenHash, storedHash)
     ) {
-      throw new Error("geçersiz token");
+      throw new Error("invalid token");
     }
 
     ws.deviceId = msg.deviceId;
@@ -134,32 +134,32 @@ async function authenticate(
     send(ws, { type: "auth_ok", deviceName: ws.deviceName });
     touchLastSeen(msg.deviceId);
     logDeviceStatus(msg.deviceId, true);
-    // Cihaz artık dumb client: auth sonrası yalnızca "open" komutu dinler,
-    // kendisinden gelen mesajlar yok sayılır (eski firmware'i çökertmemek için).
-    // Eski firmware her QR okutuşunda "scan" gönderir — log seli olmasın diye
-    // bağlantı başına yalnızca bir kez uyarılır.
+    // The device is now a dumb client: after auth it only listens for "open"
+    // commands; incoming messages are ignored to avoid crashing old firmware.
+    // Old firmware sends "scan" for every QR read—warn only once per connection
+    // to prevent a log flood.
     let warnedUnexpectedMessage = false;
     ws.on("message", () => {
       if (warnedUnexpectedMessage) return;
       warnedUnexpectedMessage = true;
       console.warn(
-        "cihazdan beklenmeyen mesaj (bu bağlantıda yok sayılacak):",
+        "unexpected message from device (ignored for this connection):",
         ws.deviceName,
       );
     });
   } catch (err) {
-    console.warn("cihaz kimlik doğrulaması başarısız:", err);
+    console.warn("device authentication failed:", err);
     failAuth(ws);
   }
 }
 
 export function attachDeviceGateway(server: Server): void {
-  // Sunucu çöktükten/yeniden başladıktan sonra "online: true" takılı kalmış
-  // durum kayıtlarını kapatır (KPI-4 uptime hesaplaması yanlış şişmesin diye)
+  // Closes status records stuck at "online: true" after a server crash/restart
+  // so KPI-4 uptime is not incorrectly inflated
   sweepStaleOnlineStatus();
 
-  // maxPayload: cihaz mesajı (auth) 1 KB altındadır; büyük frame'lerle
-  // kimlik doğrulaması öncesi bellek tüketimini engeller
+  // maxPayload: the device auth message is below 1 KB; prevent pre-auth memory
+  // consumption through large frames
   const wss = new WebSocketServer({ noServer: true, maxPayload: 4 * 1024 });
 
   server.on("upgrade", (req, socket, head) => {
@@ -192,10 +192,11 @@ export function attachDeviceGateway(server: Server): void {
   wss.on("connection", (ws: DeviceSocket) => {
     let authenticated = false;
 
-    // error dinleyicisi zorunlu: dinleyicisiz "error" event'i süreci çökertir
-    // (ör. maxPayload aşımı, protokol ihlali, ECONNRESET) — ws bağlantıyı kendisi kapatır
+    // The error listener is required: without one, an "error" event crashes the
+    // process (for example maxPayload exceeded, protocol violation, ECONNRESET)—
+    // ws closes the connection itself
     ws.on("error", (err) => {
-      console.warn("cihaz soketi hatası:", err.message);
+      console.warn("device socket error:", err.message);
     });
 
     const authTimer = setTimeout(() => {
@@ -211,7 +212,7 @@ export function attachDeviceGateway(server: Server): void {
           authenticated = ws.deviceId !== undefined;
         })
         .catch((err) => {
-          console.error("kimlik doğrulama hatası:", err);
+          console.error("authentication error:", err);
         });
     });
 

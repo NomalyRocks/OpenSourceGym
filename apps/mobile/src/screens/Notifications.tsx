@@ -55,7 +55,7 @@ function ToneIcon({ tone, color }: { tone: NotificationTone; color: string }) {
   return <InfoGlyph size={18} color={color} />;
 }
 
-/** Göreli zaman; gün eşiğini geçince mutlak tarihe düşer. */
+/** Relative time; falls back to an absolute date beyond the day threshold. */
 function useRelativeTime() {
   const { i18n, t } = useTranslation();
   const locale = dateLocale(i18n.resolvedLanguage);
@@ -64,10 +64,10 @@ function useRelativeTime() {
     const then = new Date(iso).getTime();
     if (Number.isNaN(then)) return "";
     const diff = Date.now() - then;
-    if (diff < MINUTE) return t("Az önce");
+    if (diff < MINUTE) return t("Just now");
     if (diff < HOUR)
-      return t("{{n}} dk önce", { n: Math.floor(diff / MINUTE) });
-    if (diff < DAY) return t("{{n}} sa önce", { n: Math.floor(diff / HOUR) });
+      return t("{{n}} min ago", { n: Math.floor(diff / MINUTE) });
+    if (diff < DAY) return t("{{n}} h ago", { n: Math.floor(diff / HOUR) });
     return new Intl.DateTimeFormat(locale, {
       day: "numeric",
       month: "short",
@@ -87,8 +87,8 @@ function NotificationRow({
   const { t } = useTranslation();
   const theme = useTheme();
   const styles = useThemedStyles(notificationStyles);
-  // Liste öğelerinin sırayla açılması gelen sırayı okutur; ilk beşten sonra
-  // gecikme birikmesin diye üst sınır var.
+  // Revealing list items in sequence communicates their order; the delay is
+  // capped after the first five so it does not accumulate.
   const enter = useEnter({ delay: Math.min(index, 5) * 45, distance: 8 });
   const color = toneColor(theme.colors, item.tone);
 
@@ -142,7 +142,7 @@ export function Notifications({
   return (
     <ScrollScreen refreshing={refreshing} onRefresh={refresh}>
       <ScreenHeader
-        title={t("Bildirimler")}
+        title={t("Notifications")}
         onBack={onBack}
         trailing={
           hasUnread ? (
@@ -155,9 +155,7 @@ export function Notifications({
                 pressed && styles.pressed,
               ]}
             >
-              <Text style={styles.markAllLabel}>
-                {t("Tümünü okundu işaretle")}
-              </Text>
+              <Text style={styles.markAllLabel}>{t("Mark all as read")}</Text>
             </Pressable>
           ) : null
         }
@@ -165,7 +163,7 @@ export function Notifications({
 
       <StatusMessage
         text={center.error ? t(center.error) : null}
-        actionLabel={t("Tekrar dene")}
+        actionLabel={t("Try again")}
         onAction={() => void center.refresh()}
       />
 
@@ -178,12 +176,12 @@ export function Notifications({
       ) : center.items.length === 0 ? (
         <EmptyState
           icon={<BellGlyph size={24} color={theme.colors.textTertiary} />}
-          title={t("Bildirim yok")}
+          title={t("No notifications")}
           body={
             center.serverConnected
-              ? t("Üyeliğin ve geçişlerinle ilgili haberler burada belirir.")
+              ? t("News about your membership and entries appears here.")
               : t(
-                  "Üyeliğinle ilgili uyarılar burada belirir. Salon duyuruları bağlandığında onlar da bu listeye düşer.",
+                  "Alerts about your membership appear here. Gym announcements will join this list once they are connected.",
                 )
           }
         />

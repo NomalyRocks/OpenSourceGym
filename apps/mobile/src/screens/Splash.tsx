@@ -4,17 +4,17 @@ import { Animated, StyleSheet, Text, View } from "react-native";
 import { useThemedStyles, type Theme } from "../theme";
 import { easing, useReducedMotion } from "../ui";
 
-/** Marka gösterisi bitmeden kapanmasın; ama uygulama hazırsa da oyalanmasın. */
+/** Do not close before the brand reveal ends, but do not linger once the app is ready. */
 const INTRO_MS = 720;
 const EXIT_MS = 220;
 
 /**
- * Açılış ekranı.
+ * Splash screen.
  *
- * Native splash yerine JS katmanında duruyor: `expo-splash-screen` eklemek
- * dev-client rebuild'i gerektirirdi. Görevi süslemek değil, oturum ve tema
- * okuması bitene kadar boş bir kareyi göstermemek — bu yüzden `ready`
- * gelmeden kapanmaz.
+ * Lives in the JS layer instead of a native splash: adding `expo-splash-screen`
+ * would require a dev-client rebuild. Its role is not decoration but avoiding
+ * an empty frame until session and theme loading finish—therefore it does not
+ * close before `ready`.
  */
 export function Splash({
   ready,
@@ -102,16 +102,16 @@ export function Splash({
             OpenGym
           </Text>
           <Text style={styles.tagline} maxFontSizeMultiplier={1.4}>
-            {t("Üyeliğin ve turnike geçişin tek yerde")}
+            {t("Your membership and turnstile access in one place")}
           </Text>
         </Animated.View>
       </View>
 
-      {/* Yükleme göstergesi yalnızca gecikme uzarsa anlam taşır; giriş
-          animasyonu bittiği hâlde uygulama hazır değilse belirir. */}
+      {/* The loading indicator matters only during a longer delay; it appears
+          when the entrance animation has ended but the app is not ready. */}
       {introDone && !ready ? (
         <View style={styles.footer}>
-          <Text style={styles.footerText}>{t("Hazırlanıyor…")}</Text>
+          <Text style={styles.footerText}>{t("Getting ready…")}</Text>
         </View>
       ) : null}
     </Animated.View>
@@ -129,7 +129,7 @@ const splashStyles = (theme: Theme) =>
       backgroundColor: theme.colors.background,
       alignItems: "center",
       justifyContent: "center",
-      // zIndex tek başına yetmez: Android sıralamayı `elevation` ile yapar.
+      // zIndex alone is insufficient: Android orders layers using `elevation`.
       zIndex: 100,
       elevation: 32,
     },

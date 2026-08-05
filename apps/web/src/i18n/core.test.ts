@@ -3,22 +3,22 @@ import test from "node:test";
 import { resolveLanguage } from "./core";
 import { resources } from "./resources";
 
-test("kayıtlı dil cihaz tercihlerinden önce gelir", () => {
+test("Stored language takes precedence over device preferences", () => {
   assert.equal(resolveLanguage("tr", ["en-US"]), "tr");
   assert.equal(resolveLanguage("en", ["tr-TR"]), "en");
 });
 
-test("ilk desteklenen cihaz dili seçilir", () => {
+test("Selects the first supported device language", () => {
   assert.equal(resolveLanguage(null, ["de-DE", "tr-TR", "en-US"]), "tr");
   assert.equal(resolveLanguage(null, ["fr-FR", "en-GB"]), "en");
 });
 
-test("bozuk veya desteklenmeyen tercihler İngilizceye düşer", () => {
+test("Falls back to English for malformed or unsupported preferences", () => {
   assert.equal(resolveLanguage("de", ["fr-FR"]), "en");
   assert.equal(resolveLanguage(null, []), "en");
 });
 
-test("Türkçe ve İngilizce kaynaklar aynı anahtarları içerir", () => {
+test("Turkish and English resources contain the same keys", () => {
   assert.deepEqual(
     Object.keys(resources.tr.translation).sort(),
     Object.keys(resources.en.translation).sort(),

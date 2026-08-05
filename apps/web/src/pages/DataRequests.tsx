@@ -10,12 +10,12 @@ const statusMeta: Record<
   DeletionRequest["status"],
   { cls: string; label: WebTranslationKey }
 > = {
-  pending: { cls: "warn", label: "Bekliyor" },
-  approved: { cls: "ok", label: "Onaylandı" },
-  rejected: { cls: "danger", label: "Reddedildi" },
+  pending: { cls: "warn", label: "Pending" },
+  approved: { cls: "ok", label: "Approved" },
+  rejected: { cls: "danger", label: "Denied" },
 };
 
-export function Kvkk() {
+export function DataRequests() {
   const { t, i18n } = useTranslation();
   const [requests, setRequests] = useState<DeletionRequest[]>([]);
   const [nextCursor, setNextCursor] = useState<string | null>(null);
@@ -24,7 +24,7 @@ export function Kvkk() {
   const [error, setError] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
 
-  /** `cursor` yoksa ilk sayfa (liste sıfırlanır), varsa sonraki sayfa eklenir. */
+  /** Without `cursor`, load the first page (resetting the list); otherwise append the next page. */
   const load = useCallback(
     async (cursor: string | null, signal?: AbortSignal) => {
       setLoading(true);
@@ -41,7 +41,7 @@ export function Kvkk() {
         setError(null);
       } catch (err) {
         if (isAbortError(err)) return;
-        setError(errorMessage(err, t, "Yüklenemedi."));
+        setError(errorMessage(err, t, "Could not load data."));
       } finally {
         setLoading(false);
       }
@@ -56,11 +56,11 @@ export function Kvkk() {
   }, [load]);
 
   async function approve(r: DeletionRequest) {
-    const who = r.name || r.email || t("Bu üyenin");
+    const who = r.name || r.email || t("This member's account");
     if (
       !confirm(
         t(
-          "{{who}} hesabı ve tüm ilişkili verileri kalıcı olarak silinecek. Bu işlem geri alınamaz. Onaylıyor musunuz?",
+          "{{who}} and all related data will be permanently deleted. This action cannot be undone. Do you approve?",
           { who },
         ),
       )
@@ -75,7 +75,7 @@ export function Kvkk() {
       });
       await load(null);
     } catch (err) {
-      setError(errorMessage(err, t, "İşlem başarısız."));
+      setError(errorMessage(err, t, "The operation failed."));
     } finally {
       setBusyId(null);
     }
@@ -90,7 +90,7 @@ export function Kvkk() {
       });
       await load(null);
     } catch (err) {
-      setError(errorMessage(err, t, "İşlem başarısız."));
+      setError(errorMessage(err, t, "The operation failed."));
     } finally {
       setBusyId(null);
     }
@@ -98,16 +98,16 @@ export function Kvkk() {
 
   return (
     <div className="stagger">
-      <h1>{t("KVKK silme talepleri")}</h1>
+      <h1>{t("Data deletion requests")}</h1>
       <div className="row" style={{ marginBottom: 16 }}>
         <div className="field">
-          <label htmlFor="kvkk-status">{t("Durum")}</label>
+          <label htmlFor="deletion-status">{t("Status")}</label>
           <select
-            id="kvkk-status"
+            id="deletion-status"
             value={status}
             onChange={(e) => setStatus(e.target.value)}
           >
-            <option value="">{t("Tümü")}</option>
+            <option value="">{t("All")}</option>
             {Object.entries(statusMeta).map(([value, meta]) => (
               <option key={value} value={value}>
                 {t(meta.label)}
@@ -121,10 +121,10 @@ export function Kvkk() {
         <table>
           <thead>
             <tr>
-              <th>{t("Üye")}</th>
-              <th>{t("E-posta")}</th>
-              <th>{t("Talep tarihi")}</th>
-              <th>{t("Durum")}</th>
+              <th>{t("Member")}</th>
+              <th>{t("Email")}</th>
+              <th>{t("Request date")}</th>
+              <th>{t("Status")}</th>
               <th></th>
             </tr>
           </thead>
@@ -151,7 +151,7 @@ export function Kvkk() {
                         disabled={busyId === r.id}
                         onClick={() => void approve(r)}
                       >
-                        {t("Onayla")}
+                        {t("Approve")}
                       </button>
                       <button
                         type="button"
@@ -159,7 +159,7 @@ export function Kvkk() {
                         disabled={busyId === r.id}
                         onClick={() => void reject(r)}
                       >
-                        {t("Reddet")}
+                        {t("Reject")}
                       </button>
                     </div>
                   )}
@@ -168,12 +168,12 @@ export function Kvkk() {
             ))}
             {requests.length === 0 && !error && !loading && (
               <tr>
-                <td colSpan={5}>{t("Talep yok.")}</td>
+                <td colSpan={5}>{t("No requests.")}</td>
               </tr>
             )}
             {loading && (
               <tr>
-                <td colSpan={5}>{t("Yükleniyor…")}</td>
+                <td colSpan={5}>{t("Loading…")}</td>
               </tr>
             )}
           </tbody>
@@ -184,7 +184,7 @@ export function Kvkk() {
             disabled={loading}
             style={{ marginTop: 16 }}
           >
-            {t("Daha fazla yükle")}
+            {t("Load more")}
           </button>
         )}
       </div>

@@ -14,7 +14,7 @@ import {
   MAX_PAGE_LIMIT,
 } from "./pagination.js";
 
-test("encodeCursor sonra decodeCursor ile turu dönüşüm", () => {
+test("encodeCursor round-trips through decodeCursor", () => {
   const at = new Date();
   const id = new ObjectId();
   const encoded = encodeCursor(at, id);
@@ -24,18 +24,18 @@ test("encodeCursor sonra decodeCursor ile turu dönüşüm", () => {
   assert.equal(decoded.id.toHexString(), id.toHexString());
 });
 
-test("decodeCursor, geçersiz base64url içeriği için null döner", () => {
+test("decodeCursor returns null for invalid base64url content", () => {
   assert.equal(decodeCursor("!!!notvalid!!!"), null);
 });
 
-test("decodeCursor, ':' içermeyen bir değer için null döner", () => {
+test("decodeCursor returns null for a value without ':'", () => {
   const encoded = Buffer.from("no-separator-here", "utf8").toString(
     "base64url",
   );
   assert.equal(decodeCursor(encoded), null);
 });
 
-test("decodeCursor, numaratik olmayan bir zaman damgası için null döner", () => {
+test("decodeCursor returns null for a non-numeric timestamp", () => {
   const encoded = Buffer.from(
     "invalid:0123456789abcdef01234567",
     "utf8",
@@ -43,17 +43,17 @@ test("decodeCursor, numaratik olmayan bir zaman damgası için null döner", () 
   assert.equal(decodeCursor(encoded), null);
 });
 
-test("decodeCursor, 24 karakterden farklı bir hex id için null döner", () => {
+test("decodeCursor returns null for a hex id that is not 24 characters", () => {
   const encoded = Buffer.from("1234567890:123", "utf8").toString("base64url");
   assert.equal(decodeCursor(encoded), null);
 });
 
-test("decodeCursor, 24 karakterin altında bir hex id için null döner", () => {
+test("decodeCursor returns null for a hex id shorter than 24 characters", () => {
   const encoded = Buffer.from("1234567890:12", "utf8").toString("base64url");
   assert.equal(decodeCursor(encoded), null);
 });
 
-test("decodeCursor, 24 karakterin üzerinde bir hex id için null döner", () => {
+test("decodeCursor returns null for a hex id longer than 24 characters", () => {
   const encoded = Buffer.from(
     "1234567890:123456789012345678901234567890",
     "utf8",
@@ -61,14 +61,14 @@ test("decodeCursor, 24 karakterin üzerinde bir hex id için null döner", () =>
   assert.equal(decodeCursor(encoded), null);
 });
 
-test("decodeCursor, 24 karakterinin altında bir ASCII id için null döner (ObjectId.isValid kabul eder)", () => {
+test("decodeCursor returns null for a short ASCII id accepted by ObjectId.isValid", () => {
   const encoded = Buffer.from("1234567890:abcdefghijkl", "utf8").toString(
     "base64url",
   );
   assert.equal(decodeCursor(encoded), null);
 });
 
-test("decodeCursor, geçerli bir imleci çözer", () => {
+test("decodeCursor decodes a valid cursor", () => {
   const at = new Date(1700000000000);
   const id = new ObjectId("0123456789abcdef01234567");
   const encoded = Buffer.from(
@@ -80,7 +80,7 @@ test("decodeCursor, geçerli bir imleci çözer", () => {
   assert.equal(decoded.at.getTime(), 1700000000000);
 });
 
-test("cursorFilter, açık doğru $or yapısını döner", () => {
+test("cursorFilter returns the explicit correct $or structure", () => {
   const at = new Date();
   const id = new ObjectId();
   const cursor = { at, id };
@@ -90,23 +90,23 @@ test("cursorFilter, açık doğru $or yapısını döner", () => {
   });
 });
 
-test("cursorFilter, artan yönde $gt kullanır", () => {
+test("cursorFilter uses $gt in ascending order", () => {
   const at = new Date();
   const id = new ObjectId();
-  // Yenileme listesi "en yakın bitiş önce" sıralanır; imleçten SONRAKİ kayıt
-  // artan yönde daha BÜYÜK olandır. $lt kalsaydı ikinci sayfa hep boş dönerdi.
+  // The renewal list is sorted by nearest expiry first; the record AFTER the
+  // cursor is GREATER in ascending order. Keeping $lt would empty page two.
   const filter = cursorFilter("endsAt", { at, id }, "asc");
   assert.deepEqual(filter, {
     $or: [{ endsAt: { $gt: at } }, { endsAt: at, _id: { $gt: id } }],
   });
 });
 
-test("sortSpec, yöne göre her iki anahtarı da çevirir", () => {
+test("sortSpec flips both keys according to direction", () => {
   assert.deepEqual(sortSpec("at"), { at: -1, _id: -1 });
   assert.deepEqual(sortSpec("endsAt", "asc"), { endsAt: 1, _id: 1 });
 });
 
-test("toPage, limit kadar kayıt gelirse sonraki imleci üretmez", () => {
+test("toPage does not produce a next cursor when exactly limit records arrive", () => {
   const docs = [
     { _id: new ObjectId(), at: new Date(2) },
     { _id: new ObjectId(), at: new Date(1) },
@@ -116,12 +116,12 @@ test("toPage, limit kadar kayıt gelirse sonraki imleci üretmez", () => {
   assert.equal(page.nextCursor, null);
 });
 
-test("toPage, fazladan kayıt geldiğinde son görünen kayıttan imleç üretir", () => {
+test("toPage produces a cursor from the last visible record when an extra record arrives", () => {
   const last = { _id: new ObjectId(), at: new Date(2) };
   const docs = [
     { _id: new ObjectId(), at: new Date(3) },
     last,
-    // limit + 1'inci kayıt yalnızca "devamı var" sinyalidir, sayfaya girmez.
+    // The limit + 1 record only signals that more exist; it is not in the page.
     { _id: new ObjectId(), at: new Date(1) },
   ];
   const page = toPage(docs, "at", 2);
@@ -133,50 +133,50 @@ test("toPage, fazladan kayıt geldiğinde son görünen kayıttan imleç üretir
   assert.equal(decoded.id.toHexString(), last._id.toHexString());
 });
 
-test("dateRangeFilter, hem from hem to tanımsızsa {} döner", () => {
+test("dateRangeFilter returns {} when both from and to are undefined", () => {
   const filter = dateRangeFilter("testField");
   assert.deepEqual(filter, {});
 });
 
-test("dateRangeFilter, yalnızca from verildiğinde { field: { $gte } } döner", () => {
+test("dateRangeFilter returns { field: { $gte } } when only from is provided", () => {
   const from = new Date("2023-01-01");
   const filter = dateRangeFilter("testField", from);
   assert.deepEqual(filter, { testField: { $gte: from } });
 });
 
-test("dateRangeFilter, yalnızca to verildiğinde { field: { $lte } } döner", () => {
+test("dateRangeFilter returns { field: { $lte } } when only to is provided", () => {
   const to = new Date("2024-01-01");
   const filter = dateRangeFilter("testField", undefined, to);
   assert.deepEqual(filter, { testField: { $lte: to } });
 });
 
-test("dateRangeFilter, hem from hem to verildiğinde doğru aralığı döner", () => {
+test("dateRangeFilter returns the correct range when both from and to are provided", () => {
   const from = new Date("2023-01-01");
   const to = new Date("2024-01-01");
   const filter = dateRangeFilter("testField", from, to);
   assert.deepEqual(filter, { testField: { $gte: from, $lte: to } });
 });
 
-test("pageQuerySchema, boş bir nesneyi çözerken limit === 50", () => {
+test("pageQuerySchema sets limit === 50 when parsing an empty object", () => {
   const result = pageQuerySchema.parse({});
   assert.equal(result.limit, DEFAULT_PAGE_LIMIT);
 });
 
-test("pageQuerySchema, limit olarak string '10'u işler", () => {
+test("pageQuerySchema handles string '10' as the limit", () => {
   const result = pageQuerySchema.parse({ limit: "10" });
   assert.equal(result.limit, 10);
 });
 
-test("pageQuerySchema, limit '0' ifadesiyle başarısız olur", () => {
+test("pageQuerySchema fails with limit '0'", () => {
   assert.throws(() => pageQuerySchema.parse({ limit: "0" }));
 });
 
-test("pageQuerySchema, limit '101' ifadesiyle başarısız olur (MAX_PAGE_LIMIT)", () => {
+test("pageQuerySchema fails with limit '101' (MAX_PAGE_LIMIT)", () => {
   const maxStr = String(MAX_PAGE_LIMIT + 1);
   assert.throws(() => pageQuerySchema.parse({ limit: maxStr }));
 });
 
-test("pageQuerySchema, limit MAX_PAGE_LIMIT değerini kabul eder", () => {
+test("pageQuerySchema accepts MAX_PAGE_LIMIT as the limit", () => {
   const result = pageQuerySchema.parse({ limit: String(MAX_PAGE_LIMIT) });
   assert.equal(result.limit, MAX_PAGE_LIMIT);
 });

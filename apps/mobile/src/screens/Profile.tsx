@@ -83,9 +83,7 @@ export function Profile({
   const [bodyMetricsHydrated, setBodyMetricsHydrated] = useState(false);
   const [bodyMetricsSaving, setBodyMetricsSaving] = useState(false);
   const [bodyMetricsSaved, setBodyMetricsSaved] = useState(false);
-  const [bodyMetricsError, setBodyMetricsError] = useState<string | null>(
-    null,
-  );
+  const [bodyMetricsError, setBodyMetricsError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     const [profileResult, subscriptionResult] = await Promise.allSettled([
@@ -98,7 +96,11 @@ export function Profile({
       setLoadError(null);
     } else {
       setLoadError(
-        errorMessage(profileResult.reason, t, "Profil bilgisi alınamadı."),
+        errorMessage(
+          profileResult.reason,
+          t,
+          "Profile data could not be loaded.",
+        ),
       );
     }
 
@@ -112,8 +114,8 @@ export function Profile({
     void load();
   }, [load]);
 
-  // Profil ilk yüklendiğinde sunucudaki değerlerle bir kez doldurur; sonraki
-  // yenilemelerde kullanıcının sürmekte olan düzenlemesinin üstüne yazmaz.
+  // Populate once from server values when the profile first loads; later
+  // refreshes do not overwrite the user's in-progress edits.
   useEffect(() => {
     if (bodyMetricsHydrated || !profile) return;
     if (typeof profile.age === "number") setBodyAge(String(profile.age));
@@ -145,7 +147,7 @@ export function Profile({
         ageValue < CALORIE_LIMITS.age.min ||
         ageValue > CALORIE_LIMITS.age.max)
     ) {
-      setBodyMetricsError(t("18 ile 80 arasında tam bir yaş girin."));
+      setBodyMetricsError(t("Enter a whole-number age between 18 and 80."));
       return;
     }
     if (
@@ -154,7 +156,7 @@ export function Profile({
         heightValue < CALORIE_LIMITS.heightCm.min ||
         heightValue > CALORIE_LIMITS.heightCm.max)
     ) {
-      setBodyMetricsError(t("120–230 cm aralığında geçerli bir boy girin."));
+      setBodyMetricsError(t("Enter a valid height in the 120–230 cm range."));
       return;
     }
     if (
@@ -163,7 +165,7 @@ export function Profile({
         weightValue < CALORIE_LIMITS.weightKg.min ||
         weightValue > CALORIE_LIMITS.weightKg.max)
     ) {
-      setBodyMetricsError(t("35–300 kg aralığında geçerli bir kilo girin."));
+      setBodyMetricsError(t("Enter a valid weight in the 35–300 kg range."));
       return;
     }
 
@@ -172,21 +174,21 @@ export function Profile({
     if (heightValue != null) update.heightCm = heightValue;
     if (weightValue != null) update.weightKg = weightValue;
     if (Object.keys(update).length === 0) {
-      setBodyMetricsError(t("Kaydetmek için en az bir alan doldurun."));
+      setBodyMetricsError(t("Fill in at least one field to save."));
       return;
     }
 
     setBodyMetricsSaving(true);
     try {
-      // Korumalı uç: `api()` 2xx dışında ApiError fırlatır, dolayısıyla
-      // başarısız yazma "Kaydedildi" olarak görünmez.
+      // Protected endpoint: `api()` throws ApiError outside 2xx, so a failed
+      // write is not displayed as "Saved."
       const saved = await api<MyBodyMetrics>("/api/me/body-metrics", {
         method: "PATCH",
         body: update,
       });
 
-      // Hesaplayıcı cache'i üyeye özel anahtar altında tutulur; profil
-      // okunamamışsa güncellenecek bir cache de yok.
+      // Calculator cache uses a member-specific key; if the profile was not
+      // loaded, there is no cache to update either.
       if (profile) {
         const cached = await loadCalorieCalculatorState(profile.id);
         if (cached) {
@@ -201,7 +203,7 @@ export function Profile({
       setBodyMetricsSaved(true);
     } catch (error) {
       setBodyMetricsError(
-        errorMessage(error, t, "Kaydedilemedi. Tekrar deneyin."),
+        errorMessage(error, t, "Could not save. Please try again."),
       );
     } finally {
       setBodyMetricsSaving(false);
@@ -220,7 +222,7 @@ export function Profile({
     const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (!permission.granted) {
       setPhotoPermissionDenied(true);
-      setPhotoError(t("Fotoğraf seçmek için galeri izni vermelisiniz."));
+      setPhotoError(t("Grant gallery permission to select a photo."));
       return;
     }
 
@@ -235,8 +237,8 @@ export function Profile({
 
     setPhotoBusy(true);
     try {
-      // Native modülü yalnızca fotoğraf işlenirken yükle. Böylece modülü henüz
-      // içermeyen eski development client'lar uygulama açılışında çökmez.
+      // Load the native module only while processing a photo. This prevents
+      // older development clients without the module from crashing at startup.
       const { ImageManipulator, SaveFormat } =
         await import("expo-image-manipulator");
       const context = ImageManipulator.manipulate(selected.assets[0].uri);
@@ -258,7 +260,11 @@ export function Profile({
       );
     } catch (error) {
       setPhotoError(
-        errorMessage(error, t, "Profil fotoğrafı yüklenemedi. Tekrar deneyin."),
+        errorMessage(
+          error,
+          t,
+          "The profile photo could not be uploaded. Please try again.",
+        ),
       );
     } finally {
       setPhotoBusy(false);
@@ -266,18 +272,14 @@ export function Profile({
   }
 
   function confirmRemoveProfilePhoto() {
-    Alert.alert(
-      t("Fotoğrafı kaldır"),
-      t("Profil fotoğrafınız kaldırılsın mı?"),
-      [
-        { text: t("Vazgeç"), style: "cancel" },
-        {
-          text: t("Kaldır"),
-          style: "destructive",
-          onPress: () => void removeProfilePhoto(),
-        },
-      ],
-    );
+    Alert.alert(t("Remove photo"), t("Remove your profile photo?"), [
+      { text: t("Cancel"), style: "cancel" },
+      {
+        text: t("Remove"),
+        style: "destructive",
+        onPress: () => void removeProfilePhoto(),
+      },
+    ]);
   }
 
   async function removeProfilePhoto() {
@@ -295,7 +297,7 @@ export function Profile({
         errorMessage(
           error,
           t,
-          "Profil fotoğrafı kaldırılamadı. Tekrar deneyin.",
+          "The profile photo could not be removed. Please try again.",
         ),
       );
     } finally {
@@ -318,10 +320,10 @@ export function Profile({
   return (
     <ScrollScreen refreshing={refreshing} onRefresh={refresh}>
       <ScreenHeader
-        title={t("Profil")}
+        title={t("Profile")}
         trailing={
           <IconButton
-            label={t("Ayarlar")}
+            label={t("Settings")}
             onPress={onOpenSettings}
             icon={(color) => <GearGlyph size={21} color={color} />}
           />
@@ -347,7 +349,7 @@ export function Profile({
               <Pressable
                 accessibilityRole="button"
                 accessibilityLabel={
-                  profilePhotoUrl ? t("Fotoğrafı değiştir") : t("Fotoğraf ekle")
+                  profilePhotoUrl ? t("Change photo") : t("Add photo")
                 }
                 accessibilityState={{ disabled: photoBusy }}
                 onPress={() => void chooseProfilePhoto()}
@@ -381,10 +383,10 @@ export function Profile({
                 <View style={styles.photoActions}>
                   <Text style={styles.photoHint}>
                     {photoBusy
-                      ? t("İşleniyor…")
+                      ? t("Processing…")
                       : profilePhotoUrl
-                        ? t("Değiştirmek için fotoğrafa dokun")
-                        : t("Fotoğraf eklemek için dokun")}
+                        ? t("Tap the photo to change it")
+                        : t("Tap to add a photo")}
                   </Text>
                   {profilePhotoUrl && !photoBusy ? (
                     <Pressable
@@ -396,7 +398,7 @@ export function Profile({
                         pressed && styles.pressed,
                       ]}
                     >
-                      <Text style={styles.removeLabel}>{t("Kaldır")}</Text>
+                      <Text style={styles.removeLabel}>{t("Remove")}</Text>
                     </Pressable>
                   ) : null}
                 </View>
@@ -409,12 +411,12 @@ export function Profile({
       <View style={styles.messages}>
         <StatusMessage
           text={loadError}
-          actionLabel={t("Tekrar dene")}
+          actionLabel={t("Try again")}
           onAction={() => void load()}
         />
         <StatusMessage
           text={photoError}
-          actionLabel={photoPermissionDenied ? t("Ayarları aç") : undefined}
+          actionLabel={photoPermissionDenied ? t("Open settings") : undefined}
           onAction={
             photoPermissionDenied
               ? () => void Linking.openSettings()
@@ -425,11 +427,11 @@ export function Profile({
 
       <View style={styles.section}>
         <SectionHeading
-          title={t("Üyelik")}
+          title={t("Membership")}
           trailing={
             loading ? null : (
               <Badge
-                label={active ? t("Aktif") : t("Pasif")}
+                label={active ? t("Active") : t("Inactive")}
                 tone={active ? "success" : "error"}
               />
             )
@@ -441,14 +443,14 @@ export function Profile({
           ) : (
             <>
               <View style={styles.factRow}>
-                <Text style={styles.factLabel}>{t("Başlangıç")}</Text>
+                <Text style={styles.factLabel}>{t("Start")}</Text>
                 <Text style={styles.factValue}>
                   {formatDate(subscription?.startsAt)}
                 </Text>
               </View>
               <Divider />
               <View style={styles.factRow}>
-                <Text style={styles.factLabel}>{t("Bitiş")}</Text>
+                <Text style={styles.factLabel}>{t("End")}</Text>
                 <Text style={styles.factValue}>
                   {formatDate(subscription?.endsAt)}
                 </Text>
@@ -457,7 +459,7 @@ export function Profile({
                 <>
                   <Divider />
                   <View style={styles.factRow}>
-                    <Text style={styles.factLabel}>{t("Kalan gün")}</Text>
+                    <Text style={styles.factLabel}>{t("Days left")}</Text>
                     <Text style={styles.factValue}>
                       {subscription?.remainingDays ?? 0}
                     </Text>
@@ -470,19 +472,19 @@ export function Profile({
       </View>
 
       <View style={styles.section}>
-        <SectionHeading title={t("Vücut bilgileri")} />
+        <SectionHeading title={t("Body info")} />
         <Plate>
           <Text style={styles.metricsHint}>
             {t(
-              "Kalori hesaplayıcısını otomatik doldurmak için kullanılır; boş bıraktığın alan değiştirilmez.",
+              "Used to auto-fill the calorie calculator; a field you leave empty is not changed.",
             )}
           </Text>
           <View style={styles.metricRow}>
-            <Text style={styles.factLabel}>{t("Yaş")}</Text>
+            <Text style={styles.factLabel}>{t("Age")}</Text>
             <TextInput
               value={bodyAge}
               onChangeText={setBodyAge}
-              accessibilityLabel={t("Yaş")}
+              accessibilityLabel={t("Age")}
               keyboardType="number-pad"
               inputMode="numeric"
               maxLength={3}
@@ -494,11 +496,11 @@ export function Profile({
           </View>
           <Divider />
           <View style={styles.metricRow}>
-            <Text style={styles.factLabel}>{t("Boy (cm)")}</Text>
+            <Text style={styles.factLabel}>{t("Height (cm)")}</Text>
             <TextInput
               value={bodyHeight}
               onChangeText={setBodyHeight}
-              accessibilityLabel={t("Boy")}
+              accessibilityLabel={t("Height")}
               keyboardType="decimal-pad"
               inputMode="decimal"
               maxLength={6}
@@ -510,11 +512,11 @@ export function Profile({
           </View>
           <Divider />
           <View style={styles.metricRow}>
-            <Text style={styles.factLabel}>{t("Kilo (kg)")}</Text>
+            <Text style={styles.factLabel}>{t("Weight (kg)")}</Text>
             <TextInput
               value={bodyWeight}
               onChangeText={setBodyWeight}
-              accessibilityLabel={t("Kilo")}
+              accessibilityLabel={t("Weight")}
               keyboardType="decimal-pad"
               inputMode="decimal"
               maxLength={6}
@@ -533,13 +535,13 @@ export function Profile({
           ) : bodyMetricsSaved ? (
             <StatusMessage
               tone="success"
-              text={t("Kaydedildi.")}
+              text={t("Saved.")}
               style={styles.metricsMessage}
             />
           ) : null}
 
           <Button
-            title={bodyMetricsSaving ? t("Kaydediliyor…") : t("Kaydet")}
+            title={bodyMetricsSaving ? t("Saving…") : t("Save")}
             variant="secondary"
             onPress={() => void saveBodyMetrics()}
             disabled={bodyMetricsSaving}
@@ -549,18 +551,20 @@ export function Profile({
       </View>
 
       <View style={styles.section}>
-        <SectionHeading title={t("Hesap")} />
+        <SectionHeading title={t("Account")} />
         <Plate padded={false}>
           <SettingRow
             icon={(color) => <ShieldGlyph size={19} color={color} />}
-            title={t("İki adımlı doğrulama")}
-            subtitle={profile?.twoFactorEnabled ? t("Etkin") : t("Etkin değil")}
+            title={t("Two-factor authentication")}
+            subtitle={profile?.twoFactorEnabled ? t("On") : t("Off")}
           />
           <Divider inset={theme.spacing.md + 34 + theme.spacing.sm} />
           <SettingRow
             icon={(color) => <GearGlyph size={19} color={color} />}
-            title={t("Ayarlar")}
-            subtitle={t("Görünüm, dil, bildirimler ve hesap işlemleri")}
+            title={t("Settings")}
+            subtitle={t(
+              "Appearance, language, notifications and account actions",
+            )}
             onPress={onOpenSettings}
             trailing={
               <ChevronRightGlyph size={18} color={theme.colors.textTertiary} />

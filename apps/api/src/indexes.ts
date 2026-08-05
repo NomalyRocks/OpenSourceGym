@@ -7,12 +7,12 @@ import {
 } from "mongodb";
 import { db } from "./db.js";
 
-// createIndex aynı anahtar + aynı seçeneklerle idempotenttir; ancak seçenekler
-// DEĞİŞİRSE (ör. TTL süresi güncellenirse) Mongo IndexOptionsConflict (85) /
-// IndexKeySpecsConflict (86) fırlatır ve API açılışta çökerdi. Bu durumda eski
-// indeks düşürülüp yenisi kurulur. dropIndex isim ister; özel isim (options.name)
-// verilmişse o kullanılır, verilmemişse Mongo'nun varsayılan adlandırması
-// ("alan_yön" birleşimi) güvenle türetilebilir.
+// createIndex is idempotent with the same keys and options, but if options CHANGE
+// (for example, a TTL update), Mongo throws IndexOptionsConflict (85) or
+// IndexKeySpecsConflict (86), which would crash the API at startup. In that case,
+// drop the old index and create the new one. dropIndex requires a name; use the
+// custom name (options.name) when provided, otherwise Mongo's default naming
+// (the "field_direction" combination) can be derived safely.
 async function ensureIndex(
   database: Db,
   collection: string,
@@ -39,13 +39,13 @@ async function ensureIndex(
   }
 }
 
-// Repoda daha önce hiç Mongo indeksi yoktu — bu, ilk indeks bootstrap'ı.
-// ensureIndex idempotenttir ve seçenek çakışmasında düşürüp yeniden kurar;
-// her açılışta güvenle tekrar çalıştırılabilir.
+// The repository previously had no Mongo indexes—this is the initial index
+// bootstrap. ensureIndex is idempotent and recreates conflicting options, so it
+// can safely run at every startup.
 export async function ensureIndexes(database: Db = db): Promise<void> {
-  // phoneE164 yalnızca doğrulanıp tekilleştirilen belgelerde bulunur. Eski
-  // mükerrer belgeler alanı taşımadığı için kısmi indeks onları koruyarak yeni
-  // yarış koşullarını atomik biçimde engeller.
+  // phoneE164 exists only on validated and deduplicated documents. Because old
+  // duplicate documents lack the field, the partial index preserves them while
+  // atomically preventing new races.
   await ensureIndex(
     database,
     "user",
@@ -57,8 +57,8 @@ export async function ensureIndexes(database: Db = db): Promise<void> {
     },
   );
 
-  // Abonelik ekleme, QR kontrolü ve admin zaman çizelgesi kullanıcı bazında
-  // en geç bitişi sıkça okur.
+  // Subscription creation, QR checks, and the admin timeline frequently read
+  // the latest end date per user.
   await ensureIndex(
     database,
     "subscriptions",
@@ -66,8 +66,8 @@ export async function ensureIndexes(database: Db = db): Promise<void> {
     { name: "subscriptions_user_ends_at" },
   );
 
-  // weight_history: hem kayıt (son değeri okuma) hem takvim listesi
-  // find({ userId }).sort({ at: -1 }) kalıbını kullanır.
+  // weight_history: both recording (reading the latest value) and calendar
+  // listing use the find({ userId }).sort({ at: -1 }) pattern.
   await ensureIndex(
     database,
     "weight_history",
@@ -75,7 +75,7 @@ export async function ensureIndexes(database: Db = db): Promise<void> {
     { name: "weight_history_user_at" },
   );
 
-  // sharing_signals: 30 gün sonra otomatik silinir (TTL) + kullanıcı bazlı sorgu indeksi
+  // sharing_signals: automatically deleted after 30 days (TTL) plus a per-user query index
   await ensureIndex(
     database,
     "sharing_signals",
@@ -83,55 +83,55 @@ export async function ensureIndexes(database: Db = db): Promise<void> {
     { expireAfterSeconds: 30 * 24 * 3600 },
   );
   await ensureIndex(database, "sharing_signals", { userId: 1, at: -1 });
-  // session: enforceSessionPolicy'nin oturum sayısı/eviction sorguları için
+  // session: for enforceSessionPolicy session-count and eviction queries
   await ensureIndex(database, "session", { userId: 1 });
 
-  // Audit listesinin en yeni kayıtları önce getiren sıralaması için.
-  // _id sıralama anahtarının parçası: imleçli sayfalama eşit zaman damgalarını
-  // _id ile kırar, indeks de aynı anahtarı taşımalı.
+  // For sorting the audit list newest first.
+  // _id is part of the sort key: cursor pagination breaks equal timestamps with
+  // _id, so the index must contain the same key.
   await ensureIndex(database, "audit_logs", { at: -1, _id: -1 });
-  // Hesap silinirken kullanıcıya ait audit kayıtlarını anonimleştirmek için.
+  // To anonymize a user's audit records during account deletion.
   await ensureIndex(database, "audit_logs", { actorId: 1 });
-  // Eylem filtresi + zaman sıralaması birlikte kullanıldığında.
+  // When action filtering and time sorting are used together.
   await ensureIndex(database, "audit_logs", { action: 1, at: -1, _id: -1 });
 
-  // Geçiş olayları listesinin en yeni kayıtları önce getiren sıralaması için.
+  // For sorting the turnstile event list newest first.
   await ensureIndex(database, "entry_events", { at: -1, _id: -1 });
-  // Hesap silinirken kullanıcıya ait geçiş olaylarını bulmak için; ayrıca üye
-  // filtresiyle sayfalanan liste sorgusunu da karşılar.
+  // To find a user's turnstile events during account deletion; also supports
+  // the paginated list query with a member filter.
   await ensureIndex(database, "entry_events", {
     userId: 1,
     at: -1,
     _id: -1,
   });
-  // Cihaz filtresi + zaman sıralaması birlikte kullanıldığında.
+  // When device filtering and time sorting are used together.
   await ensureIndex(database, "entry_events", {
     deviceId: 1,
     at: -1,
     _id: -1,
   });
 
-  // Silme talepleri listesinin en yeni kayıtları önce getiren sıralaması için.
+  // For sorting the deletion-request list newest first.
   await ensureIndex(database, "deletion_requests", {
     requestedAt: -1,
     _id: -1,
   });
-  // Durum filtresi + zaman sıralaması birlikte kullanıldığında.
+  // When status filtering and time sorting are used together.
   await ensureIndex(database, "deletion_requests", {
     status: 1,
     requestedAt: -1,
     _id: -1,
   });
-  // Kullanıcının en son silme talebini bulmak için.
+  // To find a user's latest deletion request.
   await ensureIndex(database, "deletion_requests", {
     userId: 1,
     requestedAt: -1,
   });
 
-  // Bir üyenin aynı anda birden çok BEKLEYEN silme talebi olamaz. Route'taki
-  // "önce oku sonra yaz" kontrolü atomik değil; tekilliği fiilen sağlayan bu
-  // kısmi unique indekstir. Kısmi olması şart: sonuçlanmış talepler geçmiş
-  // kaydı olarak kullanıcı başına birden çok kez birikir.
+  // A member cannot have multiple PENDING deletion requests at once. The route's
+  // read-then-write check is not atomic; this partial unique index enforces
+  // uniqueness. It must be partial because resolved requests accumulate as
+  // multiple historical records per user.
   await dedupePendingDeletionRequests(database);
   await ensureIndex(
     database,
@@ -144,18 +144,17 @@ export async function ensureIndexes(database: Db = db): Promise<void> {
     },
   );
 
-  // Cihaz listesinin en yeni kayıtları önce getiren sıralaması için.
+  // For sorting the device list newest first.
   await ensureIndex(database, "devices", { createdAt: -1 });
 
-  // Faz E — raporlama: aralık sayımları ve CSV dışa aktarma createdAt'e göre
-  // filtreleyip sıralar.
+  // Phase E—reporting: range counts and CSV exports filter and sort by createdAt.
   await ensureIndex(database, "subscriptions", { createdAt: 1 });
   await ensureIndex(database, "user", { role: 1, createdAt: 1 });
 
-  // Faz E — hatırlatma tekilliği. Otomatik süpürme aynı abonelik + aynı eşik
-  // için ikinci kez posta göndermemeli; bunu fiilen sağlayan bu indekstir,
-  // "önce oku sonra yaz" kontrolü değil. Kısmi olması şart: personelin elle
-  // gönderdiği hatırlatmalar (automatic: false) tekrarlanabilir olmalı.
+  // Phase E—reminder uniqueness. The automatic sweep must not send another
+  // email for the same subscription and threshold; this index enforces that,
+  // not the read-then-write check. It must be partial because staff-sent
+  // reminders (automatic: false) must remain repeatable.
   await ensureIndex(
     database,
     "renewal_reminders",
@@ -166,8 +165,7 @@ export async function ensureIndexes(database: Db = db): Promise<void> {
       partialFilterExpression: { automatic: true },
     },
   );
-  // Bir aboneliğin en son hatırlatmasını okumak için (elle gönderim bekleme
-  // süresi ve liste sütunu).
+  // To read a subscription's latest reminder (manual-send cooldown and list column).
   await ensureIndex(database, "renewal_reminders", {
     subscriptionId: 1,
     sentAt: -1,
@@ -175,18 +173,18 @@ export async function ensureIndexes(database: Db = db): Promise<void> {
 }
 
 /**
- * Unique indeks kurulmadan önceki yarıştan kalmış mükerrer bekleyen talepleri
- * toplar: kullanıcının EN ESKİ talebi (asıl niyeti) kalır, sonradan aynı anda
- * açılmış kopyalar silinir. Bu adım olmadan createIndex E11000 ile açılışı
- * düşürürdü.
+ * Cleans up duplicate pending requests left by races before the unique index
+ * existed: keep the user's OLDEST request (the original intent) and delete
+ * concurrent duplicates created later. Without this step, createIndex would
+ * fail startup with E11000.
  */
 async function dedupePendingDeletionRequests(database: Db): Promise<void> {
   const duplicates = await database
     .collection("deletion_requests")
     .aggregate<{ _id: ObjectId; ids: ObjectId[] }>([
       { $match: { status: "pending" } },
-      // Sıralama $group'tan önce gelmeli: ids dizisinin ilk elemanının en eski
-      // talep olduğu garantisi buradan geliyor.
+      // Sorting must precede $group: this guarantees that the first element in
+      // the ids array is the oldest request.
       { $sort: { requestedAt: 1, _id: 1 } },
       { $group: { _id: "$userId", ids: { $push: "$_id" } } },
       { $match: { $expr: { $gt: [{ $size: "$ids" }, 1] } } },
@@ -194,15 +192,15 @@ async function dedupePendingDeletionRequests(database: Db): Promise<void> {
     .toArray();
 
   for (const group of duplicates) {
-    // slice(1): ObjectId'ler === ile karşılaştırılamaz (referans eşitliği),
-    // bu yüzden korunacak kaydı filtreyle değil sırayla ayırıyoruz.
+    // slice(1): ObjectIds cannot be compared with === (reference equality), so
+    // separate the record to preserve by position rather than filtering.
     const stale = group.ids.slice(1);
     if (stale.length === 0) continue;
     await database
       .collection("deletion_requests")
       .deleteMany({ _id: { $in: stale } });
     console.warn(
-      `mükerrer bekleyen silme talebi temizlendi: ${stale.length} kayıt`,
+      `duplicate pending deletion requests removed: ${stale.length} records`,
     );
   }
 }

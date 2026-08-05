@@ -47,8 +47,8 @@ export function WeekStrip({
             month: "long",
           }).format(day.date);
           const visitLabel = visited
-            ? t("{{n}} geliş", { n: entries })
-            : t("Geliş yok");
+            ? t("{{n}} visits", { n: entries })
+            : t("No visit");
 
           return (
             <View
@@ -65,7 +65,9 @@ export function WeekStrip({
               <Text style={styles.weekday} numberOfLines={1}>
                 {weekdayFormatter.format(day.date)}
               </Text>
-              <Text style={[styles.dayNumber, visited && styles.dayNumberVisited]}>
+              <Text
+                style={[styles.dayNumber, visited && styles.dayNumberVisited]}
+              >
                 {day.date.getDate()}
               </Text>
             </View>
@@ -100,8 +102,8 @@ const weekStripStyles = (theme: Theme) =>
       borderColor: theme.colors.success,
     },
     cellToday: { borderColor: theme.colors.accent },
-    // Bugün gelinmişse yeşil kalır; "bugün" işareti kenar kalınlığına düşer
-    // (Calendar.tsx'teki cellVisitedToday ile aynı çözüm).
+    // A visited today remains green; the "today" marker falls back to border
+    // thickness (the same solution as cellVisitedToday in Calendar.tsx).
     cellVisitedToday: { borderWidth: 2 },
     weekday: {
       ...theme.type.micro,

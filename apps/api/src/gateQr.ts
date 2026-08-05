@@ -4,7 +4,7 @@ import { env } from "./env.js";
 
 const GATE_QR_PREFIX = "OGGATE1";
 
-// Statik turnike QR imzalama anahtarı — sunucu sırrından türetilir, ayrıca saklanmaz
+// Static turnstile QR signing key—derived from the server secret, not stored separately
 const gateQrKey = createHmac("sha256", env.betterAuthSecret)
   .update("opengym-gate-v1")
   .digest();
@@ -13,14 +13,14 @@ function sign(deviceId: string): string {
   return createHmac("sha256", gateQrKey).update(deviceId).digest("base64url");
 }
 
-// Cihaz için yazdırılabilir, sabit (süresiz) QR içeriğini üretir
+// Generates printable, fixed (non-expiring) QR content for the device
 export function gateQrContent(deviceId: string): string {
   return `${GATE_QR_PREFIX}.${deviceId}.${sign(deviceId)}`;
 }
 
 export type GateQrVerifyResult = { ok: true; deviceId: string } | { ok: false };
 
-// Üyenin okuttuğu statik turnike QR'ının imzasını doğrular
+// Verifies the signature of the static turnstile QR scanned by the member
 export function verifyGateQr(content: string): GateQrVerifyResult {
   const parts = content.split(".");
   if (parts.length !== 3 || parts[0] !== GATE_QR_PREFIX) {

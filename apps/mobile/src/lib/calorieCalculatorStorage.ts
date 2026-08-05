@@ -4,12 +4,12 @@ import type { ActivityLevel, CalorieGoal, Sex } from "./calorieCalculator";
 const STORAGE_KEY_PREFIX = "opengym.calorieCalculator.state";
 
 /**
- * Anahtar üyeye özeldir: aynı cihazda A çıkıp B girdiğinde B'nin akışı A'nın
- * cinsiyet/yaş/ölçüleriyle dolmasın. Beklenmeyen bir kimlik biçiminde
- * temizleyip devam etmek yerine `null` döneriz: karakter ayıklamak enjektif
- * değildir, iki farklı kimlik aynı anahtara düşüp veriyi çapraz besleyebilir.
- * SecureStore anahtarları zaten yalnızca harf, rakam, ".", "-" ve "_" kabul
- * eder; kullanıcı kimliği ObjectId hex'idir.
+ * The key is member-specific: when A signs out and B signs in on the same device,
+ * B's flow must not contain A's sex, age, or measurements. For an unexpected ID
+ * format, return `null` instead of sanitizing and continuing: character removal
+ * is not injective, so two different IDs could map to the same key and cross-feed
+ * data. SecureStore keys already accept only letters, digits, ".", "-", and "_";
+ * the user ID is an ObjectId hex string.
  */
 function storageKey(userId: string): string | null {
   if (!/^[a-f0-9]{24}$/i.test(userId)) return null;
@@ -19,11 +19,10 @@ function storageKey(userId: string): string | null {
 export type CalorieUnitSystem = "metric" | "imperial";
 
 /**
- * Hesaplayıcının son girdileri: bir dahaki açılışta akış boş başlamasın diye
- * yalnızca bu cihazda (SecureStore) ve yalnızca ilgili üyenin anahtarı altında
- * saklanır. Boy/kilo bu kuralın dışında: onlar ayrıca üyenin kendi profiline
- * de yazılır (bkz. CalorieCalculator.tsx), çünkü sunucu tarafında da
- * tutulmaları kabul edildi.
+ * The calculator's latest inputs are stored only on this device (SecureStore)
+ * and under the relevant member's key so the flow is not empty next time. Height
+ * and weight are exceptions: they are also written to the member's profile (see
+ * CalorieCalculator.tsx) because server-side storage is accepted for them.
  */
 export interface StoredCalorieState {
   sex: Sex;
@@ -59,14 +58,15 @@ function isUnitSystem(value: unknown): value is CalorieUnitSystem {
 }
 
 /**
- * Anahtar üyeye özel hale gelmeden önce yazılmış tek ortak kayıt. Sahibi
- * bilinemediği için taşınamaz, cihazda da bırakılamaz: ilk erişimde silinir.
+ * Single shared entry written before keys became member-specific. Its owner
+ * cannot be determined, so it cannot be migrated or left on the device; it is
+ * deleted on first access.
  */
 async function dropLegacyUnscopedState(): Promise<void> {
   try {
     await SecureStore.deleteItemAsync(STORAGE_KEY_PREFIX);
   } catch {
-    // Silinemezse bir sonraki erişimde yeniden denenir.
+    // If deletion fails, it is retried on the next access.
   }
 }
 
@@ -118,14 +118,14 @@ export async function saveCalorieCalculatorState(
   try {
     await SecureStore.setItemAsync(key, JSON.stringify(state));
   } catch {
-    // Yazma başarısız olursa bir dahaki açılış boş başlar; kritik değil.
+    // If the write fails, the next opening starts empty; this is not critical.
   }
 }
 
 /**
- * Oturum kaybında çağrılır (bkz. App.tsx): elle çıkış, hesap silme onayı,
- * paylaşım tespitiyle oturum iptali veya sürenin dolması. Sağlık verisi
- * cihazda oturumdan uzun yaşamamalı.
+ * Called when the session is lost (see App.tsx): manual sign-out, account
+ * deletion approval, session revocation after sharing detection, or expiry.
+ * Health data must not outlive the session on the device.
  */
 export async function clearCalorieCalculatorState(
   userId: string,
@@ -136,6 +136,6 @@ export async function clearCalorieCalculatorState(
   try {
     await SecureStore.deleteItemAsync(key);
   } catch {
-    // Silinemezse bir sonraki çıkışta yeniden denenir.
+    // If deletion fails, it is retried on the next sign-out.
   }
 }

@@ -37,8 +37,8 @@ export function Login({
 
   async function submit() {
     setError(null);
-    const nextEmailError = email.trim() ? null : t("E-posta adresinizi girin.");
-    const nextPasswordError = password ? null : t("Şifrenizi girin.");
+    const nextEmailError = email.trim() ? null : t("Enter your email address.");
+    const nextPasswordError = password ? null : t("Enter your password.");
     setEmailError(nextEmailError);
     setPasswordError(nextPasswordError);
     if (nextEmailError || nextPasswordError) {
@@ -66,8 +66,8 @@ export function Login({
         }
         setError(
           error.status === 429
-            ? t("Çok fazla deneme. Lütfen bir dakika bekleyin.")
-            : t("E-posta veya şifre hatalı."),
+            ? t("Too many attempts. Please wait one minute.")
+            : t("The email or password is incorrect."),
         );
       }
     });
@@ -75,9 +75,7 @@ export function Login({
 
   function showUnreachable() {
     setError(
-      t(
-        "Bağlantı kurulamadı. İnternet bağlantınızı kontrol edip tekrar deneyin.",
-      ),
+      t("Could not connect. Check your internet connection and try again."),
     );
   }
 
@@ -85,15 +83,15 @@ export function Login({
     <AuthShell
       footer={
         <AuthFooterLink
-          prompt={t("Hesabın yok mu?")}
-          actionLabel={t("Kayıt Ol")}
+          prompt={t("Don't have an account?")}
+          actionLabel={t("Sign Up")}
           onPress={onRegister}
         />
       }
     >
       <AuthHeading
-        title={t("Tekrar hoş geldin")}
-        subtitle={t("Üyeliğini kontrol et ve salona giriş yap")}
+        title={t("Welcome back")}
+        subtitle={t("Check your membership and enter the gym")}
       />
 
       {error ? (
@@ -105,7 +103,7 @@ export function Login({
       <View style={styles.fields}>
         <Field
           inputRef={emailRef}
-          label={t("E-posta")}
+          label={t("Email")}
           value={email}
           error={emailError}
           onChangeText={(value) => {
@@ -120,7 +118,7 @@ export function Login({
         />
         <PasswordField
           inputRef={passwordRef}
-          label={t("Şifre")}
+          label={t("Password")}
           value={password}
           error={passwordError}
           onChangeText={(value) => {
@@ -139,10 +137,10 @@ export function Login({
         hitSlop={6}
         style={({ pressed }) => [styles.forgot, pressed && styles.pressed]}
       >
-        <Text style={styles.forgotLabel}>{t("Şifremi unuttum")}</Text>
+        <Text style={styles.forgotLabel}>{t("Forgot password")}</Text>
       </Pressable>
 
-      <Button title={t("Giriş Yap")} onPress={submit} busy={busy} />
+      <Button title={t("Sign In")} onPress={submit} busy={busy} />
     </AuthShell>
   );
 }

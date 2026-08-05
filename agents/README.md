@@ -1,84 +1,86 @@
-# Turnike Cihaz Ajanları
+# Turnstile Device Agents
 
-Faz 4 (revize) Device Gateway'e bağlanan cihaz tarafı referans uygulamaları. Bu dizin pnpm workspace'in **dışındadır**; kod doğrudan cihaza kopyalanır.
+Device-side reference applications that connect to the revised Phase 4 Device Gateway. This directory is **outside** the pnpm workspace; the code is copied directly to the device.
 
-Akış: turnikeye yapıştırılmış **statik** bir QR kodu üye telefonuyla okutulur; üyenin telefonu API'ye istek atar, API üyeyi doğrular ve **bu cihaza** WebSocket üzerinden röleyi açma komutu gönderir. Cihaz artık "dumb client"tır — kendi başına QR okumaz, yalnızca kimlik doğrular ve sunucudan gelen açma komutunu bekler.
+Flow: a member scans a **static** QR code attached to the turnstile with their phone; the member's phone sends a request to the API, the API verifies the member, and sends a command over WebSocket to open the relay on **this device**. The device is now a "dumb client"—it does not scan QR codes itself; it only authenticates and waits for the open command from the server.
 
-| Ajan              | Platform                   | Ne için                    |
-| ----------------- | -------------------------- | -------------------------- |
-| `sim/agent.mjs`   | Node ≥ 22 (bağımlılık yok) | Geliştirme/test simülatörü |
-| `rpi/agent.py`    | Raspberry Pi (Python 3)    | GPIO röle                  |
-| `esp32/agent.ino` | ESP32 (Arduino)            | Röle                       |
+| Agent             | Platform                    | Purpose                    |
+| ----------------- | --------------------------- | -------------------------- |
+| `sim/agent.mjs`   | Node ≥ 22 (no dependencies) | Development/test simulator |
+| `rpi/agent.py`    | Raspberry Pi (Python 3)     | GPIO relay                 |
+| `esp32/agent.ino` | ESP32 (Arduino)             | Relay                      |
 
-## Protokol
+## Protocol
 
 WebSocket, JSON text frame, endpoint: `ws://<api-host>:3000/api/device-gateway`
-(tipler: `packages/shared` → `DeviceClientMessage` / `DeviceServerMessage`)
+(types: `packages/shared` → `DeviceClientMessage` / `DeviceServerMessage`)
 
-1. Bağlantı açılır açılmaz cihaz kimlik doğrular (ilk mesaj, 5 sn içinde):
+1. The device authenticates as soon as the connection opens (first message, within 5 seconds):
    ```json
-   { "type": "auth", "deviceId": "<panel'deki cihaz id>", "token": "og_..." }
+   { "type": "auth", "deviceId": "<device id from panel>", "token": "og_..." }
    ```
-   Yanıt: `{"type":"auth_ok","deviceName":"..."}` veya `{"type":"auth_error","message":"..."}` + bağlantı kapanır.
-2. Kimlik doğrulama sonrası cihaz herhangi bir mesaj göndermez; yalnızca sunucudan gelen açma komutunu dinler:
+   Response: `{"type":"auth_ok","deviceName":"..."}` or `{"type":"auth_error","message":"..."}` + the connection closes.
+2. After authentication, the device does not send any messages; it only listens for the open command from the server:
    ```json
    { "type": "open", "openMs": 500 }
    ```
-   Bu komut, bir üye telefonuyla panelde bu cihaza ait statik QR'ı okutup sunucu tarafındaki tüm kontrolleri (abonelik, konum, hesap paylaşımı vb.) geçtiğinde gönderilir.
-3. Sunucu 30 sn'de bir WebSocket ping atar; kullanılan istemci kütüphaneleri otomatik pong yanıtlar. Pong gelmeyen bağlantı sunucu tarafında kapatılır ve cihaz panelde "Çevrimdışı" görünür.
+   This command is sent when a member scans the static QR for this device shown in the panel with their phone and passes all server-side checks (subscription, location, account sharing, etc.).
+3. The server sends a WebSocket ping every 30 seconds; the client libraries in use respond with a pong automatically. A connection that does not return a pong is closed by the server, and the device appears as "Offline" in the panel.
 
-## Yapılandırma
+## Configuration
 
-Cihaz, panelde **Cihazlar → Cihaz ekle** ile oluşturulur. Dönen `og_` önekli token **yalnızca bir kez** gösterilir — cihaza kaydedin. Kaybederseniz cihazı silip yeniden ekleyin (sunucu yalnızca token'ın hash'ini saklar). Aynı panelde, o cihaza ait **yazdırılabilir statik QR** da görüntülenir/yazdırılır — bu QR'ı turnikeye yapıştırın.
+Create the device from **Devices → Add device** in the panel. The returned token with the `og_` prefix is shown **only once**—save it on the device. If you lose it, delete the device and add it again (the server stores only the token's hash). The same panel also displays and prints the **printable static QR** for that device—attach this QR to the turnstile.
 
-| Değişken       | Varsayılan                               | Açıklama                   |
-| -------------- | ---------------------------------------- | -------------------------- |
-| `GATEWAY_URL`  | `ws://127.0.0.1:3000/api/device-gateway` | Gateway adresi             |
-| `DEVICE_ID`    | — (zorunlu)                              | Paneldeki cihaz id'si      |
-| `DEVICE_TOKEN` | — (zorunlu)                              | `og_` önekli cihaz token'ı |
-| `RELAY_GPIO`   | `17`                                     | (yalnız RPi) Röle BCM pini |
+| Variable       | Default                                  | Description                        |
+| -------------- | ---------------------------------------- | ---------------------------------- |
+| `GATEWAY_URL`  | `ws://127.0.0.1:3000/api/device-gateway` | Gateway address                    |
+| `DEVICE_ID`    | — (required)                             | Device ID from the panel           |
+| `DEVICE_TOKEN` | — (required)                             | Device token with the `og_` prefix |
+| `RELAY_GPIO`   | `17`                                     | Relay BCM pin (RPi only)           |
 
-ESP32'de yapılandırma `agent.ino` başındaki sabitlerdedir (WiFi, host, id, token).
+On the ESP32, configuration is defined by the constants at the start of `agent.ino` (WiFi, host, ID, token).
 
-> **Üretim notu:** API'yi internete açıyorsanız gateway'i TLS arkasına alın
-> (reverse proxy ile `wss://`) — token düz metin frame'de gider.
+> **Production note:** If you expose the API to the internet, put the gateway behind TLS
+> (`wss://` through a reverse proxy)—the token is sent in a plain-text frame.
 
-## Fail-closed davranışı
+## Fail-closed behavior
 
-Tüm ajanlar aynı kuralı uygular: **röle varsayılan olarak kapalıdır ve yalnızca sunucudan `open` komutu geldiğinde `openMs` süresince açılır.** WiFi koptuğunda, sunucu erişilemez olduğunda veya kimlik doğrulama başarısız olduğunda röle hiç tetiklenmez; cihaz otomatik yeniden bağlanmayı dener (üstel geri çekilme / kütüphane reconnect'i). Üye tarafında bu durum, tarama sonrası "Turnike bağlantısı yok" uyarısıyla görünür.
+All agents apply the same rule: **the relay is closed by default and opens for `openMs` only when the `open` command arrives from the server.** When WiFi disconnects, the server is unreachable, or authentication fails, the relay is never triggered; the device automatically attempts to reconnect (exponential backoff / library reconnect). Members see this condition as a "No turnstile connection" warning after scanning.
 
-## Simülatör kullanımı
+## Using the simulator
 
 ```bash
 DEVICE_ID=... DEVICE_TOKEN=og_... node agents/sim/agent.mjs
 ```
 
-Bağlanır, kimlik doğrular ve sunucudan `open` komutu gelene kadar bekler; panelden bu cihaza ait QR'ı bir telefonla okutarak veya `POST /api/me/gate-scan` isteğini tetikleyerek açılma komutunu tetikleyebilirsiniz.
+It connects, authenticates, and waits for the `open` command from the server; you can trigger the open command by scanning this device's QR from the panel with a phone or by triggering the `POST /api/me/gate-scan` request.
 
-### Filo simülatörü (`sim/fleet.mjs`)
+### Fleet simulator (`sim/fleet.mjs`)
 
-Fiziksel donanım olmadan birden fazla turnikeyi tek süreçte simüle eder; kurulumu da otomatiktir (token'ı elle kopyalamak gerekmez):
+It simulates multiple turnstiles in one process without physical hardware; setup is also automatic (there is no need to copy the token manually):
 
 ```bash
-# Tek seferlik kurulum: MEVCUT TÜM CİHAZLARI SİLER, yenilerini oluşturur,
-# kimlik bilgilerini agents/sim/devices.json'a yazar (git'e girmez, izin 600)
-ADMIN_PASSWORD=... pnpm sim:setup                 # varsayılan: Giriş(in) + Çıkış(out)
-ADMIN_PASSWORD=... pnpm sim:setup "Yan Kapı:in"   # özel liste: "Ad:in|out" ...
+# One-time setup: DELETES ALL EXISTING DEVICES, creates new ones,
+# writes credentials to agents/sim/devices.json (not tracked by git, mode 600)
+# default: "Giriş Turnikesi"(in) + "Çıkış Turnikesi"(out)
+ADMIN_PASSWORD=... pnpm sim:setup
+# custom list, format "Name:in|out"
+ADMIN_PASSWORD=... pnpm sim:setup "Yan Kapı:in"
 
-# Çalıştırma: devices.json'daki her cihaz için bir WebSocket açar
+# Run: opens a WebSocket for each device in devices.json
 pnpm sim
 ```
 
-`API_URL` (varsayılan `http://127.0.0.1:3000`), `GATEWAY_URL` ve `ADMIN_EMAIL` (varsayılan `admin@opengym.local`) ortam değişkenleriyle özelleştirilir. Loglar cihaz adı öneklidir; `open` komutu geldiğinde `[Ad] AÇIK — röle N ms` yazar.
+Customize with the `API_URL` (default `http://127.0.0.1:3000`), `GATEWAY_URL`, and `ADMIN_EMAIL` (default `admin@opengym.local`) environment variables. Logs are prefixed with the device name; when the `open` command arrives, it writes `[Name] OPEN — relay N ms`.
 
-## Donanım bağlantısı
+## Hardware connections
 
 **Raspberry Pi (`rpi/agent.py`)**
 
-- Röle modülü: `IN` → BCM 17 (varsayılan), `VCC` → 5V, `GND` → GND. Röle çıkışı turnikenin tetik girişine (kuru kontak).
-- `pip install websockets gpiozero` sonrası systemd servisi olarak çalıştırılması önerilir.
+- Relay module: `IN` → BCM 17 (default), `VCC` → 5V, `GND` → GND. Connect the relay output to the turnstile trigger input (dry contact).
+- Running it as a systemd service after `pip install websockets gpiozero` is recommended.
 
 **ESP32 (`agent.ino`)**
 
-- Röle `IN` → GPIO26 (aktif HIGH).
-- Kütüphaneler: WebSockets (links2004) ≥ 2.4, ArduinoJson ≥ 7.
+- Relay `IN` → GPIO26 (active HIGH).
+- Libraries: WebSockets (links2004) ≥ 2.4, ArduinoJson ≥ 7.

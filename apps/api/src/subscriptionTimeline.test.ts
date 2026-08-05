@@ -24,8 +24,8 @@ function timelineRecord(
   };
 }
 
-describe("UTC abonelik ayı hesabı", () => {
-  it("ay sonu gününü hedef ayın son gününe sıkıştırır", () => {
+describe("UTC subscription month calculation", () => {
+  it("clamps an end-of-month day to the target month's last day", () => {
     assert.equal(
       addUtcCalendarMonthsClamped(
         new Date("2024-01-31T18:25:43.210Z"),
@@ -42,7 +42,7 @@ describe("UTC abonelik ayı hesabı", () => {
     );
   });
 
-  it("UTC saatini koruyarak yıl sınırını geçer", () => {
+  it("crosses a year boundary while preserving the UTC time", () => {
     assert.equal(
       addUtcCalendarMonthsClamped(
         new Date("2025-08-31T23:59:59.999Z"),
@@ -52,7 +52,7 @@ describe("UTC abonelik ayı hesabı", () => {
     );
   });
 
-  it("aktif abonelikte son bitişten, bitmiş abonelikte şimdiden başlar", () => {
+  it("starts after the last expiry for active subscriptions and now for expired ones", () => {
     const now = new Date("2025-01-15T10:00:00.000Z");
     const active = calculateSubscriptionPeriod(
       now,
@@ -72,8 +72,8 @@ describe("UTC abonelik ayı hesabı", () => {
   });
 });
 
-describe("eski abonelik zaman çizelgesi onarımı", () => {
-  it("createdAt sırasında ilk kaydı korur ve sonraki süreleri kaybetmez", () => {
+describe("legacy subscription timeline repair", () => {
+  it("keeps the first record by createdAt and preserves subsequent durations", () => {
     const first = timelineRecord(
       "a",
       "user-1",
@@ -96,7 +96,7 @@ describe("eski abonelik zaman çizelgesi onarımı", () => {
       "2025-01-03T10:00:00.000Z",
     );
 
-    // Girdi bilerek ters sırada: kararı dizi sırası değil createdAt verir.
+    // Input is deliberately reversed: createdAt, not array order, decides.
     const repairs = planLegacySubscriptionRepairs([third, second, first]);
     assert.deepEqual(
       repairs.map((repair) => repair.id),
@@ -114,7 +114,7 @@ describe("eski abonelik zaman çizelgesi onarımı", () => {
     );
   });
 
-  it("onarılmış kayıtlarda ikinci çalıştırmada değişiklik üretmez", () => {
+  it("produces no changes on a second run over repaired records", () => {
     const records = [
       timelineRecord(
         "a",
@@ -142,7 +142,7 @@ describe("eski abonelik zaman çizelgesi onarımı", () => {
     assert.deepEqual(planLegacySubscriptionRepairs(repairedRecords), []);
   });
 
-  it("farklı kullanıcıların zaman çizelgelerini birbirine karıştırmaz", () => {
+  it("does not mix timelines belonging to different users", () => {
     const records = [
       timelineRecord(
         "a",
@@ -163,8 +163,8 @@ describe("eski abonelik zaman çizelgesi onarımı", () => {
   });
 });
 
-describe("mobil abonelik özeti", () => {
-  it("aktif aralıktan bitişik gelecek paketlerin sonuna kadar uzanır", () => {
+describe("mobile subscription summary", () => {
+  it("extends from the active range through adjacent future packages", () => {
     const summary = summarizeSubscriptionTimeline(
       [
         {
@@ -193,7 +193,7 @@ describe("mobil abonelik özeti", () => {
     assert.equal(summary.remainingDays, 76);
   });
 
-  it("yalnızca gelecek paket varsa aktif göstermez", () => {
+  it("does not report active when only a future package exists", () => {
     assert.deepEqual(
       summarizeSubscriptionTimeline(
         [

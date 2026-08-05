@@ -7,16 +7,16 @@ const mongoUri = process.env.TEST_MONGODB_URI;
 const redisUri = process.env.TEST_REDIS_URL;
 
 test(
-  "eski abonelik onarımı süreleri korur ve marker sonrası tekrar çalışmaz",
+  "legacy subscription repair preserves durations and does not rerun after the marker",
   {
     skip:
       mongoUri && redisUri
         ? false
-        : "TEST_MONGODB_URI ve TEST_REDIS_URL tanımlı değil",
+        : "TEST_MONGODB_URI and TEST_REDIS_URL are not defined",
   },
   async () => {
-    // subscriptions modülünün paylaşılan Redis istemcisi import anında
-    // oluşur; test adresini dinamik importtan önce yerleştiririz.
+    // The shared Redis client in subscriptions is created at import time, so
+    // set the test address before the dynamic import.
     process.env.REDIS_URL = redisUri!;
     const [
       { createSequentialSubscription, repairLegacySubscriptionOverlaps },

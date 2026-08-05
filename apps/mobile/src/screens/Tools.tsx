@@ -40,21 +40,19 @@ export function Tools({
   return (
     <ScrollScreen>
       <ScreenHeader
-        title={t("Araçlar")}
-        subtitle={t(
-          "Antrenman hedeflerini planlamana yardımcı olan hesaplayıcılar.",
-        )}
+        title={t("Tools")}
+        subtitle={t("Calculators that help you plan your training goals.")}
       />
 
-      {/* Tek satırlık, tam genişlik kart: bir 2 sütunlu ızgara tek öğede
-          yarı boş kalır. Yeni araçlar eklendiğinde bu satır altına aynen
-          çoğaltılır — ızgara matematiği değil, dikey bir liste büyür. */}
+      {/* Single-row, full-width card: a two-column grid would remain half empty
+          with one item. New tools duplicate this row below, growing a vertical
+          list rather than introducing grid math. */}
       <View style={styles.list}>
         <Pressable
           accessibilityRole="button"
-          accessibilityLabel={t("Günlük kalori ihtiyacı")}
+          accessibilityLabel={t("Daily calorie needs")}
           accessibilityHint={t(
-            "Kalori ve makro hesaplama akışını tam ekranda açar.",
+            "Opens the calorie and macro calculator in full screen.",
           )}
           onPress={openCalculator}
         >
@@ -66,10 +64,10 @@ export function Tools({
                 </View>
                 <View style={styles.cardCopy}>
                   <Text style={styles.cardTitle}>
-                    {t("Günlük kalori ihtiyacı")}
+                    {t("Daily calorie needs")}
                   </Text>
                   <Text style={styles.cardBody}>
-                    {t("Hedef kalorilerini ve günlük makrolarını tahmin et.")}
+                    {t("Estimate your target calories and daily macros.")}
                   </Text>
                 </View>
                 <ChevronRightGlyph

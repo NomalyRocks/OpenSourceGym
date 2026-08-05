@@ -10,9 +10,9 @@ import {
 export { INITIAL_ADMIN_EMAIL, INITIAL_ADMIN_PASSWORD } from "./initialAdmin.js";
 
 /**
- * İlk kurulum: hiç admin yoksa varsayılan admin hesabı oluşturur.
- * Hesap mustChangePassword=true ile açılır; ilk girişte şifre
- * değiştirilmeden hiçbir admin ucu çalışmaz (US-2).
+ * Initial setup: creates the default admin account if no admin exists.
+ * The account starts with mustChangePassword=true; no admin endpoint works
+ * until the password is changed at first sign-in (US-2).
  */
 export async function seedInitialAdmin(): Promise<void> {
   const users = userCollection();
@@ -28,7 +28,7 @@ export async function seedInitialAdmin(): Promise<void> {
         firstName: "Salon",
         lastName: "Yöneticisi",
         phone: INITIAL_ADMIN_PHONE,
-        kvkkAccepted: true,
+        dataProcessingAccepted: true,
         privacyAccepted: true,
       },
     }),
@@ -46,6 +46,6 @@ export async function seedInitialAdmin(): Promise<void> {
   );
 
   console.log(
-    `[seed] İlk admin oluşturuldu: ${INITIAL_ADMIN_EMAIL} / ${INITIAL_ADMIN_PASSWORD} (ilk girişte şifre değişimi zorunlu)`,
+    `[seed] Initial admin created: ${INITIAL_ADMIN_EMAIL} / ${INITIAL_ADMIN_PASSWORD} (password change required at first sign-in)`,
   );
 }

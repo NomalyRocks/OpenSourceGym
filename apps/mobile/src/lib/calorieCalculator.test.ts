@@ -11,7 +11,7 @@ import {
 } from "./calorieCalculator";
 
 describe("calculateCaloriePlan", () => {
-  it("erkek bakım kalorisi ve makrolarını hesaplar", () => {
+  it("calculates male maintenance calories and macros", () => {
     const result = calculateCaloriePlan({
       sex: "male",
       age: 30,
@@ -31,7 +31,7 @@ describe("calculateCaloriePlan", () => {
     });
   });
 
-  it("kadın yağ kaybı hedefini yüzde 15 açıkla hesaplar", () => {
+  it("calculates a female fat-loss target with a 15 percent deficit", () => {
     const result = calculateCaloriePlan({
       sex: "female",
       age: 40,
@@ -51,7 +51,7 @@ describe("calculateCaloriePlan", () => {
     });
   });
 
-  it("kas kazanımı hedefini yüzde 10 artırır", () => {
+  it("increases the muscle-gain target by 10 percent", () => {
     const result = calculateCaloriePlan({
       sex: "male",
       age: 30,
@@ -65,7 +65,7 @@ describe("calculateCaloriePlan", () => {
     assert.equal(result.macros.carbohydrate.percent, 50);
   });
 
-  it("beş hareket seviyesini artan bakım kalorisine dönüştürür", () => {
+  it("maps five activity levels to increasing maintenance calories", () => {
     const levels = [
       "sedentary",
       "light",
@@ -88,7 +88,7 @@ describe("calculateCaloriePlan", () => {
     assert.deepEqual(values, [1620, 1850, 2090, 2330, 2560]);
   });
 
-  it("desteklenen yaş, boy ve kilo sınırlarını zorunlu kılar", () => {
+  it("enforces the supported age, height, and weight limits", () => {
     const valid = {
       sex: "male" as const,
       age: 30,
@@ -105,20 +105,20 @@ describe("calculateCaloriePlan", () => {
   });
 });
 
-describe("birim ve sayı yardımcıları", () => {
-  it("Türkçe ve İngilizce ondalık girişlerini çözer", () => {
+describe("unit and number helpers", () => {
+  it("parses Turkish and English decimal input", () => {
     assert.equal(parseLocalizedNumber("80,5"), 80.5);
     assert.equal(parseLocalizedNumber("80.5"), 80.5);
     assert.equal(parseLocalizedNumber("1,2,3"), null);
     assert.equal(parseLocalizedNumber("-2"), null);
   });
 
-  it("kg/lb dönüşümünde fiziksel değeri korur", () => {
+  it("preserves the physical value when converting kg and lb", () => {
     const pounds = kgToPounds(80);
     assert.ok(Math.abs(poundsToKg(pounds) - 80) < 0.000001);
   });
 
-  it("cm ile ft/in dönüşümünde fiziksel değeri korur", () => {
+  it("preserves the physical value when converting cm and ft/in", () => {
     const imperial = cmToFeetAndInches(180);
     assert.ok(
       Math.abs(feetAndInchesToCm(imperial.feet, imperial.inches) - 180) <
@@ -126,7 +126,7 @@ describe("birim ve sayı yardımcıları", () => {
     );
   });
 
-  it("formatEditable gereksiz ondalık sıfırı atar ve yerele göre ayırıcı seçer", () => {
+  it("formatEditable omits unnecessary decimal zeros and selects the locale separator", () => {
     assert.equal(formatEditable(82, "tr"), "82");
     assert.equal(formatEditable(82.5, "tr"), "82,5");
     assert.equal(formatEditable(82.5, "en"), "82.5");

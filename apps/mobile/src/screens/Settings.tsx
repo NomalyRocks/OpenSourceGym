@@ -60,8 +60,8 @@ export function Settings({
     try {
       setDeletion(await api<MyDeletionRequest>("/api/me/deletion-request"));
     } catch {
-      // Silme talebi durumu okunamazsa bölüm varsayılan hâlinde kalır; asıl
-      // eylem yine de denenebilir ve hatası ayrıca gösterilir.
+      // If deletion-request status cannot be read, the section remains in its
+      // default state; the action can still be attempted and shows its own error.
     }
   }, []);
 
@@ -71,14 +71,14 @@ export function Settings({
 
   function confirmDeletion() {
     Alert.alert(
-      t("Hesabı sil"),
+      t("Delete account"),
       t(
-        "Bu talep personel onayına gönderilir. Onaylanırsa hesabınız ve kişisel verileriniz kalıcı olarak silinir, bu işlem geri alınamaz.",
+        "This request will be sent for staff approval. If approved, your account and personal data will be permanently deleted and cannot be restored.",
       ),
       [
-        { text: t("Vazgeç"), style: "cancel" },
+        { text: t("Cancel"), style: "cancel" },
         {
-          text: t("Talep oluştur"),
+          text: t("Create request"),
           style: "destructive",
           onPress: () => void requestDeletion(),
         },
@@ -95,7 +95,11 @@ export function Settings({
       void center.refresh();
     } catch (error) {
       setDeletionError(
-        errorMessage(error, t, "Talep oluşturulamadı. Tekrar deneyin."),
+        errorMessage(
+          error,
+          t,
+          "The request could not be created. Please try again.",
+        ),
       );
     } finally {
       setDeletionBusy(false);
@@ -111,25 +115,29 @@ export function Settings({
       void center.refresh();
     } catch (error) {
       setDeletionError(
-        errorMessage(error, t, "Talep iptal edilemedi. Tekrar deneyin."),
+        errorMessage(
+          error,
+          t,
+          "The request could not be cancelled. Please try again.",
+        ),
       );
     } finally {
       setDeletionBusy(false);
     }
   }
 
-  // Çıkış da ağ isteğidir: sessizce başarısız olursa üye hâlâ oturumda olduğunu
-  // fark etmez. Hata görünür olmalı ve buton yeniden denenebilir kalmalı.
+  // Signing out is also a network request: if it fails silently, the member will
+  // not realize the session is still active. Show the error and keep the button retryable.
   async function signOut() {
     setSignOutError(null);
     setSignOutBusy(true);
     try {
-      // Hesaplayıcının cihazdaki sağlık verisi App.tsx'teki oturum kaybı
-      // etkisinde silinir: iptal edilen oturumlarda da çalışan tek yol orası.
+      // The calculator's on-device health data is removed by the session-loss
+      // effect in App.tsx: it is the only path that also handles revoked sessions.
       await authClient.signOut();
     } catch (error) {
       setSignOutError(
-        errorMessage(error, t, "Çıkış yapılamadı. Tekrar deneyin."),
+        errorMessage(error, t, "Could not sign out. Please try again."),
       );
     } finally {
       setSignOutBusy(false);
@@ -139,17 +147,17 @@ export function Settings({
   const themeOptions: ReadonlyArray<SegmentOption<ThemeMode>> = [
     {
       value: "system",
-      label: t("Cihaz"),
+      label: t("System"),
       icon: (color) => <DeviceGlyph size={16} color={color} />,
     },
     {
       value: "light",
-      label: t("Açık"),
+      label: t("Light"),
       icon: (color) => <SunGlyph size={16} color={color} />,
     },
     {
       value: "dark",
-      label: t("Koyu"),
+      label: t("Dark"),
       icon: (color) => <MoonGlyph size={16} color={color} />,
     },
   ];
@@ -160,30 +168,30 @@ export function Settings({
 
   return (
     <ScrollScreen>
-      <ScreenHeader title={t("Ayarlar")} onBack={onBack} />
+      <ScreenHeader title={t("Settings")} onBack={onBack} />
 
       <View style={styles.section}>
-        <SectionHeading title={t("Görünüm")} />
+        <SectionHeading title={t("Appearance")} />
         <Plate>
           <Text style={styles.sectionHint}>
-            {t("Uygulamanın açık mı koyu mu görüneceğini seç.")}
+            {t("Choose whether the app looks light or dark.")}
           </Text>
           <View style={styles.control}>
             <Segmented
               options={themeOptions}
               value={mode}
               onChange={setMode}
-              accessibilityLabel={t("Tema")}
+              accessibilityLabel={t("Theme")}
             />
           </View>
         </Plate>
       </View>
 
       <View style={styles.section}>
-        <SectionHeading title={t("Dil")} />
+        <SectionHeading title={t("Language")} />
         <Plate>
           <Text style={styles.sectionHint}>
-            {t("Uygulamada kullanmak istediğin dili seç.")}
+            {t("Choose the language you want to use in the app.")}
           </Text>
           <View style={styles.control}>
             <LanguageSwitcher />
@@ -192,30 +200,30 @@ export function Settings({
       </View>
 
       <View style={styles.section}>
-        <SectionHeading title={t("Bildirimler")} />
+        <SectionHeading title={t("Notifications")} />
         <Plate padded={false}>
           <SettingRow
             icon={(color) => <BellGlyph size={19} color={color} />}
-            title={t("Üyelik hatırlatmaları")}
-            subtitle={t("Üyeliğin bitmeye yaklaştığında uyar.")}
+            title={t("Membership reminders")}
+            subtitle={t("Warn me when my membership is close to expiring.")}
             trailing={
               <Toggle
                 value={center.prefs.membership}
                 onValueChange={(value) => center.setPref("membership", value)}
-                label={t("Üyelik hatırlatmaları")}
+                label={t("Membership reminders")}
               />
             }
           />
           <Divider inset={theme.spacing.md + 34 + theme.spacing.sm} />
           <SettingRow
             icon={(color) => <ShieldGlyph size={19} color={color} />}
-            title={t("Hesap işlemleri")}
-            subtitle={t("Hesap silme talebinin durumu değişince haber ver.")}
+            title={t("Account actions")}
+            subtitle={t("Notify me when my deletion request changes status.")}
             trailing={
               <Toggle
                 value={center.prefs.account}
                 onValueChange={(value) => center.setPref("account", value)}
-                label={t("Hesap işlemleri")}
+                label={t("Account actions")}
               />
             }
           />
@@ -223,20 +231,20 @@ export function Settings({
         {!center.serverConnected ? (
           <Text style={styles.footnote}>
             {t(
-              "Bu uyarılar cihazında üretilir; salon duyuruları için anlık bildirim henüz kullanılmıyor.",
+              "These alerts are generated on your device; push notifications for gym announcements are not in use yet.",
             )}
           </Text>
         ) : null}
       </View>
 
       <View style={styles.section}>
-        <SectionHeading title={t("Gizlilik ve izinler")} />
+        <SectionHeading title={t("Privacy and permissions")} />
         <Plate padded={false}>
           <SettingRow
             icon={(color) => <ShieldGlyph size={19} color={color} />}
-            title={t("Uygulama izinleri")}
+            title={t("App permissions")}
             subtitle={t(
-              "Kamera ve konum izinlerini sistem ayarlarından yönet.",
+              "Manage camera and location permissions in system settings.",
             )}
             onPress={() => void Linking.openSettings()}
           />
@@ -244,10 +252,10 @@ export function Settings({
       </View>
 
       <View style={styles.section}>
-        <SectionHeading title={t("Oturum")} />
+        <SectionHeading title={t("Session")} />
         <StatusMessage text={signOutError} />
         <Button
-          title={t("Çıkış yap")}
+          title={t("Sign out")}
           variant="secondary"
           busy={signOutBusy}
           onPress={() => void signOut()}
@@ -256,10 +264,10 @@ export function Settings({
       </View>
 
       <View style={styles.section}>
-        <SectionHeading title={t("Hesap işlemleri")} />
+        <SectionHeading title={t("Account actions")} />
         <Plate tone="error">
           <Text style={styles.dangerHint}>
-            {t("Hesap silme talepleri salon personeli tarafından incelenir.")}
+            {t("Account deletion requests are reviewed by gym staff.")}
           </Text>
           <View style={styles.control}>
             <StatusMessage text={deletionError} />
@@ -267,10 +275,12 @@ export function Settings({
               <>
                 <StatusMessage
                   tone="warning"
-                  text={t("Hesap silme talebiniz personel onayı bekliyor.")}
+                  text={t(
+                    "Your account deletion request is awaiting staff approval.",
+                  )}
                 />
                 <Button
-                  title={t("Talebi iptal et")}
+                  title={t("Cancel request")}
                   variant="secondary"
                   busy={deletionBusy}
                   onPress={() => void cancelDeletion()}
@@ -281,11 +291,11 @@ export function Settings({
                 {deletion?.status === "rejected" ? (
                   <StatusMessage
                     tone="neutral"
-                    text={t("Önceki silme talebiniz reddedildi.")}
+                    text={t("Your previous deletion request was rejected.")}
                   />
                 ) : null}
                 <Button
-                  title={t("Hesabımı sil")}
+                  title={t("Delete my account")}
                   variant="danger"
                   busy={deletionBusy}
                   onPress={confirmDeletion}

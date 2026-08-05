@@ -39,8 +39,8 @@ function createPendingDeletionRequest(
 }
 
 test(
-  "KVKK silme talebi: kısmi benzersiz indeks eşzamanlı mükerrer talebi engeller",
-  { skip: mongoUri ? false : "TEST_MONGODB_URI tanımlı değil" },
+  "Account deletion request: partial unique index prevents concurrent duplicate requests",
+  { skip: mongoUri ? false : "TEST_MONGODB_URI is not defined" },
   async () => {
     const client = new MongoClient(mongoUri!);
     const database = client.db(
@@ -72,8 +72,8 @@ test(
       const count = await deletionRequests.countDocuments({ userId });
       assert.equal(count, 1);
 
-      // İndeks kısmi olmalı: sonuçlanmış talepler kullanıcı başına birden çok
-      // kez birikebilmeli, yalnızca "pending" olanlar tekil olmalı.
+      // The index must be partial: multiple resolved requests may accumulate
+      // per user, while only pending requests must be unique.
       await deletionRequests.updateOne(
         { userId },
         { $set: { status: "rejected" } },
@@ -108,8 +108,8 @@ test(
 );
 
 test(
-  "KVKK silme talebi: indeks kurulmadan önceki mükerrerler en eskisi kalacak şekilde temizlenir",
-  { skip: mongoUri ? false : "TEST_MONGODB_URI tanımlı değil" },
+  "Account deletion request: duplicates predating the index are cleaned up while keeping the oldest",
+  { skip: mongoUri ? false : "TEST_MONGODB_URI is not defined" },
   async () => {
     const client = new MongoClient(mongoUri!);
     const database = client.db(

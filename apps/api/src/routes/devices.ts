@@ -17,7 +17,7 @@ const createDeviceSchema = z.object({
   direction: z.enum(["in", "out"]).default("in"),
 });
 
-// Turnike cihazı kaydı — token yalnızca bu yanıtta bir kez görünür, sunucuda hash'i saklanır
+// Gate device registration — token appears once in this response; only its hash is stored
 devicesRouter.post(
   "/",
   requireRole("admin"),
@@ -55,8 +55,8 @@ devicesRouter.post(
   }),
 );
 
-// Cihaz listesi — anlık bağlantı durumu Device Gateway registry'sinden, KPI-4
-// uptime yüzdesi device_status_log'dan okunur
+// Device list — live connection status comes from the Device Gateway registry;
+// KPI-4 uptime percentage comes from device_status_log
 devicesRouter.get("/", requireRole("admin", "staff"), async (_req, res) => {
   const docs = await db
     .collection("devices")
@@ -84,7 +84,7 @@ devicesRouter.get("/", requireRole("admin", "staff"), async (_req, res) => {
   res.json(body);
 });
 
-// Cihaz silme — kayıtlı bağlantı varsa Gateway'den de düşürülür
+// Delete device — also disconnect it from the Gateway when connected
 devicesRouter.delete(
   "/:id",
   requireRole("admin"),
