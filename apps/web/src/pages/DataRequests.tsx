@@ -15,7 +15,7 @@ const statusMeta: Record<
   rejected: { cls: "danger", label: "Reddedildi" },
 };
 
-export function Kvkk() {
+export function DataRequests() {
   const { t, i18n } = useTranslation();
   const [requests, setRequests] = useState<DeletionRequest[]>([]);
   const [nextCursor, setNextCursor] = useState<string | null>(null);
@@ -98,12 +98,12 @@ export function Kvkk() {
 
   return (
     <div className="stagger">
-      <h1>{t("KVKK silme talepleri")}</h1>
+      <h1>{t("Veri silme talepleri")}</h1>
       <div className="row" style={{ marginBottom: 16 }}>
         <div className="field">
-          <label htmlFor="kvkk-status">{t("Durum")}</label>
+          <label htmlFor="deletion-status">{t("Durum")}</label>
           <select
-            id="kvkk-status"
+            id="deletion-status"
             value={status}
             onChange={(e) => setStatus(e.target.value)}
           >

@@ -113,6 +113,23 @@ export interface GymSettings {
   sharing: SharingConfig;
   /** Otomatik yenileme hatırlatmaları — Faz E */
   reminders: ReminderConfig;
+  /** Operatörün kendi bölgesi için yayınladığı hukuki belgeler */
+  legal: LegalConfig;
+}
+
+/**
+ * OpenGym hiçbir hukuki metin içermez: aydınlatma/veri işleme bildirimi ve
+ * gizlilik sözleşmesi, salonu işleten tarafın kendi mevzuatına (KVKK, GDPR,
+ * CCPA vb.) göre hazırlayıp yayınladığı belgelerdir. Burada yalnızca bu
+ * belgelerin adresi ve sürümü tutulur.
+ */
+export interface LegalConfig {
+  /** Veri işleme/aydınlatma bildirimi adresi — tanımsızsa onay kutusu linksiz gösterilir */
+  dataProcessingUrl: string | null;
+  /** Gizlilik sözleşmesi adresi — tanımsızsa onay kutusu linksiz gösterilir */
+  privacyUrl: string | null;
+  /** Metinler değişince artırılır; yeniden onay akışının ileride dayanacağı sürüm */
+  version: number;
 }
 
 export interface AuditLogEntry {
@@ -179,6 +196,7 @@ export type ApiErrorCode =
   | "INVALID_AUTO_EXIT"
   | "INVALID_SHARING_SETTINGS"
   | "INVALID_REMINDER_SETTINGS"
+  | "INVALID_LEGAL_SETTINGS"
   | "INVALID_REPORT_RANGE"
   | "REMINDER_RECENTLY_SENT"
   | "NO_UPCOMING_RENEWAL"
@@ -294,7 +312,7 @@ export type DeviceServerMessage =
       openMs: number;
     };
 
-// ---- Faz 5: MFA / Doluluk / KVKK ----
+// ---- Faz 5: MFA / Doluluk / Veri koruma ----
 
 /** Hassas işlem (rol atama) MFA doğrulama yöntemi */
 export type MfaMethod = "totp" | "otp";
@@ -316,7 +334,7 @@ export interface AdminStats {
   renewalsDue: number;
 }
 
-/** KVKK hesap silme talebi (panel listesi) */
+/** Hesap silme (veri silme) talebi (panel listesi) */
 export interface DeletionRequest {
   id: string;
   userId: string;

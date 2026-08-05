@@ -587,7 +587,7 @@ export function ClockGlyph({ size = 18, color }: IconProps) {
   );
 }
 
-/** Kalkan: güvenlik ve KVKK satırları. */
+/** Kalkan: güvenlik ve veri koruma satırları. */
 export function ShieldGlyph({ size = 18, color }: IconProps) {
   const u = size / 24;
   return (

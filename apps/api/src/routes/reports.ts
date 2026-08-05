@@ -315,7 +315,7 @@ async function writeChunk(
   await once(res, "drain", { signal });
 }
 
-// Dışa aktarma toplu KİŞİSEL VERİ üretir (KVKK): yalnızca admin, her indirme
+// Dışa aktarma toplu KİŞİSEL VERİ üretir: yalnızca admin, her indirme
 // denetim kaydına yazılır.
 reportsRouter.get(
   "/export",

@@ -2,6 +2,7 @@ import { MongoClient, MongoServerError, ObjectId } from "mongodb";
 import type { Collection, Db, WithId } from "mongodb";
 import type {
   GymSettings,
+  LegalConfig,
   ReminderConfig,
   Role,
   SharingConfig,
@@ -84,6 +85,7 @@ export interface GymSettingsDocument {
   autoExitHours?: number;
   sharing?: Partial<SharingConfig>;
   reminders?: Partial<ReminderConfig>;
+  legal?: Partial<LegalConfig>;
 }
 
 export function gymSettingsCollection(

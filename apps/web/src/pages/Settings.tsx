@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type {
   GymSettings,
+  LegalConfig,
   ReminderConfig,
   SharingConfig,
 } from "@opengym/shared";
@@ -17,6 +18,12 @@ const defaultSharing: SharingConfig = {
 };
 
 const defaultReminders: ReminderConfig = { enabled: false, daysBefore: [7, 1] };
+
+const defaultLegal: LegalConfig = {
+  dataProcessingUrl: null,
+  privacyUrl: null,
+  version: 1,
+};
 
 /**
  * "7, 1" gibi bir girdiyi eşik listesine çevirir. Geçersiz veya boş girdi
@@ -40,6 +47,7 @@ export function Settings() {
   const [autoExitHours, setAutoExitHours] = useState("");
   const [sharing, setSharing] = useState<SharingConfig>(defaultSharing);
   const [reminders, setReminders] = useState<ReminderConfig>(defaultReminders);
+  const [legal, setLegal] = useState<LegalConfig>(defaultLegal);
   // Eşikler serbest metin olarak düzenlenir; yazarken "7," gibi ara durumlar
   // listeye çevrilemediği için ham metin ayrı tutulur.
   const [daysBeforeText, setDaysBeforeText] = useState(
@@ -73,6 +81,7 @@ export function Settings() {
         setSharing(s.sharing);
         setReminders(s.reminders);
         setDaysBeforeText(s.reminders.daysBefore.join(", "));
+        setLegal(s.legal);
         setLoaded(true);
       } catch (err) {
         if (isAbortError(err)) return;
@@ -105,6 +114,7 @@ export function Settings() {
             // salonun [30, 14] eşiklerini sessizce [7, 1] yapmamalı.
             daysBefore: parseDaysBefore(daysBeforeText, reminders.daysBefore),
           },
+          legal,
         },
       });
       setMsg({ kind: "success", text: t("Ayarlar kaydedildi.") });
@@ -335,6 +345,54 @@ export function Settings() {
             onChange={(e) => setDaysBeforeText(e.target.value)}
             placeholder="7, 1"
           />
+        </div>
+
+        <h2 style={{ marginTop: 28 }}>{t("Hukuki belgeler")}</h2>
+        <p className="hint" style={{ marginBottom: 14 }}>
+          {t(
+            "Bu metinleri OpenGym sağlamaz; işletmeci kendi mevzuatına (KVKK, GDPR, CCPA vb.) göre yayımladığı belgelerin adresini burada tanımlar. Adres boş bırakılırsa mobil kayıt ekranındaki onay kutusu linksiz gösterilir.",
+          )}
+        </p>
+        <div className="row" style={{ marginBottom: 14 }}>
+          <div className="field">
+            <label htmlFor="dataProcessingUrl">
+              {t("Veri işleme bildirimi adresi")}
+            </label>
+            <input
+              id="dataProcessingUrl"
+              value={legal.dataProcessingUrl ?? ""}
+              onChange={(e) =>
+                setLegal({ ...legal, dataProcessingUrl: e.target.value })
+              }
+              placeholder="https://…"
+            />
+          </div>
+          <div className="field">
+            <label htmlFor="privacyUrl">
+              {t("Gizlilik sözleşmesi adresi")}
+            </label>
+            <input
+              id="privacyUrl"
+              value={legal.privacyUrl ?? ""}
+              onChange={(e) =>
+                setLegal({ ...legal, privacyUrl: e.target.value })
+              }
+              placeholder="https://…"
+            />
+          </div>
+          <div className="field" style={{ maxWidth: 160 }}>
+            <label htmlFor="legalVersion">{t("Metin sürümü")}</label>
+            <input
+              id="legalVersion"
+              type="number"
+              min={1}
+              value={legal.version}
+              onChange={(e) =>
+                setLegal({ ...legal, version: Number(e.target.value) })
+              }
+              required
+            />
+          </div>
         </div>
 
         <button type="submit" disabled={busy || !loaded}>

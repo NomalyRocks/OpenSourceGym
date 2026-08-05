@@ -54,6 +54,8 @@ const codeMessages: Record<ApiErrorCode, WebTranslationKey> = {
   INVALID_AUTO_EXIT: "Geçersiz otomatik çıkış süresi.",
   INVALID_SHARING_SETTINGS: "Geçersiz paylaşım tespiti ayarları.",
   INVALID_REMINDER_SETTINGS: "Geçersiz hatırlatma ayarları.",
+  INVALID_LEGAL_SETTINGS:
+    "Geçersiz hukuki belge ayarları (adres http/https olmalı).",
   INVALID_REPORT_RANGE:
     "Aralık geçersiz. Başlangıç bitişten sonra olamaz ve aralık 366 günü aşamaz.",
   REMINDER_RECENTLY_SENT: "Bu üyeye son 24 saat içinde hatırlatma gönderildi.",

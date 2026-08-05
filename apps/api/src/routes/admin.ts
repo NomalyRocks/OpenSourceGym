@@ -41,6 +41,7 @@ import {
   SHARING_DEFAULTS,
 } from "../sharing.js";
 import { countActiveMembers, countRenewalsDue } from "../reports.js";
+import { LEGAL_DEFAULTS } from "../legal.js";
 import { REMINDER_DEFAULTS } from "../renewalReminders.js";
 import {
   createSequentialSubscription,
@@ -355,6 +356,7 @@ adminRouter.get("/settings", requireRole("admin"), async (_req, res) => {
     autoExitHours: doc?.autoExitHours ?? 4,
     sharing: { ...SHARING_DEFAULTS, ...(doc?.sharing ?? {}) },
     reminders: { ...REMINDER_DEFAULTS, ...(doc?.reminders ?? {}) },
+    legal: { ...LEGAL_DEFAULTS, ...(doc?.legal ?? {}) },
   };
   res.json(settings);
 });
@@ -364,6 +366,19 @@ const reminderSchema = z.object({
   // Eşikler benzersizleştirilip sıralanmaz burada; süpürme zaten en dar eşiği
   // seçiyor. Üst sınır 90: yenileme penceresinin ötesine hatırlatma anlamsız.
   daysBefore: z.array(z.number().int().min(0).max(90)).min(1).max(5),
+});
+
+// Boş string "temizle" demektir: panelde alan silinince URL null'a döner ve
+// onay kutusu linksiz gösterilmeye devam eder.
+const legalUrlSchema = z
+  .union([z.url(), z.literal("")])
+  .nullish()
+  .transform((value) => (value ? value : null));
+
+const legalSchema = z.object({
+  dataProcessingUrl: legalUrlSchema,
+  privacyUrl: legalUrlSchema,
+  version: z.coerce.number().int().min(1).max(1_000_000),
 });
 
 const sharingSchema = z.object({
@@ -392,6 +407,8 @@ const gymSettingsSchema = z.object({
   sharing: sharingSchema.optional(),
   // sharing ile aynı gerekçe: gövdede yoksa mevcut ayar korunur.
   reminders: reminderSchema.optional(),
+  // sharing ile aynı gerekçe: gövdede yoksa mevcut hukuki belge adresleri korunur.
+  legal: legalSchema.optional(),
 });
 
 // İstemciler mesajı değil code'u yorumlar; her alan kendi kararlı kodunu korur
@@ -405,6 +422,7 @@ const SETTINGS_FIELD_ERRORS: Record<string, [ApiErrorCode, string]> = {
     "INVALID_REMINDER_SETTINGS",
     "Invalid renewal reminder settings.",
   ],
+  legal: ["INVALID_LEGAL_SETTINGS", "Invalid legal document settings."],
 };
 
 adminRouter.put(
@@ -421,8 +439,15 @@ adminRouter.put(
       sendApiError(res, 400, code, message);
       return;
     }
-    const { gymName, location, capacity, autoExitHours, sharing, reminders } =
-      parsed.data;
+    const {
+      gymName,
+      location,
+      capacity,
+      autoExitHours,
+      sharing,
+      reminders,
+      legal,
+    } = parsed.data;
 
     const setDoc: Partial<Omit<GymSettingsDocument, "_id">> = {
       gymName,
@@ -435,6 +460,9 @@ adminRouter.put(
     }
     if (reminders !== undefined) {
       setDoc.reminders = reminders;
+    }
+    if (legal !== undefined) {
+      setDoc.legal = legal;
     }
 
     await gymSettingsCollection().updateOne(
@@ -449,6 +477,9 @@ adminRouter.put(
       // Hatırlatmaların açılıp kapanması üyelere posta gitmesini belirler;
       // denetim kaydında görünmesi şart.
       ...(reminders !== undefined ? { reminders } : {}),
+      // Onay metinlerinin hangi sürümle sunulduğu hukuki uyuşmazlıkta
+      // kanıttır; değişiklik denetim kaydına düşmeli.
+      ...(legal !== undefined ? { legal } : {}),
     });
     res.json({ ok: true });
   }),
@@ -590,7 +621,7 @@ const deletionRequestQuerySchema = pageQuerySchema.extend({
   status: z.enum(["pending", "approved", "rejected"]).optional(),
 });
 
-// Faz 5 — KVKK: hesap silme talepleri listesi (yalnızca admin)
+// Faz 5 — Veri koruma: hesap silme talepleri listesi (yalnızca admin)
 // İmleçli sayfalama + durum filtresi
 adminRouter.get(
   "/deletion-requests",
@@ -633,7 +664,7 @@ adminRouter.get(
   },
 );
 
-// KVKK: silme talebini onaylar — üyeyi ve tüm ilişkili verilerini kalıcı olarak siler
+// Veri koruma: silme talebini onaylar — üyeyi ve tüm ilişkili verilerini kalıcı olarak siler
 adminRouter.post(
   "/deletion-requests/:id/approve",
   requireRole("admin"),
@@ -686,7 +717,7 @@ adminRouter.post(
     try {
       await deleteUserProfilePhotoForAccountDeletion(targetIdStr);
     } catch (error) {
-      console.error("KVKK profil fotoğrafı silinemedi", error);
+      console.error("Hesap silmede profil fotoğrafı silinemedi", error);
       // Temizlik başarısız: talebi pending'e geri al ki yönetici yeniden
       // deneyebilsin (fail-closed — kullanıcı verisi henüz silinmedi)
       await db.collection("deletion_requests").updateOne(
@@ -729,7 +760,7 @@ adminRouter.post(
     ]);
     await markOutside(targetIdStr);
     // Geçmiş turnike kayıtları istatistik için tutulur, ancak kişisel veri
-    // (KVKK) taşımamalıdır
+    // (kişisel veri) taşımamalıdır
     await db
       .collection("entry_events")
       .updateMany(
@@ -753,12 +784,12 @@ adminRouter.post(
     // kaldırır; tek hesap kaldıysa onu E.164'e taşıyıp çatışma kaydını siler.
     await reconcilePhoneConflictsAfterUserChange(targetIdStr);
 
-    await logAudit(req.user, "kvkk-deletion-approved", targetIdStr);
+    await logAudit(req.user, "account-deletion-approved", targetIdStr);
     res.json({ ok: true });
   }),
 );
 
-// KVKK: silme talebini reddeder
+// Veri koruma: silme talebini reddeder
 adminRouter.post(
   "/deletion-requests/:id/reject",
   requireRole("admin"),
@@ -806,7 +837,7 @@ adminRouter.post(
     );
     await logAudit(
       req.user,
-      "kvkk-deletion-rejected",
+      "account-deletion-rejected",
       (request.userId as ObjectId).toString(),
     );
     res.json({ ok: true });

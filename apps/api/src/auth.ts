@@ -226,9 +226,11 @@ export const auth = betterAuth({
         defaultValue: false,
         input: false,
       },
-      kvkkAccepted: { type: "boolean", required: true },
+      // Bölge-bağımsız onaylar: metinlerin içeriği operatörün mevzuatına göre
+      // değişir (KVKK, GDPR, CCPA...), alan adları bu yüzden nötrdür.
+      dataProcessingAccepted: { type: "boolean", required: true },
       privacyAccepted: { type: "boolean", required: true },
-      kvkkAcceptedAt: { type: "date", required: false, input: false },
+      dataProcessingAcceptedAt: { type: "date", required: false, input: false },
       privacyAcceptedAt: { type: "date", required: false, input: false },
       // Mobil kalori hesaplayıcının otomatik doldurabilmesi için üyenin
       // kendi girdiği yaş/boy/kilo. `input: false`: BetterAuth'un genel
@@ -261,16 +263,16 @@ export const auth = betterAuth({
           const candidate = user as typeof user & {
             email?: string;
             phone?: unknown;
-            kvkkAccepted?: boolean;
+            dataProcessingAccepted?: boolean;
             privacyAccepted?: boolean;
             age?: unknown;
             heightCm?: unknown;
             weightKg?: unknown;
           };
-          if (!candidate.kvkkAccepted || !candidate.privacyAccepted) {
+          if (!candidate.dataProcessingAccepted || !candidate.privacyAccepted) {
             throw new APIError("BAD_REQUEST", {
               message:
-                "KVKK aydınlatma metni ve gizlilik sözleşmesi onayları zorunludur.",
+                "Veri işleme bildirimi ve gizlilik sözleşmesi onayları zorunludur.",
             });
           }
           // `input: false` bu alanları kayıt gövdesinden zaten eler; doğrulama
@@ -294,7 +296,7 @@ export const auth = betterAuth({
                 ? { phone: phoneE164, phoneE164 }
                 : { phone: INITIAL_ADMIN_PHONE }),
               role: "member",
-              kvkkAcceptedAt: now,
+              dataProcessingAcceptedAt: now,
               privacyAcceptedAt: now,
             },
           };

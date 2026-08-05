@@ -1,6 +1,15 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { StyleSheet, View, type TextInput } from "react-native";
+import {
+  Linking,
+  Pressable,
+  StyleSheet,
+  Text,
+  View,
+  type TextInput,
+} from "react-native";
+import type { LegalConfig } from "@opengym/shared";
+import { api } from "../lib/api";
 import { authClient } from "../lib/auth";
 import { runAuthAction } from "../lib/authAction";
 import { useThemedStyles, type Theme } from "../theme";
@@ -29,8 +38,9 @@ export function Register({
   const [phone, setPhone] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [kvkk, setKvkk] = useState(false);
+  const [dataProcessing, setDataProcessing] = useState(false);
   const [privacy, setPrivacy] = useState(false);
+  const [legal, setLegal] = useState<LegalConfig | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [fieldErrors, setFieldErrors] = useState<
@@ -45,6 +55,20 @@ export function Register({
     phone: useRef<TextInput>(null),
     password: useRef<TextInput>(null),
   };
+
+  useEffect(() => {
+    let cancelled = false;
+    api<LegalConfig>("/api/legal")
+      .then((config) => {
+        if (!cancelled) setLegal(config);
+      })
+      .catch(() => {
+        // Belge adresleri alınamadı; onay kutuları linksiz modda kalır, kayıt akışı bloke olmaz.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   async function submit() {
     setError(null);
@@ -66,9 +90,9 @@ export function Register({
       refs[firstInvalid].current?.focus();
       return;
     }
-    if (!kvkk || !privacy) {
+    if (!dataProcessing || !privacy) {
       setError(
-        t("KVKK aydınlatma metni ve gizlilik sözleşmesi onayları zorunludur."),
+        t("Veri işleme bildirimi ve gizlilik sözleşmesi onayları zorunludur."),
       );
       return;
     }
@@ -89,7 +113,7 @@ export function Register({
           firstName,
           lastName,
           phone,
-          kvkkAccepted: kvkk,
+          dataProcessingAccepted: dataProcessing,
           privacyAccepted: privacy,
         });
         if (error) {
@@ -220,17 +244,41 @@ export function Register({
 
       <View style={styles.consents}>
         <Checkbox
-          checked={kvkk}
-          onToggle={() => setKvkk(!kvkk)}
+          checked={dataProcessing}
+          onToggle={() => setDataProcessing(!dataProcessing)}
           label={t(
-            "KVKK aydınlatma metnini okudum, kişisel verilerimin işlenmesini onaylıyorum.",
+            "Veri işleme bildirimini okudum, kişisel verilerimin işlenmesini onaylıyorum.",
           )}
         />
+        {legal?.dataProcessingUrl ? (
+          <Pressable
+            accessibilityRole="link"
+            hitSlop={8}
+            onPress={() => void Linking.openURL(legal.dataProcessingUrl!)}
+            style={styles.consentLink}
+          >
+            <Text style={styles.consentLinkLabel}>
+              {t("Belgeyi görüntüle")}
+            </Text>
+          </Pressable>
+        ) : null}
         <Checkbox
           checked={privacy}
           onToggle={() => setPrivacy(!privacy)}
           label={t("Gizlilik sözleşmesini okudum ve kabul ediyorum.")}
         />
+        {legal?.privacyUrl ? (
+          <Pressable
+            accessibilityRole="link"
+            hitSlop={8}
+            onPress={() => void Linking.openURL(legal.privacyUrl!)}
+            style={styles.consentLink}
+          >
+            <Text style={styles.consentLinkLabel}>
+              {t("Belgeyi görüntüle")}
+            </Text>
+          </Pressable>
+        ) : null}
       </View>
 
       <Button title={t("Kayıt Ol")} onPress={submit} busy={busy} />
@@ -248,5 +296,15 @@ const registerStyles = (theme: Theme) =>
       marginTop: theme.spacing.md,
       marginBottom: theme.spacing.md,
       gap: theme.spacing.xxs,
+    },
+    consentLink: {
+      marginLeft: 22 + theme.spacing.sm,
+      marginTop: -theme.spacing.xxs,
+      marginBottom: theme.spacing.xxs,
+    },
+    consentLinkLabel: {
+      ...theme.type.supporting,
+      fontWeight: "700",
+      color: theme.colors.accent,
     },
   });

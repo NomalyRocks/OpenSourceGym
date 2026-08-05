@@ -26,8 +26,8 @@ const en = {
   "Tüm alanları doldurun.": "Complete all fields.",
   "Şifre en az 8 karakter olmalı.":
     "The password must be at least 8 characters.",
-  "KVKK aydınlatma metni ve gizlilik sözleşmesi onayları zorunludur.":
-    "You must accept the data protection notice and privacy policy.",
+  "Veri işleme bildirimi ve gizlilik sözleşmesi onayları zorunludur.":
+    "You must accept the data processing notice and privacy policy.",
   "Bu telefon numarası ile kayıtlı hesap var.":
     "An account is already registered with this phone number.",
   "Bu e-posta ile kayıtlı hesap var.":
@@ -38,10 +38,11 @@ const en = {
   İsim: "First name",
   Soyisim: "Last name",
   "Telefon Numarası": "Phone number",
-  "KVKK aydınlatma metnini okudum, kişisel verilerimin işlenmesini onaylıyorum.":
-    "I have read the data protection notice and consent to the processing of my personal data.",
+  "Veri işleme bildirimini okudum, kişisel verilerimin işlenmesini onaylıyorum.":
+    "I have read the data processing notice and consent to the processing of my personal data.",
   "Gizlilik sözleşmesini okudum ve kabul ediyorum.":
     "I have read and accept the privacy policy.",
+  "Belgeyi görüntüle": "View document",
   "Zaten hesabın var mı?": "Already have an account?",
   "Kod hatalı veya süresi dolmuş.": "The code is invalid or has expired.",
   "Doğrulama tamam; giriş başarısız. Giriş ekranından deneyin.":

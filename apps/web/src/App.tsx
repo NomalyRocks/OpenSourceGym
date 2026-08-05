@@ -19,7 +19,7 @@ import { Entries } from "./pages/Entries";
 import { Renewals } from "./pages/Renewals";
 import { Reports } from "./pages/Reports";
 import { Security } from "./pages/Security";
-import { Kvkk } from "./pages/Kvkk";
+import { DataRequests } from "./pages/DataRequests";
 import { LanguageSwitcher } from "./i18n/LanguageSwitcher";
 import { dateLocale } from "./i18n/format";
 
@@ -69,7 +69,7 @@ function Shell({ children }: { children: React.ReactNode }) {
               <NavLink to="/audit">{t("İşlem kaydı")}</NavLink>
             )}
             {profile?.role === "admin" && (
-              <NavLink to="/kvkk">{t("Veri Koruma")}</NavLink>
+              <NavLink to="/data-requests">{t("Veri Koruma")}</NavLink>
             )}
           </nav>
         </div>
@@ -143,7 +143,7 @@ function Gate() {
             <Route path="/audit" element={<Audit />} />
           )}
           {profile.role === "admin" && (
-            <Route path="/kvkk" element={<Kvkk />} />
+            <Route path="/data-requests" element={<DataRequests />} />
           )}
           <Route path="*" element={<Navigate to="/overview" replace />} />
         </Routes>

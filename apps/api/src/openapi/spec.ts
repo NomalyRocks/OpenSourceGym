@@ -284,7 +284,7 @@ export const openApiDocument: OpenApiDocument = createDocument({
         summary: "E-posta ve şifreyle kayıt",
         ...requiredRole(
           "yok",
-          "BetterAuth üzerinden üye hesabı oluşturur; KVKK ve gizlilik onayları zorunludur",
+          "BetterAuth üzerinden üye hesabı oluşturur; veri işleme ve gizlilik onayları zorunludur",
           false,
         ),
         requestBody: jsonBody(signUpRequestSchema),
@@ -563,7 +563,7 @@ export const openApiDocument: OpenApiDocument = createDocument({
         summary: "Hesap silme taleplerini listele",
         ...requiredRole(
           "admin",
-          "KVKK silme taleplerini en yeniden eskiye imleçli olarak döndürür",
+          "Hesap silme taleplerini en yeniden eskiye imleçli olarak döndürür",
         ),
         requestParams: { query: deletionRequestQuerySchema },
         responses: protectedResponses({
@@ -597,7 +597,7 @@ export const openApiDocument: OpenApiDocument = createDocument({
         tags: ["admin"],
         operationId: "rejectDeletionRequest",
         summary: "Hesap silme talebini reddet",
-        ...requiredRole("admin", "Bekleyen KVKK silme talebini reddeder"),
+        ...requiredRole("admin", "Bekleyen hesap silme talebini reddeder"),
         requestParams: { path: idPathParams },
         responses: protectedResponses({
           "200": jsonResponse("Talep reddedildi", okSchema),
@@ -819,7 +819,7 @@ export const openApiDocument: OpenApiDocument = createDocument({
         summary: "Hesap silme talebi oluştur",
         ...requiredRole(
           "member (middleware admin | staff | member kabul eder; işlem üye rolünü ayrıca denetler)",
-          "Oturumdaki üye için bekleyen KVKK silme talebi oluşturur",
+          "Oturumdaki üye için bekleyen hesap silme talebi oluşturur",
         ),
         responses: protectedResponses({
           "200": jsonResponse("Talep oluşturuldu", okSchema),

@@ -376,7 +376,7 @@ meRouter.patch(
         { _id: new ObjectId(req.user.id) },
         { projection: { age: 1, heightCm: 1, weightKg: 1 } },
       );
-      // Sağlık verisi yazımı denetlenebilir olmalı (KVKK m.6 özel nitelikli
+      // Sağlık verisi yazımı denetlenebilir olmalı (çoğu mevzuatta özel nitelikli
       // veri). Yalnızca alan adları yazılır — audit_logs süresiz saklanır,
       // değerlerin oraya kopyalanması silme hakkını delerdi.
       await logAudit(req.user, "body-metrics-updated", req.user.id, {
@@ -685,7 +685,7 @@ meRouter.get(
   },
 );
 
-// Faz 5 — KVKK: üyenin kendi hesap silme talebi durumu
+// Faz 5 — Veri koruma: üyenin kendi hesap silme talebi durumu
 meRouter.get(
   "/deletion-request",
   requireRole("admin", "staff", "member"),
@@ -713,7 +713,7 @@ meRouter.get(
   }),
 );
 
-// KVKK: hesap silme talebi oluşturma — yalnızca üye rolü kendi hesabı için talep açabilir
+// Veri koruma: hesap silme talebi oluşturma — yalnızca üye rolü kendi hesabı için talep açabilir
 meRouter.post(
   "/deletion-request",
   requireRole("admin", "staff", "member"),
@@ -766,12 +766,12 @@ meRouter.post(
       }
       throw err;
     }
-    await logAudit(req.user, "kvkk-deletion-requested");
+    await logAudit(req.user, "account-deletion-requested");
     res.json({ ok: true });
   }),
 );
 
-// KVKK: bekleyen silme talebini geri çekme
+// Veri koruma: bekleyen silme talebini geri çekme
 meRouter.delete(
   "/deletion-request",
   requireRole("admin", "staff", "member"),
@@ -789,7 +789,7 @@ meRouter.delete(
       );
       return;
     }
-    await logAudit(req.user, "kvkk-deletion-cancelled");
+    await logAudit(req.user, "account-deletion-cancelled");
     res.json({ ok: true });
   }),
 );

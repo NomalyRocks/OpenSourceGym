@@ -60,7 +60,7 @@ test(
             email,
             password: "test-password-1234",
             phone,
-            kvkkAccepted: true,
+            dataProcessingAccepted: true,
             privacyAccepted: true,
           }),
         }),

@@ -132,6 +132,17 @@ export const sharingConfigSchema = withId(
   "SharingConfig",
 );
 
+// Hukuki metinler ürüne gömülmez; operatör kendi mevzuatına göre yayımladığı
+// belgelerin adresini girer (bkz. docs/legal/README.md).
+export const legalConfigSchema = withId(
+  z.object({
+    dataProcessingUrl: z.url().nullable(),
+    privacyUrl: z.url().nullable(),
+    version: z.number().int().min(1),
+  }),
+  "LegalConfig",
+);
+
 export const locationSchema = withId(
   z.object({
     lat: z.number().finite(),
@@ -148,6 +159,7 @@ export const gymSettingsSchema = withId(
     capacity: z.number().positive().nullable(),
     autoExitHours: z.number().int().min(1).max(48),
     sharing: sharingConfigSchema,
+    legal: legalConfigSchema,
   }),
   "GymSettings",
 );
@@ -331,9 +343,9 @@ export const authUserSchema = withId(
     role: roleSchema,
     mustChangePassword: z.boolean(),
     twoFactorEnabled: z.boolean().optional(),
-    kvkkAccepted: z.boolean(),
+    dataProcessingAccepted: z.boolean(),
     privacyAccepted: z.boolean(),
-    kvkkAcceptedAt: isoDateTimeSchema.nullable().optional(),
+    dataProcessingAcceptedAt: isoDateTimeSchema.nullable().optional(),
     privacyAcceptedAt: isoDateTimeSchema.nullable().optional(),
   }),
   "AuthUser",
@@ -414,6 +426,7 @@ export const gymSettingsRequestSchema = withId(
     capacity: numericFormValue.nullish(),
     autoExitHours: numericFormValue.nullish(),
     sharing: sharingConfigSchema.optional(),
+    legal: legalConfigSchema.optional(),
   }),
   "GymSettingsRequest",
 );
@@ -444,7 +457,7 @@ export const signUpRequestSchema = withId(
     firstName: z.string(),
     lastName: z.string(),
     phone: z.string(),
-    kvkkAccepted: z.literal(true),
+    dataProcessingAccepted: z.literal(true),
     privacyAccepted: z.literal(true),
     callbackURL: z.string().optional(),
     rememberMe: z.boolean().optional(),

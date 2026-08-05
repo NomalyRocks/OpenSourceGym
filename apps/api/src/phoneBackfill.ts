@@ -107,7 +107,7 @@ export async function backfillLegacyUserPhones(
 
   if (resolvedIds.length > 0) {
     // Çatışma bittiğinde telefon ve kullanıcı kimliği içeren kayıt artık
-    // gerekli değildir; KVKK kapsamında kalıcı olarak kaldırılır.
+    // gerekli değildir; veri koruma yükümlülüğü gereği kalıcı olarak kaldırılır.
     await conflictDocuments.deleteMany({ _id: { $in: resolvedIds } });
   }
 

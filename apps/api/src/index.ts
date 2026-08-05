@@ -25,6 +25,8 @@ import {
   startEntryEventConsumer,
   type EntryEventConsumer,
 } from "./eventQueue.js";
+import { renameLegacyConsentFields } from "./consentFieldRename.js";
+import { getLegalConfig } from "./legal.js";
 import { backfillLegacyUserPhones } from "./phoneBackfill.js";
 import { repairLegacySubscriptionOverlaps } from "./subscriptions.js";
 import { assertProductionProfilePhotoConfig } from "./profilePhoto.js";
@@ -45,6 +47,12 @@ app.use("/api/admin/devices", devicesRouter);
 app.use("/api/admin/reports", reportsRouter);
 app.use("/api/admin", adminRouter);
 app.use("/api/me", meRouter);
+
+// Kayıt ekranı oturum açmadan onay metinlerini göstermek zorunda: yalnızca
+// operatörün yayımladığı hukuki belge adresleri döner, kişisel veri içermez.
+app.get("/api/legal", async (_req, res) => {
+  res.json(await getLegalConfig());
+});
 
 // Liveness: yalnızca sürecin yanıt verdiğini söyler. Orchestrator'ın süreci
 // yeniden başlatmasına karar verdiği uçtur, bu yüzden bağımlılık yoklamaz.
@@ -151,6 +159,7 @@ async function main() {
   assertProductionProfilePhotoConfig();
   await mongoClient.connect();
   await backfillLegacyUserPhones();
+  await renameLegacyConsentFields();
   await ensureIndexes();
   await connectRedis();
   await repairLegacySubscriptionOverlaps();

@@ -28,7 +28,7 @@ export async function seedInitialAdmin(): Promise<void> {
         firstName: "Salon",
         lastName: "Yöneticisi",
         phone: INITIAL_ADMIN_PHONE,
-        kvkkAccepted: true,
+        dataProcessingAccepted: true,
         privacyAccepted: true,
       },
     }),

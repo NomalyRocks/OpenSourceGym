@@ -9,7 +9,7 @@ export async function markInside(userId: string): Promise<void> {
   await redis.hSet(INSIDE_KEY, userId, String(Date.now()));
 }
 
-// Üyeyi "dışarıda" olarak işaretler (çıkış turnikesi geçişi veya KVKK silme temizliği)
+// Üyeyi "dışarıda" olarak işaretler (çıkış turnikesi geçişi veya hesap silme temizliği)
 export async function markOutside(userId: string): Promise<void> {
   await redis.hDel(INSIDE_KEY, userId);
 }

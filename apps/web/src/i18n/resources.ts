@@ -251,7 +251,7 @@ const en = {
   Kim: "Actor",
   Detay: "Details",
   "Hesap silme talepleri": "Account deletion requests",
-  "KVKK silme talepleri": "Data protection deletion requests",
+  "Veri silme talepleri": "Data deletion requests",
   "{{who}} hesabı ve tüm ilişkili verileri kalıcı olarak silinecek. Bu işlem geri alınamaz. Onaylıyor musunuz?":
     "{{who}} and all related data will be permanently deleted. This action cannot be undone. Do you approve?",
   "Bu üyenin": "This member's account",
@@ -383,6 +383,8 @@ const en = {
   "Aralık geçersiz. Başlangıç bitişten sonra olamaz ve aralık 366 günü aşamaz.":
     "Invalid range. Start cannot be after end and the range cannot exceed 366 days.",
   "Geçersiz hatırlatma ayarları.": "Invalid renewal reminder settings.",
+  "Geçersiz hukuki belge ayarları (adres http/https olmalı).":
+    "Invalid legal document settings (URL must be http/https).",
   "Kalan gün": "Days left",
   "Bitiş tarihi": "Ends on",
   "Son hatırlatma": "Last reminder",
@@ -401,6 +403,14 @@ const en = {
   "Kaç gün kala (virgülle ayırın)": "Days before expiry (comma separated)",
   "Hatırlatmalar SMTP üzerinden gönderilir; açmadan önce SMTP ayarlarının yapılandırıldığından emin olun.":
     "Reminders are sent over SMTP; make sure SMTP is configured before enabling them.",
+
+  // Hukuki belgeler — operatörün kendi mevzuatına göre yayımladığı belgeler
+  "Hukuki belgeler": "Legal documents",
+  "Bu metinleri OpenGym sağlamaz; işletmeci kendi mevzuatına (KVKK, GDPR, CCPA vb.) göre yayımladığı belgelerin adresini burada tanımlar. Adres boş bırakılırsa mobil kayıt ekranındaki onay kutusu linksiz gösterilir.":
+    "OpenGym does not provide these texts; the operator defines the address of the documents it publishes under its own regulations (e.g. GDPR, CCPA). If left blank, the consent checkbox on the mobile signup screen is shown without a link.",
+  "Veri işleme bildirimi adresi": "Data processing notice URL",
+  "Gizlilik sözleşmesi adresi": "Privacy policy URL",
+  "Metin sürümü": "Document version",
 } as const;
 
 const tr = Object.fromEntries(Object.keys(en).map((key) => [key, key]));

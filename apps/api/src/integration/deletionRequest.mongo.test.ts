@@ -39,7 +39,7 @@ function createPendingDeletionRequest(
 }
 
 test(
-  "KVKK silme talebi: kısmi benzersiz indeks eşzamanlı mükerrer talebi engeller",
+  "Hesap silme talebi: kısmi benzersiz indeks eşzamanlı mükerrer talebi engeller",
   { skip: mongoUri ? false : "TEST_MONGODB_URI tanımlı değil" },
   async () => {
     const client = new MongoClient(mongoUri!);
@@ -108,7 +108,7 @@ test(
 );
 
 test(
-  "KVKK silme talebi: indeks kurulmadan önceki mükerrerler en eskisi kalacak şekilde temizlenir",
+  "Hesap silme talebi: indeks kurulmadan önceki mükerrerler en eskisi kalacak şekilde temizlenir",
   { skip: mongoUri ? false : "TEST_MONGODB_URI tanımlı değil" },
   async () => {
     const client = new MongoClient(mongoUri!);
