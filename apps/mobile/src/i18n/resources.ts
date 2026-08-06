@@ -257,6 +257,18 @@ const tr = {
     "Hesap paylaşımı engeli için salon resepsiyonuna başvurun.",
   "The turnstile is offline. Ask gym reception for help.":
     "Turnike çevrimdışı. Salon resepsiyonundan yardım isteyin.",
+  "Your location could not be determined. Move somewhere with a clearer view of the sky and try again.":
+    "Konumunuz belirlenemedi. Gökyüzünü daha net gören bir yere geçip tekrar deneyin.",
+  "Wait a few seconds for the location to be found, then scan again.":
+    "Konum bulunana kadar birkaç saniye bekleyip tekrar okutun.",
+  "Scan the exit turnstile when you leave, then try again.":
+    "Çıkarken çıkış turnikesini okutun, sonra tekrar deneyin.",
+  "The gym has not set its location yet. Ask reception.":
+    "Salon henüz konumunu tanımlamamış. Resepsiyona danışın.",
+  "You are already recorded as inside. Use the exit turnstile before entering again.":
+    "Zaten içeride görünüyorsunuz. Tekrar girmeden önce çıkış turnikesini kullanın.",
+  "Entry is unavailable because the gym location is not configured. Please contact reception.":
+    "Salon konumu tanımlı olmadığı için geçiş yapılamıyor. Resepsiyona başvurun.",
   "Contact gym reception if the problem continues.":
     "Sorun sürerse salon resepsiyonundan destek alın.",
   "Could not connect. Check your internet connection and try again.":

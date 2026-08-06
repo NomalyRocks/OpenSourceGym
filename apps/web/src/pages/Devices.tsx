@@ -162,9 +162,9 @@ export function Devices() {
     <div className="stagger">
       <h1>{t("Devices")}</h1>
       {!locationConfigured && (
-        <div className="msg warn">
+        <div className="msg error">
           {t(
-            "Gym location is not configured: a photo of the static turnstile QR can open the gate from outside the gym. Enable location verification on the Settings page.",
+            "Gym location is not configured, so no turnstile will open. Location verification is mandatory: without it a photo of the static QR would open the gate from anywhere. Set the gym location on the Settings page.",
           )}
         </div>
       )}

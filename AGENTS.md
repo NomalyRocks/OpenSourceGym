@@ -61,6 +61,7 @@ not schema migrations.
 - `subscriptions` — membership periods `{ userId, startsAt, endsAt, note, createdBy, createdAt }`
 - `phone_identity_conflicts` — unresolved legacy duplicate phones; resolved records are deleted
 - `migration_markers` — idempotent one-time data repair markers
+- `entry_events` — turnstile scan log; carries `distanceM`, the metres between the scanning phone and the gym, so a disputed scan can be reviewed later (null on older records and when either position was unknown)
 - `settings` — singleton gym config doc, `_id: "gym"`. Contains `legal: { dataProcessingUrl: string | null, privacyUrl: string | null, version: number }` — the product ships no legal text, only the operator's document URLs and version; managed via `GET/PUT /api/admin/settings` and read publicly through `GET /api/legal` (see `docs/legal/README.md`).
 - `audit_logs` — written via `logAudit()` (`apps/api/src/audit.ts`); **every sensitive admin mutation must call it**
 
@@ -68,7 +69,7 @@ not schema migrations.
 
 - `/api/auth/*` — BetterAuth
 - `/api/admin/*` (`apps/api/src/routes/admin.ts`) — staff/admin: unified user search (`q`: phone/e-mail/name), role assignment, sequential subscriptions, settings, audit list
-- `/api/me/*` (`apps/api/src/routes/me.ts`) — own profile and subscription
+- `/api/me/*` (`apps/api/src/routes/me.ts`) — own profile, subscription, and `POST /gate-scan`. The geofence there is **mandatory**: an unconfigured `settings.location` rejects the scan with `GYM_LOCATION_UNSET` rather than skipping the check, because the printed turnstile QR is public and location is the only thing tying a scan to the building. Entry scans also run anti-passback — strict when an exit device is registered, otherwise a per-member cooldown.
 - `GET /api/legal` — public legal document URLs (data processing and privacy)
 - `GET /health`
 

@@ -40,14 +40,19 @@ import {
 import { sendApiError } from "../apiError.js";
 import { acquireLock, redis, releaseLock } from "../redis.js";
 import { authed, requireRole, type AuthedRequest } from "../middleware.js";
-import { distanceMeters } from "../geo.js";
+import { distanceMeters, evaluateGeofence } from "../geo.js";
 import { verifyGateQr } from "../gateQr.js";
 import {
   getSubscriptionSummary,
   hasActiveSubscription,
 } from "../subscriptions.js";
-import { openDevice } from "../gateway.js";
-import { getOccupancy, markInside, markOutside } from "../occupancy.js";
+import { isDeviceOnline, openDevice } from "../gateway.js";
+import {
+  getOccupancy,
+  isInside,
+  markInside,
+  markOutside,
+} from "../occupancy.js";
 import { enqueueEntryEvent } from "../eventQueue.js";
 import { logAudit } from "../audit.js";
 import { isQrBlocked, recordSharingSignal, QR_LOC_KEY } from "../sharing.js";
@@ -410,13 +415,25 @@ const LOCATION_HISTORY_TTL_SECONDS = 120;
 const LOCATION_DRIFT_WINDOW_MS = 120_000;
 const LOCATION_DRIFT_THRESHOLD_M = 1000;
 
-const GEOFENCE_MESSAGES: Record<"LOCATION_REQUIRED" | "OUT_OF_RANGE", string> =
-  {
-    LOCATION_REQUIRED:
-      "Location information is unavailable. Enable location services and try again.",
-    OUT_OF_RANGE:
-      "You do not appear to be at the gym. Entry is allowed only on site.",
-  };
+/**
+ * Re-entry cooldown used only when the gym has no exit turnstile registered.
+ * There, nothing can mark a member outside before autoExitHours elapses, so
+ * strict anti-passback would lock them out of their own gym for hours; a
+ * cooldown still removes the "hold the QR photo and hammer the gate" case.
+ */
+const ENTRY_COOLDOWN_SECONDS = 60;
+
+const GEOFENCE_MESSAGES: Record<GeofenceReject, string> = {
+  LOCATION_REQUIRED:
+    "Location information is unavailable. Enable location services and try again.",
+  OUT_OF_RANGE:
+    "You do not appear to be at the gym. Entry is allowed only on site.",
+  // The operator has not configured the gym location. The member can do nothing
+  // about it, so both the code and this message point at reception rather than
+  // at their phone's location settings.
+  GYM_LOCATION_UNSET:
+    "Entry is unavailable because the gym location is not configured. Contact reception.",
+};
 
 /** Simple rate limit: 30 scan requests per user per minute. */
 async function isGateScanRateLimited(userId: string): Promise<boolean> {
@@ -483,20 +500,84 @@ async function recordLocationDrift(
   );
 }
 
-/** Checks distance when the gym location is configured; returns null on success. */
+type GeofenceReject =
+  | "LOCATION_REQUIRED"
+  | "OUT_OF_RANGE"
+  | "GYM_LOCATION_UNSET";
+
+interface GeofenceResult {
+  reject: GeofenceReject | null;
+  /** Metres from the gym, when both the phone position and the gym location are known. */
+  distanceM: number | null;
+}
+
+/** Loads the configured gym location and applies {@link evaluateGeofence} to it. */
 async function checkGymGeofence(
   lat: number | undefined,
   lng: number | undefined,
-): Promise<"LOCATION_REQUIRED" | "OUT_OF_RANGE" | null> {
+): Promise<GeofenceResult> {
   const settings = await findGymSettings();
-  const location = settings?.location;
-  // Skip the distance check if the operator has not configured location validation.
-  if (!location) return null;
-  if (typeof lat !== "number" || typeof lng !== "number") {
-    return "LOCATION_REQUIRED";
+  const { verdict, distanceM } = evaluateGeofence(settings?.location, lat, lng);
+  return { reject: verdict === "OK" ? null : verdict, distanceM };
+}
+
+/**
+ * Whether the member can actually scan themselves out right now.
+ *
+ * Strict anti-passback refuses entry while the member is marked inside, and only
+ * an exit scan clears that mark. So the strict rule is safe **only** while a
+ * reachable exit turnstile exists: a gym with no exit device is a supported
+ * topology (`PRD.md`), and an exit device that is offline is the same situation
+ * from the member's side — they cannot scan out, so refusing their entry would
+ * lock them out of their own gym until `autoExitHours` elapses.
+ */
+async function hasUsableExitDevice(): Promise<boolean> {
+  const exitDevices = await db
+    .collection("devices")
+    .find({ direction: "out" }, { projection: { _id: 1 } })
+    .toArray();
+  return exitDevices.some((device) => isDeviceOnline(device._id.toString()));
+}
+
+/**
+ * Anti-passback. Returns a member-facing message when the entry scan must be
+ * refused, or null when it may proceed.
+ *
+ * Without this, one member could stand at the gate and open it repeatedly for a
+ * queue of non-members: the only previous brakes were a 3-second per-device
+ * lock and a 30/60s rate limit, which still allow roughly twenty openings a
+ * minute.
+ *
+ * The cooldown runs in BOTH modes. On its own the strict rule is defeated by a
+ * photograph of the exit QR — scan out, scan in, repeat — which is exactly the
+ * abuse being prevented. The cooldown caps that loop at one opening a minute
+ * regardless of which QRs the attacker holds.
+ */
+async function checkAntiPassback(userId: string): Promise<string | null> {
+  if ((await hasUsableExitDevice()) && (await isInside(userId))) {
+    return "You are already inside. Use the exit turnstile before entering again.";
   }
-  const distance = distanceMeters(lat, lng, location.lat, location.lng);
-  return distance > location.radiusM ? "OUT_OF_RANGE" : null;
+
+  // Keyed per member, not per device, so a second entry gate cannot reset it.
+  const fresh = await redis.set(entryCooldownKey(userId), "1", {
+    condition: "NX",
+    expiration: { type: "EX", value: ENTRY_COOLDOWN_SECONDS },
+  });
+  return fresh === null
+    ? "You have just entered. Please wait a moment before scanning again."
+    : null;
+}
+
+const entryCooldownKey = (userId: string): string =>
+  `og:gate-cooldown:${userId}`;
+
+/**
+ * Undoes the cooldown claimed by {@link checkAntiPassback} when the gate never
+ * actually opened. Without this an offline turnstile would cost the member a
+ * full cooldown for an entry they never made.
+ */
+async function clearEntryCooldown(userId: string): Promise<void> {
+  await redis.del(entryCooldownKey(userId));
 }
 
 // US-7: member scans the static QR attached to the gate to request entry
@@ -533,6 +614,7 @@ meRouter.post(
         reason: "INVALID_QR",
         at: new Date(),
         direction: "in",
+        distanceM: null,
       });
       sendApiError(
         res,
@@ -552,6 +634,13 @@ meRouter.post(
     const deviceName = device ? (device.name as string) : "";
     const direction = (device?.direction as "in" | "out" | undefined) ?? "in";
 
+    // Resolved up front rather than at the geofence check, so that an early
+    // denial (unknown device, sharing block, no subscription) still records
+    // where the attempt came from. Otherwise those rows are indistinguishable
+    // from a scan that carried no coordinates at all.
+    const geofence = await checkGymGeofence(lat, lng);
+    const scanDistanceM = geofence.distanceM;
+
     // Every denial produces both a response and an entry_events audit record.
     const deny = (reason: GateRejectCode, message: string): void => {
       enqueueEntryEvent({
@@ -563,6 +652,7 @@ meRouter.post(
         reason,
         at: new Date(),
         direction,
+        distanceM: scanDistanceM,
       });
       sendApiError(res, 403, reason, message);
     };
@@ -575,8 +665,10 @@ meRouter.post(
       return;
     }
 
-    // Phase 6: gate access is temporarily blocked for accounts above the escalation threshold.
-    if (await isQrBlocked(req.user.id)) {
+    // Phase 6: gate access is temporarily blocked for accounts above the
+    // escalation threshold. Entry only — a member already inside when the block
+    // lands must still be able to walk out of the building.
+    if (direction === "in" && (await isQrBlocked(req.user.id))) {
       deny(
         "SHARING_BLOCKED",
         "Unusual activity was detected on your account. Entry is temporarily blocked. Contact reception.",
@@ -589,12 +681,17 @@ meRouter.post(
     // BEFORE writing location history (QR_LOC_KEY), so fake coordinates do not
     // feed the location-inconsistency signal.
     if (mocked === true) {
+      // The signal is recorded either way; only entry is refused. A spoofed
+      // location cannot fake someone OUT of a building they are standing in, so
+      // refusing the exit would only trap them.
       await recordSharingSignal(req.user, "mock-location", { lat, lng });
-      deny(
-        "MOCK_LOCATION",
-        "Mock location detected. Disable location-spoofing apps and try again.",
-      );
-      return;
+      if (direction === "in") {
+        deny(
+          "MOCK_LOCATION",
+          "Mock location detected. Disable location-spoofing apps and try again.",
+        );
+        return;
+      }
     }
 
     // Do not check subscriptions on exit; a member with an expired subscription must be able to leave.
@@ -610,14 +707,30 @@ meRouter.post(
       await recordLocationDrift(req, lat, lng);
     }
 
-    const geofenceReject = await checkGymGeofence(lat, lng);
-    if (geofenceReject) {
-      deny(geofenceReject, GEOFENCE_MESSAGES[geofenceReject]);
+    // The geofence guards ENTRY only. It defends against someone opening the
+    // gate remotely with a photographed QR, which is a way IN — refusing an exit
+    // scan does not prevent that, it traps a member inside a building over a
+    // missing GPS fix or an unconfigured setting. The distance is still recorded
+    // above, so a remote exit scan remains reviewable.
+    if (direction === "in" && geofence.reject) {
+      deny(geofence.reject, GEOFENCE_MESSAGES[geofence.reject]);
       return;
     }
 
-    // Short duplicate-scan lock for consecutive scans by the same member and device.
-    const lockKey = `og:gate-open:${req.user.id}:${deviceId}`;
+    // Anti-passback, likewise entry only: refusing an exit scan would trap the
+    // member inside.
+    if (direction === "in") {
+      const passbackMessage = await checkAntiPassback(req.user.id);
+      if (passbackMessage) {
+        deny("ALREADY_INSIDE", passbackMessage);
+        return;
+      }
+    }
+
+    // Duplicate-scan lock, keyed per MEMBER rather than per member+device: with a
+    // device-scoped key, two entry turnstiles scanned at once both read "outside"
+    // and both open. One member cannot legitimately pass two gates in 3 seconds.
+    const lockKey = `og:gate-open:${req.user.id}`;
     const lockToken = randomUUID();
     if (!(await acquireLock(lockKey, lockToken, GATE_OPEN_LOCK_TTL_MS))) {
       sendApiError(
@@ -630,17 +743,26 @@ meRouter.post(
     }
 
     if (!openDevice(deviceId, GATE_OPEN_MS)) {
-      // The gate did not open; release the lock so the member can retry as soon
-      // as the connection returns.
+      // The gate did not open; release the lock and the anti-passback cooldown
+      // so the member can retry as soon as the connection returns.
       await releaseLock(lockKey, lockToken);
+      if (direction === "in") await clearEntryCooldown(req.user.id);
       deny("DEVICE_OFFLINE", "The gate is offline. Contact reception.");
       return;
     }
 
-    if (direction === "out") {
-      await markOutside(req.user.id);
-    } else {
-      await markInside(req.user.id);
+    // The relay has already fired: the member is walking through a turnstile
+    // that is physically open. An occupancy write that fails here must not turn
+    // that into a 500 with no audit record — worse, on exit a failed markOutside
+    // would leave the member flagged inside and refused re-entry for hours.
+    try {
+      if (direction === "out") {
+        await markOutside(req.user.id);
+      } else {
+        await markInside(req.user.id);
+      }
+    } catch (error) {
+      console.error("occupancy update failed after the gate opened:", error);
     }
     enqueueEntryEvent({
       deviceId,
@@ -651,6 +773,7 @@ meRouter.post(
       reason: null,
       at: new Date(),
       direction,
+      distanceM: scanDistanceM,
     });
 
     const body: GateScanResponse = {

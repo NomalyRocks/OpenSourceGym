@@ -33,13 +33,56 @@ type ScanState =
   | { kind: "scanning" }
   | { kind: "validating" }
   | { kind: "success"; data: GateScanResponse }
-  | { kind: "denied"; message: string; code?: string };
+  | {
+      kind: "denied";
+      message: string;
+      code?: string;
+      /**
+       * The gate asked for a location the device could not produce, even though
+       * permission was granted. Distinguishes a hardware/signal problem from the
+       * permission problem the stock copy assumes.
+       */
+      locationUnavailable?: boolean;
+    };
 
 const GATE_QR_PREFIX = "OGGATE1.";
 // Must exceed the server's duplicate-scan lock (3 seconds); if the camera reopens
 // while the lock is active, a successful entry appears rejected with a 429.
 const RESCAN_DELAY_MS = 3500;
-const LOCATION_TIMEOUT_MS = 5000;
+
+/**
+ * Waiting on a fix at scan time. Generous because it is now only a last resort:
+ * the screen starts warming a fix as soon as it opens, so by the time a QR is
+ * framed a position is normally already in hand. The old 5s budget was routinely
+ * lost to a cold indoor GPS fix, and losing it means the scan is sent with no
+ * coordinates at all and the gate refuses it.
+ */
+const LOCATION_TIMEOUT_MS = 12000;
+
+/**
+ * How stale a cached fix may be when nothing fresher is available. A minute-old
+ * position still proves the member was at the gym a minute ago, which is what
+ * the geofence is defending — it does not open the door to remote actuation.
+ */
+const LOCATION_MAX_AGE_MS = 60000;
+
+/** Reject a cached fix whose uncertainty is wider than a typical gym geofence. */
+const LOCATION_REQUIRED_ACCURACY_M = 500;
+
+/** Position updates while the scanner is open, so a fix is ready before the scan. */
+const LOCATION_WATCH_INTERVAL_MS = 5000;
+const LOCATION_WATCH_DISTANCE_M = 10;
+
+/**
+ * A held position is only evidence of being at the gate while it is both recent
+ * and precise enough. `getLastKnownPositionAsync` applies these itself; a fix
+ * from the watcher has to be checked here.
+ */
+function isUsablePosition(position: Location.LocationObject): boolean {
+  if (Date.now() - position.timestamp > LOCATION_MAX_AGE_MS) return false;
+  const accuracy = position.coords.accuracy;
+  return accuracy == null || accuracy <= LOCATION_REQUIRED_ACCURACY_M;
+}
 
 /** Scan line moving through the finder frame—conveys the "reading now" state. */
 function ScanLine({ color }: { color: string }) {
@@ -104,6 +147,10 @@ export function GateScan() {
   const [state, setState] = useState<ScanState>({ kind: "scanning" });
   const busyRef = useRef(false);
   const resetTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  /** Newest fix from the warm-up watcher; consumed at scan time. */
+  const positionRef = useRef<Location.LocationObject | null>(null);
+  /** Whether foreground location permission was granted, for the denial hint. */
+  const locationGrantedRef = useRef(false);
 
   const resetToScanning = useCallback(() => {
     if (resetTimerRef.current) clearTimeout(resetTimerRef.current);
@@ -118,6 +165,112 @@ export function GateScan() {
     },
     [],
   );
+
+  // Warm the GPS while the member is still framing the QR. Acquiring a fix only
+  // after the scan meant a cold start had to finish inside a few seconds, which
+  // indoors it often does not — and a scan sent without coordinates is refused.
+  //
+  // Bound to the scanning state, not to the component: once a result is on
+  // screen the camera is closed and no scan can follow, so continuing to track
+  // position would burn battery and keep reading the member's location for no
+  // reason. It restarts when the camera reopens for the next scan.
+  const scannerActive = state.kind === "scanning";
+
+  useEffect(() => {
+    if (!scannerActive) return;
+
+    let subscription: Location.LocationSubscription | null = null;
+    let cancelled = false;
+
+    void (async () => {
+      try {
+        const { granted } = await Location.requestForegroundPermissionsAsync();
+        locationGrantedRef.current = granted;
+        if (!granted || cancelled) return;
+
+        // Seed from the cache so the very first scan is covered even before the
+        // watcher has produced anything.
+        const cached = await Location.getLastKnownPositionAsync({
+          maxAge: LOCATION_MAX_AGE_MS,
+          requiredAccuracy: LOCATION_REQUIRED_ACCURACY_M,
+        });
+        if (cached && !positionRef.current) positionRef.current = cached;
+
+        subscription = await Location.watchPositionAsync(
+          {
+            accuracy: Location.Accuracy.Balanced,
+            timeInterval: LOCATION_WATCH_INTERVAL_MS,
+            distanceInterval: LOCATION_WATCH_DISTANCE_M,
+          },
+          (position) => {
+            positionRef.current = position;
+          },
+        );
+        if (cancelled) {
+          subscription.remove();
+          subscription = null;
+        }
+      } catch {
+        // Fall through: resolveScanPosition still tries at scan time.
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+      subscription?.remove();
+      // The held fix is deliberately NOT cleared here: the scan that follows a
+      // reopened camera is entitled to the position acquired moments earlier,
+      // and resolveScanPosition re-checks its age and accuracy anyway.
+    };
+  }, [scannerActive]);
+
+  /**
+   * Best position available right now, in descending order of freshness: the
+   * warm-up watcher, then a live request, then the platform cache. Returns null
+   * only when the device genuinely cannot place itself.
+   */
+  const resolveScanPosition =
+    useCallback(async (): Promise<Location.LocationObject | null> => {
+      // The warm fix is held to the same accuracy bar as the cached one; a
+      // 5 km-uncertain reading is not evidence of standing at the turnstile.
+      const warm = positionRef.current;
+      if (warm && isUsablePosition(warm)) return warm;
+
+      try {
+        if (!locationGrantedRef.current) {
+          const { granted } = await Location.requestForegroundPermissionsAsync();
+          locationGrantedRef.current = granted;
+          if (!granted) return null;
+        }
+      } catch {
+        return null;
+      }
+
+      try {
+        // getCurrentPositionAsync has no timeout of its own, so it is raced.
+        const live = await Promise.race([
+          Location.getCurrentPositionAsync({
+            accuracy: Location.Accuracy.Balanced,
+          }),
+          new Promise<null>((resolve) =>
+            setTimeout(() => resolve(null), LOCATION_TIMEOUT_MS),
+          ),
+        ]);
+        if (live) return live;
+      } catch {
+        // A provider error here must still fall through to the cache below;
+        // catching both calls together would throw the fallback away.
+      }
+
+      try {
+        return await Location.getLastKnownPositionAsync({
+          maxAge: LOCATION_MAX_AGE_MS,
+          requiredAccuracy: LOCATION_REQUIRED_ACCURACY_M,
+        });
+      } catch {
+        return null;
+      }
+    }, []);
 
   const notifyResult = useCallback((success: boolean) => {
     requestAnimationFrame(() => {
@@ -136,37 +289,19 @@ export function GateScan() {
       busyRef.current = true;
       setState({ kind: "validating" });
 
-      let lat: number | undefined;
-      let lng: number | undefined;
-      let mocked: boolean | undefined;
-      try {
-        const { granted } = await Location.requestForegroundPermissionsAsync();
-        if (granted) {
-          // GPS sometimes stalls—instead of showing "verifying" indefinitely,
-          // continue without location after timeout and let the API decide.
-          const position = await Promise.race([
-            Location.getCurrentPositionAsync({
-              accuracy: Location.Accuracy.Balanced,
-            }),
-            new Promise<null>((resolve) =>
-              setTimeout(() => resolve(null), LOCATION_TIMEOUT_MS),
-            ),
-          ]);
-          if (position) {
-            lat = position.coords.latitude;
-            lng = position.coords.longitude;
-            mocked = position.mocked === true;
-          }
-        }
-      } catch {
-        // The API decides whether entry without location is allowed.
-      }
+      // Sending the scan without coordinates gets it refused, so this is the
+      // step worth trying hard at; the API still makes the final decision.
+      const position = await resolveScanPosition();
 
       try {
-        const body =
-          lat !== undefined && lng !== undefined
-            ? { qr: result.data, lat, lng, mocked }
-            : { qr: result.data };
+        const body = position
+          ? {
+              qr: result.data,
+              lat: position.coords.latitude,
+              lng: position.coords.longitude,
+              mocked: position.mocked === true,
+            }
+          : { qr: result.data };
         const response = await api<GateScanResponse>("/api/me/gate-scan", {
           method: "POST",
           body,
@@ -176,14 +311,24 @@ export function GateScan() {
         resetTimerRef.current = setTimeout(resetToScanning, RESCAN_DELAY_MS);
       } catch (error) {
         if (error instanceof ApiError) {
+          // The stock LOCATION_REQUIRED copy tells the member to grant location
+          // permission. When they already have, that is misleading — the real
+          // problem is that the device could not produce a fix.
+          const misattributesPermission =
+            error.code === "LOCATION_REQUIRED" && locationGrantedRef.current;
           setState({
             kind: "denied",
-            message: errorMessage(
-              error,
-              t,
-              "An unexpected error occurred. Please try again.",
-            ),
+            message: misattributesPermission
+              ? t(
+                  "Your location could not be determined. Move somewhere with a clearer view of the sky and try again.",
+                )
+              : errorMessage(
+                  error,
+                  t,
+                  "An unexpected error occurred. Please try again.",
+                ),
             code: error.code,
+            locationUnavailable: misattributesPermission,
           });
         } else {
           setState({
@@ -194,7 +339,7 @@ export function GateScan() {
         notifyResult(false);
       }
     },
-    [notifyResult, resetToScanning, t],
+    [notifyResult, resetToScanning, resolveScanPosition, t],
   );
 
   if (!permission) {
@@ -309,7 +454,10 @@ export function GateScan() {
             {t("Entry could not be completed")}
           </Text>
           <Text style={styles.resultDetail}>{state.message}</Text>
-          <RecoveryHint code={state.code} />
+          <RecoveryHint
+            code={state.code}
+            locationUnavailable={state.locationUnavailable}
+          />
           <View style={styles.resultAction}>
             <Button title={t("Scan again")} onPress={resetToScanning} />
           </View>
@@ -319,10 +467,19 @@ export function GateScan() {
   );
 }
 
-function RecoveryHint({ code }: { code?: string }) {
+function RecoveryHint({
+  code,
+  locationUnavailable,
+}: {
+  code?: string;
+  locationUnavailable?: boolean;
+}) {
   const { t } = useTranslation();
-  const text =
-    code === "LOCATION_REQUIRED"
+  const text = locationUnavailable
+    ? // Permission is already granted, so pointing at settings would send the
+      // member somewhere that cannot help them.
+      t("Wait a few seconds for the location to be found, then scan again.")
+    : code === "LOCATION_REQUIRED"
       ? t("Enable location permission and try again.")
       : code === "MOCK_LOCATION"
         ? t("Disable the mock location app and try again.")
@@ -330,7 +487,13 @@ function RecoveryHint({ code }: { code?: string }) {
           ? t("Contact gym reception about the account-sharing block.")
           : code === "DEVICE_OFFLINE"
             ? t("The turnstile is offline. Ask gym reception for help.")
-            : t("Contact gym reception if the problem continues.");
+            : code === "ALREADY_INSIDE"
+              ? t("Scan the exit turnstile when you leave, then try again.")
+              : // Operator misconfiguration: there is nothing the member can do
+                // on their phone, so do not send them to their own settings.
+                code === "GYM_LOCATION_UNSET"
+                ? t("The gym has not set its location yet. Ask reception.")
+                : t("Contact gym reception if the problem continues.");
 
   return <StatusMessage tone="neutral" text={text} />;
 }

@@ -155,7 +155,16 @@ export type GateRejectCode =
   | "LOCATION_REQUIRED"
   | "OUT_OF_RANGE"
   | "MOCK_LOCATION"
-  | "SHARING_BLOCKED";
+  | "SHARING_BLOCKED"
+  /** Anti-passback: the member is already counted inside, or re-scanned an entry gate too soon */
+  | "ALREADY_INSIDE"
+  /**
+   * The operator has not configured the gym location, and location verification
+   * is mandatory. Distinct from LOCATION_REQUIRED because the member can do
+   * nothing about it — the clients must point them at reception instead of at
+   * their own location permission.
+   */
+  | "GYM_LOCATION_UNSET";
 
 /** Stable error codes clients can translate without parsing the server message. */
 export type ApiErrorCode =
@@ -254,6 +263,13 @@ export interface EntryEvent {
   allowed: boolean;
   reason: GateRejectCode | null;
   at: string;
+  /**
+   * Metres between the scanning phone and the configured gym location, when
+   * both were known at scan time. Recorded so that management can review a
+   * disputed or suspicious scan after the fact: without it, a scan that the
+   * geofence let through leaves no trace of where it came from.
+   */
+  distanceM: number | null;
 }
 
 /** Member's own visit day (mobile calendar) — summary of a single local calendar day */

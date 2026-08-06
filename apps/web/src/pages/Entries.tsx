@@ -22,6 +22,8 @@ const reasonLabels: Record<GateRejectCode, WebTranslationKey> = {
   OUT_OF_RANGE: "Outside gym location",
   MOCK_LOCATION: "Mock location",
   SHARING_BLOCKED: "Sharing block",
+  ALREADY_INSIDE: "Already inside",
+  GYM_LOCATION_UNSET: "Gym location not set",
 };
 
 // Fall back to raw text for records left by the old flow (INVALID_TOKEN/EXPIRED/REPLAY)
@@ -171,6 +173,7 @@ export function Entries() {
               <th>{t("Device")}</th>
               <th>{t("Member")}</th>
               <th>{t("Result")}</th>
+              <th>{t("Distance")}</th>
               <th>{t("Reason")}</th>
             </tr>
           </thead>
@@ -187,12 +190,19 @@ export function Entries() {
                     <span className="badge danger">{t("Denied")}</span>
                   )}
                 </td>
+                {/* How far from the gym the scan came from — the only way to
+                    review a disputed entry after the fact. */}
+                <td>
+                  {e.distanceM === null
+                    ? "—"
+                    : t("{{meters}} m", { meters: e.distanceM })}
+                </td>
                 <td>{reasonLabel(e.reason)}</td>
               </tr>
             ))}
             {entries.length === 0 && !error && (
               <tr>
-                <td colSpan={5}>{t("No records.")}</td>
+                <td colSpan={6}>{t("No records.")}</td>
               </tr>
             )}
           </tbody>

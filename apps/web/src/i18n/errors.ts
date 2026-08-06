@@ -34,6 +34,10 @@ const codeMessages: Record<ApiErrorCode, WebTranslationKey> = {
   OUT_OF_RANGE:
     "You do not appear to be at the gym. Entry is only available at the gym.",
   DEVICE_OFFLINE: "The turnstile is offline. Please contact reception.",
+  ALREADY_INSIDE:
+    "You are already recorded as inside. Use the exit turnstile before entering again.",
+  GYM_LOCATION_UNSET:
+    "Entry is unavailable because the gym location is not configured. Please contact reception.",
   DELETION_MEMBER_ONLY: "Only member accounts can create a deletion request.",
   DELETION_ALREADY_PENDING: "You already have a pending deletion request.",
   DELETION_NOT_PENDING: "No pending deletion request was found.",
