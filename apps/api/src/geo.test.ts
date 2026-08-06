@@ -11,6 +11,8 @@ import {
 // Two points roughly 300 m apart in Istanbul.
 const GYM = { lat: 41.0082, lng: 28.9784, radiusM: 400 };
 const NEARBY = { lat: 41.0082, lng: 28.9820 };
+// ~40 m away: inside the 100 m floor, so it exercises clamping from below.
+const AT_THE_GATE = { lat: 41.0082, lng: 28.97887 };
 const FAR_AWAY = { lat: 39.9334, lng: 32.8597 }; // Ankara
 
 describe("evaluateGeofence", () => {
@@ -78,6 +80,53 @@ describe("evaluateGeofence", () => {
   it("returns whole metres", () => {
     const { distanceM } = evaluateGeofence(GYM, NEARBY.lat, NEARBY.lng);
     assert.ok(distanceM !== null && Number.isInteger(distanceM));
+  });
+
+  it("clamps a stored radius above the ceiling", () => {
+    // The write-time bounds only constrain future writes. An installation
+    // configured before they existed can carry a radius that disables the check
+    // entirely, so the ceiling has to hold on read as well.
+    const { distanceM } = evaluateGeofence(GYM, FAR_AWAY.lat, FAR_AWAY.lng);
+    assert.ok(distanceM !== null && distanceM > GEOFENCE_RADIUS_M_MAX);
+    assert.equal(
+      evaluateGeofence(
+        { ...GYM, radiusM: 100_000 },
+        FAR_AWAY.lat,
+        FAR_AWAY.lng,
+      ).verdict,
+      "OUT_OF_RANGE",
+    );
+  });
+
+  it("clamps a stored radius below the floor", () => {
+    // Symmetrically, a 5 m radius left over from an earlier configuration would
+    // deny a member standing at the turnstile, whom ordinary GPS error already
+    // places tens of metres away.
+    const { distanceM } = evaluateGeofence(
+      GYM,
+      AT_THE_GATE.lat,
+      AT_THE_GATE.lng,
+    );
+    assert.ok(
+      distanceM !== null && distanceM > 5 && distanceM < GEOFENCE_RADIUS_M_MIN,
+      `expected a distance inside the floor, got ${distanceM}`,
+    );
+    assert.equal(
+      evaluateGeofence({ ...GYM, radiusM: 5 }, AT_THE_GATE.lat, AT_THE_GATE.lng)
+        .verdict,
+      "OK",
+    );
+  });
+
+  it("falls back to the default for a non-finite stored radius", () => {
+    assert.equal(
+      evaluateGeofence(
+        { ...GYM, radiusM: Number.NaN },
+        NEARBY.lat,
+        NEARBY.lng,
+      ).verdict,
+      "OK",
+    );
   });
 
   it("keeps the configurable radius bounds coherent", () => {

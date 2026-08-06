@@ -81,7 +81,24 @@ export function evaluateGeofence(
   return {
     // Inclusive: a member standing exactly on the configured boundary is at the
     // gym, and GPS noise around the edge should not decide entry.
-    verdict: distanceM > location.radiusM ? "OUT_OF_RANGE" : "OK",
+    verdict: distanceM > effectiveRadiusM(location.radiusM) ? "OUT_OF_RANGE" : "OK",
     distanceM,
   };
+}
+
+/**
+ * Clamps a stored radius into the supported range.
+ *
+ * The bounds are enforced when settings are written, which only constrains
+ * FUTURE writes: an installation configured before the bounds existed can be
+ * carrying an arbitrary value, and a 100 km radius silently disables the whole
+ * check. Clamping on read makes the ceiling hold for existing data too, without
+ * a migration.
+ */
+function effectiveRadiusM(radiusM: number): number {
+  if (!Number.isFinite(radiusM)) return GEOFENCE_RADIUS_M_DEFAULT;
+  return Math.min(
+    Math.max(radiusM, GEOFENCE_RADIUS_M_MIN),
+    GEOFENCE_RADIUS_M_MAX,
+  );
 }

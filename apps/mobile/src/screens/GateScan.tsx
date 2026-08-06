@@ -73,6 +73,17 @@ const LOCATION_REQUIRED_ACCURACY_M = 500;
 const LOCATION_WATCH_INTERVAL_MS = 5000;
 const LOCATION_WATCH_DISTANCE_M = 10;
 
+/**
+ * A held position is only evidence of being at the gate while it is both recent
+ * and precise enough. `getLastKnownPositionAsync` applies these itself; a fix
+ * from the watcher has to be checked here.
+ */
+function isUsablePosition(position: Location.LocationObject): boolean {
+  if (Date.now() - position.timestamp > LOCATION_MAX_AGE_MS) return false;
+  const accuracy = position.coords.accuracy;
+  return accuracy == null || accuracy <= LOCATION_REQUIRED_ACCURACY_M;
+}
+
 /** Scan line moving through the finder frame—conveys the "reading now" state. */
 function ScanLine({ color }: { color: string }) {
   const reduced = useReducedMotion();
@@ -158,9 +169,16 @@ export function GateScan() {
   // Warm the GPS while the member is still framing the QR. Acquiring a fix only
   // after the scan meant a cold start had to finish inside a few seconds, which
   // indoors it often does not — and a scan sent without coordinates is refused.
-  // The subscription is torn down when the scanner closes, so the app never
-  // tracks position in the background.
+  //
+  // Bound to the scanning state, not to the component: once a result is on
+  // screen the camera is closed and no scan can follow, so continuing to track
+  // position would burn battery and keep reading the member's location for no
+  // reason. It restarts when the camera reopens for the next scan.
+  const scannerActive = state.kind === "scanning";
+
   useEffect(() => {
+    if (!scannerActive) return;
+
     let subscription: Location.LocationSubscription | null = null;
     let cancelled = false;
 
@@ -200,9 +218,11 @@ export function GateScan() {
     return () => {
       cancelled = true;
       subscription?.remove();
-      positionRef.current = null;
+      // The held fix is deliberately NOT cleared here: the scan that follows a
+      // reopened camera is entitled to the position acquired moments earlier,
+      // and resolveScanPosition re-checks its age and accuracy anyway.
     };
-  }, []);
+  }, [scannerActive]);
 
   /**
    * Best position available right now, in descending order of freshness: the
@@ -211,10 +231,10 @@ export function GateScan() {
    */
   const resolveScanPosition =
     useCallback(async (): Promise<Location.LocationObject | null> => {
+      // The warm fix is held to the same accuracy bar as the cached one; a
+      // 5 km-uncertain reading is not evidence of standing at the turnstile.
       const warm = positionRef.current;
-      if (warm && Date.now() - warm.timestamp <= LOCATION_MAX_AGE_MS) {
-        return warm;
-      }
+      if (warm && isUsablePosition(warm)) return warm;
 
       try {
         if (!locationGrantedRef.current) {
@@ -222,7 +242,11 @@ export function GateScan() {
           locationGrantedRef.current = granted;
           if (!granted) return null;
         }
+      } catch {
+        return null;
+      }
 
+      try {
         // getCurrentPositionAsync has no timeout of its own, so it is raced.
         const live = await Promise.race([
           Location.getCurrentPositionAsync({
@@ -233,7 +257,12 @@ export function GateScan() {
           ),
         ]);
         if (live) return live;
+      } catch {
+        // A provider error here must still fall through to the cache below;
+        // catching both calls together would throw the fallback away.
+      }
 
+      try {
         return await Location.getLastKnownPositionAsync({
           maxAge: LOCATION_MAX_AGE_MS,
           requiredAccuracy: LOCATION_REQUIRED_ACCURACY_M,
