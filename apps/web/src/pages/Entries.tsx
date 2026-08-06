@@ -23,6 +23,8 @@ const reasonLabels: Record<GateRejectCode, WebTranslationKey> = {
   MOCK_LOCATION: "Mock location",
   SHARING_BLOCKED: "Sharing block",
   ALREADY_INSIDE: "Already inside",
+  ENTRY_COOLDOWN: "Re-entry too soon",
+  NOT_INSIDE: "No entry record",
   GYM_LOCATION_UNSET: "Gym location not set",
 };
 
