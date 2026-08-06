@@ -20,6 +20,7 @@ docs/.obsidian/
 # Security scan output. The repository is public: publishing a findings report
 # hands an attacker an unfixed vulnerability ready to use.
 sast/
+strix_runs/
 
 # Local working artifacts — not product source
 login-visual.png

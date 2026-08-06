@@ -211,3 +211,57 @@ sunucu profiline yazılır ve Profil sayfasından güncellenebilir.
 ve iki tema doğrulanır; tüm depo kontrolleri yeşildir. Otomatik kontroller ve Android
 üretim paketi doğrulandı; mevcut çalışma ortamında `/dev/kvm` bulunmadığı için
 emülatör görsel kontrolü bekliyor.
+
+---
+
+## Faz 10 — NFC Kart ile Turnike Geçişi (taslak)
+
+**Hedef:** Turnikeden NFC kart ile geçiş. Öncelikli kullanıcı personel: bugün
+personelin giriş turnikesinden geçebileceği bir yol yok, çünkü `gate-scan`
+`direction: "in"` için aktif abonelik arıyor ve rol muafiyeti yok
+(`apps/api/src/routes/me.ts`). Personele elle abonelik açmak abonelik verisini,
+yenileme hatırlatmalarını ve raporları kirlettiği için çözüm sayılmıyor.
+
+**Bağımlılıklar:** Faz 4 (Device Gateway, cihaz agent'ları, `devices` token
+modeli). Harici donanım: ESP32 + PN532 okuyucu modülü + NTAG424 DNA kartlar.
+
+**Kart tipi kararı:** NTAG424 DNA. Etiket her dokunuşta artan sayaç ve CMAC
+içeren bir mesaj üretir (SUN/SDM), backend CMAC'i doğrular ve tekrarlanan sayacı
+reddeder; kopyalanan bir dokunuş işe yaramaz. UID-only kartlar (Mifare Classic,
+EM4100) kullanılmaz — saniyeler içinde klonlanabildikleri için bypass ettikleri
+QR akışından daha zayıf bir kimlik olurlar ve bu kartlar sistemin en yetkili
+kullanıcılarının elinde olacak. DESFire EV2/EV3 bu ölçek için gereksiz.
+
+**İş Kırılımı:**
+
+- [ ] ESP32 agent'ına (`agents/esp32/agent.ino`) PN532 kart okuma eklenmesi;
+      mevcut WebSocket bağlantısı ve cihaz token'ı aynen kullanılır, yeni bir
+      kimlik katmanı eklenmez
+- [ ] `DeviceClientMessage` union'ına `card-scan` mesajı; agent yalnızca kart
+      verisini iletir, **karar sunucuda verilir** ve mevcut `open` cevabı
+      kullanılır. ESP32 hiçbir koşulda lokal olarak kapı açmaz — çalınan veya
+      ele geçirilen okuyucu tek başına geçiş üretememeli
+- [ ] Backend CMAC doğrulaması + sayaç replay reddi; `cards` koleksiyonu
+      (`{ userId, cardUid, keyRef, lastCounter, createdBy, createdAt, revokedAt }`)
+      ve `cardUid` üzerinde tekil indeks
+- [ ] Kart bağlama/iptal admin endpoint'leri (`logAudit` zorunlu) ve panelde üye
+      detayından kart yönetimi; iptal anında etkili olur, iptalden sonraki ilk
+      denemede `entry_events`'e reddedilmiş kayıt düşer
+- [ ] Kart geçişinde rol bazlı abonelik kuralı: personel/admin için abonelik
+      aranmaz, üye kartları QR akışıyla aynı kontrollerden geçer
+- [ ] Kart geçişinin de `entry_events` + `markInside`/`markOutside` yazması
+      (yoksa doluluk kayar ve giriş kayıtlarında delik açılır) ve kayıtta QR
+      geçişinden ayırt edilebilmesi
+- [ ] Kart geçişinde geofence aranmaz — okuyucuya fiziksel dokunuş zaten varlık
+      kanıtı; bu yönüyle geofence'siz QR geçişinden güçlüdür
+- [ ] Hesap silme temizliğine kart kayıtlarının dahil edilmesi (kart UID'si üyeye
+      bağlı kişisel veri)
+- [ ] Okuyucu çevrimdışıyken davranış: fail-closed, üyeye anlaşılır hata
+      (PRD §US-5 ile aynı ilke)
+- [ ] Backend testleri, lint, typecheck ve build doğrulaması
+
+**Definition of Done:** Personel kartıyla giriş turnikesinden geçebilir ve geçiş
+`entry_events`'e kart geçişi olarak düşer; iptal edilen kart ilk denemede
+reddedilir ve reddedilme kayda geçer; kopyalanmış bir dokunuş (aynı sayaç)
+reddedilir; okuyucu çevrimdışıyken turnike açılmaz; tüm depo kontrolleri
+yeşildir.
