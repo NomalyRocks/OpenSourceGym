@@ -65,11 +65,14 @@ not schema migrations.
 - `settings` — singleton gym config doc, `_id: "gym"`. Contains `legal: { dataProcessingUrl: string | null, privacyUrl: string | null, version: number }` — the product ships no legal text, only the operator's document URLs and version; managed via `GET/PUT /api/admin/settings` and read publicly through `GET /api/legal` (see `docs/legal/README.md`).
 - `audit_logs` — written via `logAudit()` (`apps/api/src/audit.ts`); **every sensitive admin mutation must call it**
 
+Profile photos live in a public R2 bucket with no signature and no expiry, so the object key is the only access control: `profilePhotoObjectKey()` mints a **fresh** key on every upload and the previous object is deleted after the DB write commits. Never reuse a key — the `?v=` suffix is a cache-buster, not access control, and the bare key keeps resolving.
+
 ### API surface
 
 - `/api/auth/*` — BetterAuth
 - `/api/admin/*` (`apps/api/src/routes/admin.ts`) — staff/admin: unified user search (`q`: phone/e-mail/name), role assignment, sequential subscriptions, settings, audit list
-- `/api/me/*` (`apps/api/src/routes/me.ts`) — own profile, subscription, and `POST /gate-scan`. The geofence there is **mandatory**: an unconfigured `settings.location` rejects the scan with `GYM_LOCATION_UNSET` rather than skipping the check, because the printed turnstile QR is public and location is the only thing tying a scan to the building. Entry scans also run anti-passback — strict when an exit device is registered, otherwise a per-member cooldown.
+- `/api/admin/devices*` (`apps/api/src/routes/devices.ts`) — **admin only, never staff**: every row carries `qrContent`, and that string *is* the gate credential — anyone holding it can present it to `/api/me/gate-scan`.
+- `/api/me/*` (`apps/api/src/routes/me.ts`) — own profile, subscription, and `POST /gate-scan`. The geofence there is **mandatory**: an unconfigured `settings.location` rejects the scan with `GYM_LOCATION_UNSET` rather than skipping the check, because the printed turnstile QR is public and location is the only thing tying a scan to the building. Entry scans also run anti-passback — strict when a *reachable* exit device exists, otherwise a per-member cooldown. Every one of these controls applies to **entry only**: an exit scan is never refused for location, sharing or subscription reasons, because trapping a member inside a building is worse than the abuse being prevented.
 - `GET /api/legal` — public legal document URLs (data processing and privacy)
 - `GET /health`
 
