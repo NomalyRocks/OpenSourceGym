@@ -52,6 +52,11 @@ services:
       MONGODB_URI: mongodb://${MONGO_USER:?MONGO_USER must be set}:${MONGO_PASSWORD:?MONGO_PASSWORD must be set}@mongo:27017/opengym?authSource=admin
       REDIS_URL: redis://:${REDIS_PASSWORD:?REDIS_PASSWORD must be set}@redis:6379
       BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:?BETTER_AUTH_SECRET must be set}
+      # Deliberately NOT `:?` required: it is needed only while no administrator
+      # exists, and the operator is told to remove it once the account is set
+      # up. A first boot without it fails inside the API with an actionable
+      # message (apps/api/src/initialAdmin.ts).
+      INITIAL_ADMIN_PASSWORD: ${INITIAL_ADMIN_PASSWORD:-}
       BETTER_AUTH_URL: https://${DOMAIN}
       TRUSTED_ORIGINS: https://${DOMAIN}
       ENABLE_API_DOCS: ${ENABLE_API_DOCS:-false}

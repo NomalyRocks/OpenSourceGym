@@ -44,7 +44,7 @@ docker compose up                     # infra: mongo + redis (API runs on host v
 - Mongo adapter + Redis secondary storage (sessions) + Redis-backed rate limiting with per-route rules (signup, signin, OTP send/verify).
 - Custom user fields: `firstName`, `lastName`, normalized public `phone`, internal/non-returned `phoneE164`, `role` (`admin|staff|member`, `input: false`), `mustChangePassword`, data processing and privacy consent flags (`dataProcessingAccepted`, `privacyAccepted` + timestamps). The `user.create.before` hook rejects signup without both consents, normalizes/uniquifies phones, and stamps consent timestamps.
 - The BetterAuth catch-all is mounted **before** `express.json()` in `apps/api/src/index.ts` — moving it after breaks auth request bodies.
-- First boot seeds `admin@opengym.local` / `admin1234` with `mustChangePassword: true` (`apps/api/src/seed.ts`).
+- First boot seeds `admin@opengym.local` with `mustChangePassword: true` (`apps/api/src/seed.ts`). The password comes from `resolveInitialAdminPassword()` (`apps/api/src/initialAdmin.ts`): `admin1234` in development, and in production the operator-supplied `INITIAL_ADMIN_PASSWORD` — there is no production default, so an unset value fails startup, and the value is never logged.
 
 ### Authorization (`apps/api/src/middleware.ts`)
 

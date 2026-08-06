@@ -39,11 +39,20 @@ const betterAuthSecret = isProduction
 
 const envSchema = z.object({
   PORT: port.default(3000),
-  NODE_ENV: z.string().default("development"),
+  // A closed set, not a free string: every production-only guard in the
+  // codebase keys off an exact "production" match, so a typo such as
+  // NODE_ENV=prod would silently boot a production install with development
+  // behaviour (weak BETTER_AUTH_SECRET, the fixed bootstrap admin password).
+  // Rejecting the unknown value at startup is the only safe reading.
+  NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
   ENABLE_API_DOCS: z.string().optional(),
   MONGODB_URI: z.string().min(1).default("mongodb://localhost:27017/opengym"),
   REDIS_URL: z.string().min(1).default("redis://localhost:6379"),
   BETTER_AUTH_SECRET: betterAuthSecret,
+  // Only consumed on the very first boot, while no administrator exists.
+  // Production requires it then (resolveInitialAdminPassword); afterwards the
+  // variable is dead weight and should be removed from the environment.
+  INITIAL_ADMIN_PASSWORD: z.string().min(1).optional(),
   BETTER_AUTH_URL: z.url().default("http://localhost:3000"),
   // prefault (not default): the fallback must also pass through transformation
   // and validation; otherwise Zod short-circuits on output and leaves a raw string.
@@ -91,6 +100,7 @@ export const env = {
   mongodbUri: raw.MONGODB_URI,
   redisUrl: raw.REDIS_URL,
   betterAuthSecret: raw.BETTER_AUTH_SECRET,
+  initialAdminPassword: raw.INITIAL_ADMIN_PASSWORD,
   betterAuthUrl: raw.BETTER_AUTH_URL,
   trustedOrigins: raw.TRUSTED_ORIGINS,
   reportsTimeZone: raw.REPORTS_TIME_ZONE,
