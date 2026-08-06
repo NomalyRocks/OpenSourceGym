@@ -162,6 +162,12 @@ const tr = {
   "Mock location": "Sahte konum",
   "Sharing block": "Paylaşım engeli",
   "Already inside": "Zaten içeride",
+  "Re-entry too soon": "Çok erken tekrar geçiş",
+  "No entry record": "Giriş kaydı yok",
+  "You have just passed through. Please wait a moment before scanning again.":
+    "Az önce geçiş yaptınız. Tekrar okutmadan önce biraz bekleyin.",
+  "You are not recorded as having entered the gym, so the exit turnstile cannot open. Please contact reception.":
+    "Salona giriş kaydınız görünmediği için çıkış turnikesi açılamıyor. Resepsiyona başvurun.",
   Distance: "Mesafe",
   "{{meters}} m": "{{meters}} m",
   "You are already recorded as inside. Use the exit turnstile before entering again.":

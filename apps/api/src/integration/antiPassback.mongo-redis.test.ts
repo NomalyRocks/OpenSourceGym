@@ -21,7 +21,7 @@ test("isInside honours the autoExitHours expiry", { skip }, async () => {
   process.env.MONGODB_URI = mongoUri!;
   process.env.REDIS_URL = redisUri!;
 
-  const [{ isInside, markInside, markOutside, getOccupancy }, { redis }, { db, mongoClient }] =
+  const [{ isInside, hasInsideRecord, markInside, markOutside, getOccupancy }, { redis }, { db, mongoClient }] =
     await Promise.all([
       import("../occupancy.js"),
       import("../redis.js"),
@@ -67,23 +67,41 @@ test("isInside honours the autoExitHours expiry", { skip }, async () => {
       "an entry older than autoExitHours must not lock the member out",
     );
 
-    // Reading must not mutate: the field is left for getOccupancy to reap, so a
-    // gate scan never depends on a write succeeding.
-    assert.notEqual(
-      await redis.hGet(INSIDE_KEY, staleUserId),
-      null,
-      "isInside must not delete the stale field",
+    // ...but the record itself must survive: that member may still be in the
+    // building and has to be able to scan their way OUT.
+    assert.equal(
+      await hasInsideRecord(staleUserId),
+      true,
+      "a lapsed occupancy window must not revoke the right to exit",
     );
+    await getOccupancy();
+    assert.equal(
+      await hasInsideRecord(staleUserId),
+      true,
+      "getOccupancy must not reap a record that is merely uncounted",
+    );
+
+    // Past the 24-hour retention the record is genuinely gone.
+    await redis.hSet(
+      INSIDE_KEY,
+      staleUserId,
+      String(Date.now() - 25 * 60 * 60 * 1000),
+    );
+    assert.equal(await hasInsideRecord(staleUserId), false);
     await getOccupancy();
     assert.equal(
       await redis.hGet(INSIDE_KEY, staleUserId),
       null,
-      "getOccupancy reaps the stale field",
+      "getOccupancy reaps a record past the retention window",
     );
+
+    // Someone who never entered has no claim on the exit turnstile.
+    assert.equal(await hasInsideRecord(`test-${randomUUID()}`), false);
 
     // A non-numeric value must read as "outside" rather than throwing.
     await redis.hSet(INSIDE_KEY, staleUserId, "not-a-number");
     assert.equal(await isInside(staleUserId), false);
+    assert.equal(await hasInsideRecord(staleUserId), false);
   } finally {
     await redis.hDel(INSIDE_KEY, [userId, staleUserId]).catch(() => {});
     await redis.quit().catch(() => {});

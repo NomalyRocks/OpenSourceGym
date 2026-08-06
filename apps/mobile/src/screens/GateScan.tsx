@@ -489,6 +489,10 @@ function RecoveryHint({
             ? t("The turnstile is offline. Ask gym reception for help.")
             : code === "ALREADY_INSIDE"
               ? t("Scan the exit turnstile when you leave, then try again.")
+              : code === "ENTRY_COOLDOWN"
+                ? t("Wait a moment, then scan again.")
+                : code === "NOT_INSIDE"
+                  ? t("Ask reception to check you in.")
               : // Operator misconfiguration: there is nothing the member can do
                 // on their phone, so do not send them to their own settings.
                 code === "GYM_LOCATION_UNSET"

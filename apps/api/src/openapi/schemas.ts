@@ -206,6 +206,8 @@ export const gateRejectCodeSchema = withId(
     "MOCK_LOCATION",
     "SHARING_BLOCKED",
     "ALREADY_INSIDE",
+    "ENTRY_COOLDOWN",
+    "NOT_INSIDE",
     "GYM_LOCATION_UNSET",
   ]),
   "GateRejectCode",

@@ -156,8 +156,19 @@ export type GateRejectCode =
   | "OUT_OF_RANGE"
   | "MOCK_LOCATION"
   | "SHARING_BLOCKED"
-  /** Anti-passback: the member is already counted inside, or re-scanned an entry gate too soon */
+  /** Anti-passback: the member is counted inside and must scan out before entering again */
   | "ALREADY_INSIDE"
+  /**
+   * Anti-passback: the member entered moments ago and the re-entry cooldown has
+   * not lapsed. Distinct from ALREADY_INSIDE — they may well be standing
+   * outside, and telling them to "use the exit turnstile" would be nonsense.
+   */
+  | "ENTRY_COOLDOWN"
+  /**
+   * An exit scan from someone with no record of having come in. Refusing this is
+   * safe precisely because we have no evidence they are in the building.
+   */
+  | "NOT_INSIDE"
   /**
    * The operator has not configured the gym location, and location verification
    * is mandatory. Distinct from LOCATION_REQUIRED because the member can do

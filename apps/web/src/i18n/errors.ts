@@ -36,6 +36,10 @@ const codeMessages: Record<ApiErrorCode, WebTranslationKey> = {
   DEVICE_OFFLINE: "The turnstile is offline. Please contact reception.",
   ALREADY_INSIDE:
     "You are already recorded as inside. Use the exit turnstile before entering again.",
+  ENTRY_COOLDOWN:
+    "You have just passed through. Please wait a moment before scanning again.",
+  NOT_INSIDE:
+    "You are not recorded as having entered the gym, so the exit turnstile cannot open. Please contact reception.",
   GYM_LOCATION_UNSET:
     "Entry is unavailable because the gym location is not configured. Please contact reception.",
   DELETION_MEMBER_ONLY: "Only member accounts can create a deletion request.",

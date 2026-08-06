@@ -261,6 +261,12 @@ const tr = {
     "Konumunuz belirlenemedi. Gökyüzünü daha net gören bir yere geçip tekrar deneyin.",
   "Wait a few seconds for the location to be found, then scan again.":
     "Konum bulunana kadar birkaç saniye bekleyip tekrar okutun.",
+  "You have just passed through. Please wait a moment before scanning again.":
+    "Az önce geçiş yaptınız. Tekrar okutmadan önce biraz bekleyin.",
+  "You are not recorded as having entered the gym, so the exit turnstile cannot open. Please contact reception.":
+    "Salona giriş kaydınız görünmediği için çıkış turnikesi açılamıyor. Resepsiyona başvurun.",
+  "Wait a moment, then scan again.": "Biraz bekleyip tekrar okutun.",
+  "Ask reception to check you in.": "Resepsiyondan giriş kaydınızı yaptırın.",
   "Scan the exit turnstile when you leave, then try again.":
     "Çıkarken çıkış turnikesini okutun, sonra tekrar deneyin.",
   "The gym has not set its location yet. Ask reception.":

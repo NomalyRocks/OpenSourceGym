@@ -49,6 +49,7 @@ import {
 import { isDeviceOnline, openDevice } from "../gateway.js";
 import {
   getOccupancy,
+  hasInsideRecord,
   isInside,
   markInside,
   markOutside,
@@ -553,9 +554,15 @@ async function hasUsableExitDevice(): Promise<boolean> {
  * abuse being prevented. The cooldown caps that loop at one opening a minute
  * regardless of which QRs the attacker holds.
  */
-async function checkAntiPassback(userId: string): Promise<string | null> {
+async function checkAntiPassback(
+  userId: string,
+): Promise<{ reason: GateRejectCode; message: string } | null> {
   if ((await hasUsableExitDevice()) && (await isInside(userId))) {
-    return "You are already inside. Use the exit turnstile before entering again.";
+    return {
+      reason: "ALREADY_INSIDE",
+      message:
+        "You are already inside. Use the exit turnstile before entering again.",
+    };
   }
 
   // Keyed per member, not per device, so a second entry gate cannot reset it.
@@ -563,8 +570,15 @@ async function checkAntiPassback(userId: string): Promise<string | null> {
     condition: "NX",
     expiration: { type: "EX", value: ENTRY_COOLDOWN_SECONDS },
   });
+  // A SEPARATE code from ALREADY_INSIDE. The clients render the message from the
+  // code, not from this string, so sharing one code made a member who had just
+  // scanned OUT be told they were still inside.
   return fresh === null
-    ? "You have just entered. Please wait a moment before scanning again."
+    ? {
+        reason: "ENTRY_COOLDOWN",
+        message:
+          "You have just entered. Please wait a moment before scanning again.",
+      }
     : null;
 }
 
@@ -717,14 +731,24 @@ meRouter.post(
       return;
     }
 
-    // Anti-passback, likewise entry only: refusing an exit scan would trap the
-    // member inside.
     if (direction === "in") {
-      const passbackMessage = await checkAntiPassback(req.user.id);
-      if (passbackMessage) {
-        deny("ALREADY_INSIDE", passbackMessage);
+      const passback = await checkAntiPassback(req.user.id);
+      if (passback) {
+        deny(passback.reason, passback.message);
         return;
       }
+    } else if (!(await hasInsideRecord(req.user.id))) {
+      // Symmetric anti-passback on the way out. Safe to refuse — and only
+      // refused — when there is no record of the member ever coming in, so it
+      // cannot trap anyone: someone with no entry record is by definition not in
+      // the building. Without it the exit QR opened the gate on demand, and each
+      // scan also cleared the inside flag, handing back a free reset of the
+      // strict rule above.
+      deny(
+        "NOT_INSIDE",
+        "You are not recorded as having entered the gym. Contact reception.",
+      );
+      return;
     }
 
     // Duplicate-scan lock, keyed per MEMBER rather than per member+device: with a
