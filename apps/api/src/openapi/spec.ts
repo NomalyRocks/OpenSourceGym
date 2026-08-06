@@ -624,8 +624,8 @@ export const openApiDocument: OpenApiDocument = createDocument({
         operationId: "listDevices",
         summary: "List gate devices",
         ...requiredRole(
-          "admin | staff",
-          "Returns devices with online status and 24-hour uptime",
+          "admin",
+          "Returns devices with online status and 24-hour uptime; each row carries qrContent, which is itself the gate credential",
         ),
         responses: protectedResponses({
           "200": jsonResponse("Devices", z.array(deviceSchema)),

@@ -57,7 +57,13 @@ devicesRouter.post(
 
 // Device list — live connection status comes from the Device Gateway registry;
 // KPI-4 uptime percentage comes from device_status_log
-devicesRouter.get("/", requireRole("admin", "staff"), async (_req, res) => {
+//
+// Admin only, not staff: every row carries `qrContent`, and that string IS the
+// gate credential — anyone holding it can present it to /api/me/gate-scan. The
+// sibling create and delete routes were already admin-only, and no client uses
+// the staff path (apps/web gates /devices on role === "admin"), so widening it
+// to staff bought nothing and handed the gate credential to a larger group.
+devicesRouter.get("/", requireRole("admin"), async (_req, res) => {
   const docs = await db
     .collection("devices")
     .find({})

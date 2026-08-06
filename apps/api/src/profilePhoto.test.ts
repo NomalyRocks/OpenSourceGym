@@ -6,6 +6,7 @@ import {
   buildProfilePhotoUrl,
   processProfilePhoto,
   ProfilePhotoInputError,
+  profilePhotoObjectKey,
 } from "./profilePhoto.js";
 
 describe("profile photo processing", () => {
@@ -85,6 +86,43 @@ describe("profile photo public URL", () => {
     try {
       assert.equal(buildProfilePhotoUrl("key.jpg", new Date()), null);
       assert.equal(buildProfilePhotoUrl(null, new Date()), null);
+    } finally {
+      env.r2.publicBaseUrl = previous;
+    }
+  });
+});
+
+describe("profile photo object key", () => {
+  const userId = "6a4c2788d1743f6f5b010083";
+
+  it("never reuses a key, so a replacement retires the old public URL", () => {
+    // The bucket is served publicly with no signature and no expiry. Overwriting
+    // in place kept the URL stable, so anyone who had ever seen a member's photo
+    // link kept a working link to whatever they uploaded next.
+    const keys = new Set(
+      Array.from({ length: 100 }, () => profilePhotoObjectKey(userId)),
+    );
+    assert.equal(keys.size, 100);
+  });
+
+  it("scopes the key to the owning user", () => {
+    assert.match(
+      profilePhotoObjectKey(userId),
+      new RegExp(`^profile-photos/${userId}/[0-9a-f-]{36}\\.jpg$`),
+    );
+  });
+
+  it("produces a different public URL for a replacement", () => {
+    const previous = env.r2.publicBaseUrl;
+    env.r2.publicBaseUrl = "https://media.example.com";
+    try {
+      // Same instant: the ?v= cache-buster cannot be what distinguishes them,
+      // because it is a cache hint and not access control.
+      const at = new Date("2026-08-06T00:00:00.000Z");
+      assert.notEqual(
+        buildProfilePhotoUrl(profilePhotoObjectKey(userId), at),
+        buildProfilePhotoUrl(profilePhotoObjectKey(userId), at),
+      );
     } finally {
       env.r2.publicBaseUrl = previous;
     }

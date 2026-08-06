@@ -92,6 +92,17 @@ export function assertProductionProfilePhotoConfig(): void {
   if (env.nodeEnv === "production") getR2Config();
 }
 
+/**
+ * Object key for a newly uploaded photo. Never derived from anything stable:
+ * every upload, including a replacement, must land on a fresh key so the
+ * previous public URL stops resolving. The bucket is served publicly with no
+ * signature and no expiry, so reusing the key would leave every link ever
+ * shared pointing at whatever the member uploads next.
+ */
+export function profilePhotoObjectKey(userId: string): string {
+  return `profile-photos/${userId}/${randomUUID()}.jpg`;
+}
+
 export function buildProfilePhotoUrl(
   key: unknown,
   updatedAt: unknown,
@@ -235,7 +246,12 @@ export async function storeUserProfilePhoto(
     if (!user) throw new Error("User not found.");
 
     const existingKey = user.profilePhotoKey ?? null;
-    const key = existingKey ?? `profile-photos/${userId}/${randomUUID()}.jpg`;
+    // A REPLACEMENT GETS A NEW KEY. Overwriting the object in place left the URL
+    // unchanged, so anyone who had ever seen it — the bucket serves it publicly,
+    // with no signature and no expiry — kept a working link to whatever the
+    // member uploaded next. The `?v=` timestamp is a cache-buster, not access
+    // control: the bare key still resolves.
+    const key = profilePhotoObjectKey(userId);
     const updatedAt = new Date();
     await putProfilePhotoObject(key, processed);
 
@@ -246,17 +262,27 @@ export async function storeUserProfilePhoto(
       );
       if (result.matchedCount !== 1) throw new Error("User not found.");
     } catch (error) {
-      if (!existingKey) {
-        try {
-          await deleteProfilePhotoObject(key);
-        } catch (rollbackError) {
-          console.error(
-            "New profile photo rollback deletion failed",
-            rollbackError,
-          );
-        }
+      // The row still points at the old object, so the new one is now an orphan.
+      try {
+        await deleteProfilePhotoObject(key);
+      } catch (rollbackError) {
+        console.error(
+          "New profile photo rollback deletion failed",
+          rollbackError,
+        );
       }
       throw error;
+    }
+
+    // Only after the row commits: deleting first would leave the member with a
+    // broken photo if the write failed. A failure here costs an orphaned object,
+    // never a broken profile, so it is logged rather than surfaced.
+    if (existingKey && existingKey !== key) {
+      try {
+        await deleteProfilePhotoObject(existingKey);
+      } catch (error) {
+        console.error("Previous profile photo deletion failed", error);
+      }
     }
 
     return buildProfilePhotoUrl(key, updatedAt)!;
