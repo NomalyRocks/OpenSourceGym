@@ -330,7 +330,13 @@ function RecoveryHint({ code }: { code?: string }) {
           ? t("Contact gym reception about the account-sharing block.")
           : code === "DEVICE_OFFLINE"
             ? t("The turnstile is offline. Ask gym reception for help.")
-            : t("Contact gym reception if the problem continues.");
+            : code === "ALREADY_INSIDE"
+              ? t("Scan the exit turnstile when you leave, then try again.")
+              : // Operator misconfiguration: there is nothing the member can do
+                // on their phone, so do not send them to their own settings.
+                code === "GYM_LOCATION_UNSET"
+                ? t("The gym has not set its location yet. Ask reception.")
+                : t("Contact gym reception if the problem continues.");
 
   return <StatusMessage tone="neutral" text={text} />;
 }

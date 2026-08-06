@@ -42,7 +42,11 @@ export function Settings() {
   const [gymName, setGymName] = useState("");
   const [lat, setLat] = useState("");
   const [lng, setLng] = useState("");
-  const [radiusM, setRadiusM] = useState("");
+  // Prefilled rather than blank: an operator entering coordinates for the first
+  // time has no basis for picking a radius, and the server default must not be
+  // something they discover only by leaving the field empty. Keep in sync with
+  // GEOFENCE_RADIUS_M_DEFAULT in apps/api/src/geo.ts.
+  const [radiusM, setRadiusM] = useState("400");
   const [capacity, setCapacity] = useState("");
   const [autoExitHours, setAutoExitHours] = useState("");
   const [sharing, setSharing] = useState<SharingConfig>(defaultSharing);

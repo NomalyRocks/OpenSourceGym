@@ -161,6 +161,14 @@ const tr = {
   "Outside gym location": "Salon dışı konum",
   "Mock location": "Sahte konum",
   "Sharing block": "Paylaşım engeli",
+  "Already inside": "Zaten içeride",
+  Distance: "Mesafe",
+  "{{meters}} m": "{{meters}} m",
+  "You are already recorded as inside. Use the exit turnstile before entering again.":
+    "Zaten içeride görünüyorsunuz. Tekrar girmeden önce çıkış turnikesini kullanın.",
+  "Gym location not set": "Salon konumu tanımsız",
+  "Entry is unavailable because the gym location is not configured. Please contact reception.":
+    "Salon konumu tanımlı olmadığı için geçiş yapılamıyor. Resepsiyona başvurun.",
   "Inside: {{count}}": "İçeride: {{count}}",
   "Add device": "Cihaz ekle",
   Name: "Ad",
@@ -182,8 +190,8 @@ const tr = {
     "Bu token yalnızca şimdi görüntülenir; cihazın yapılandırmasına kaydedin. Kaybederseniz cihazı silip yeniden eklemeniz gerekir.",
   "Print this static QR code and attach it to the turnstile for members to scan.":
     "Bu statik QR'ı yazdırıp turnikeye yapıştırın — üyeler girişte bunu okutacak.",
-  "Gym location is not configured: a photo of the static turnstile QR can open the gate from outside the gym. Enable location verification on the Settings page.":
-    "Salon konumu yapılandırılmamış: statik turnike QR'ının fotoğrafı salon dışından da geçiş açabilir. Ayarlar sayfasından konum doğrulamasını etkinleştirin.",
+  "Gym location is not configured, so no turnstile will open. Location verification is mandatory: without it a photo of the static QR would open the gate from anywhere. Set the gym location on the Settings page.":
+    "Salon konumu yapılandırılmadığı için hiçbir turnike açılmaz. Konum doğrulaması zorunludur: olmadığı takdirde statik QR'ın fotoğrafı her yerden geçiş açardı. Ayarlar sayfasından salon konumunu belirleyin.",
   "QR code for {{name}}": "{{name}} QR kodu",
   "Print QR": "QR'ı yazdır",
   Print: "Yazdır",

@@ -1,5 +1,10 @@
 import { z } from "zod";
 import { legalDocumentUrlSchema } from "../legalUrl.js";
+import {
+  GEOFENCE_RADIUS_M_DEFAULT,
+  GEOFENCE_RADIUS_M_MAX,
+  GEOFENCE_RADIUS_M_MIN,
+} from "../geo.js";
 
 const withId = <T extends z.ZodType>(schema: T, id: string): T =>
   schema.meta({ id }) as T;
@@ -148,7 +153,11 @@ export const locationSchema = withId(
   z.object({
     lat: z.number().finite(),
     lng: z.number().finite(),
-    radiusM: z.number().finite().positive(),
+    radiusM: z
+      .number()
+      .int()
+      .min(GEOFENCE_RADIUS_M_MIN)
+      .max(GEOFENCE_RADIUS_M_MAX),
   }),
   "GymLocation",
 );
@@ -196,6 +205,8 @@ export const gateRejectCodeSchema = withId(
     "OUT_OF_RANGE",
     "MOCK_LOCATION",
     "SHARING_BLOCKED",
+    "ALREADY_INSIDE",
+    "GYM_LOCATION_UNSET",
   ]),
   "GateRejectCode",
 );
@@ -210,6 +221,10 @@ export const entryEventSchema = withId(
     allowed: z.boolean(),
     reason: gateRejectCodeSchema.nullable(),
     at: isoDateTimeSchema,
+    distanceM: z.number().int().nonnegative().nullable().meta({
+      description:
+        "Metres between the scanning phone and the configured gym location, or null when either was unknown at scan time (including events recorded before this was tracked)",
+    }),
   }),
   "EntryEvent",
 );
@@ -421,7 +436,9 @@ export const gymSettingsRequestSchema = withId(
       .object({
         lat: numericFormValue,
         lng: numericFormValue,
-        radiusM: numericFormValue,
+        radiusM: numericFormValue.optional().meta({
+          description: `Whole metres, ${GEOFENCE_RADIUS_M_MIN}–${GEOFENCE_RADIUS_M_MAX}; defaults to ${GEOFENCE_RADIUS_M_DEFAULT} when omitted`,
+        }),
       })
       .nullish(),
     capacity: numericFormValue.nullish(),

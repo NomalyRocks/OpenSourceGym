@@ -29,6 +29,11 @@ import { redis } from "../redis.js";
 import { logAudit } from "../audit.js";
 import { authed, requireRole } from "../middleware.js";
 import { markOutside } from "../occupancy.js";
+import {
+  GEOFENCE_RADIUS_M_DEFAULT,
+  GEOFENCE_RADIUS_M_MAX,
+  GEOFENCE_RADIUS_M_MIN,
+} from "../geo.js";
 import { revokeUserSessions } from "../sessions.js";
 import {
   buildProfilePhotoUrl,
@@ -398,7 +403,16 @@ const gymSettingsSchema = z.object({
     .object({
       lat: z.coerce.number().finite(),
       lng: z.coerce.number().finite(),
-      radiusM: z.coerce.number().finite().positive(),
+      // Bounded, not merely positive. Consumer GPS is accurate to tens of
+      // metres and worse indoors, so a radius below 100 m denies members who
+      // are genuinely at the gate, and an unbounded one silently disables the
+      // check that the static turnstile QR depends on.
+      radiusM: z.coerce
+        .number()
+        .int()
+        .min(GEOFENCE_RADIUS_M_MIN)
+        .max(GEOFENCE_RADIUS_M_MAX)
+        .default(GEOFENCE_RADIUS_M_DEFAULT),
     })
     .nullish(),
   capacity: z.coerce.number().finite().positive().nullish(),
@@ -610,6 +624,8 @@ adminRouter.get(
         allowed: d.allowed,
         reason: d.reason ?? null,
         at: (d.at as Date).toISOString(),
+        // Absent on events recorded before distance was tracked.
+        distanceM: typeof d.distanceM === "number" ? d.distanceM : null,
       })),
       nextCursor: page.nextCursor,
     };

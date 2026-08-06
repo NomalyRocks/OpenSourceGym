@@ -19,6 +19,12 @@ export interface EntryEventInput {
    * classification, even though `/api/me/entries` can no longer look it up.
    */
   direction: DeviceDirection;
+  /**
+   * Metres from the configured gym location, or null when either the phone sent
+   * no coordinates or the operator has configured no location. Recorded so a
+   * disputed scan can be reviewed after the fact.
+   */
+  distanceM: number | null;
 }
 
 // Pushes a turnstile event to the Redis queue (fire-and-forget)—does not delay the API response

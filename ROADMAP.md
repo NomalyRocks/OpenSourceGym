@@ -101,9 +101,11 @@
 - [x] Agent referans implementasyonu (RPi ve ESP32): röle tetikleme, otomatik yeniden bağlanma, fail-closed davranış
 - [x] Backend'de agent bağlantı durumu izleme (30 sn ping/pong, panelde çevrimiçi/çevrimdışı durumu, üyeye "Turnike bağlantısı şu an yok" uyarısı `gatewayOnline` bayrağı ile)
 - [x] Statik QR üretimi: cihaz başına özel, süresiz, sabit QR kodu (`OGGATE1.<deviceId>.<sig>` formatı; turnikeye yapıştırılır)
-- [x] Gate-scan endpoint (`POST /api/me/gate-scan`): QR imza doğrulama, abonelik, konum, hesap paylaşımı, cihaz durumu kontrolleri; WebSocket ile ilgili turnike cihazına `open` komutu gönderme
+- [x] Gate-scan endpoint (`POST /api/me/gate-scan`): QR imza doğrulama, abonelik, konum, hesap paylaşımı, cihaz durumu, anti-passback kontrolleri; WebSocket ile ilgili turnike cihazına `open` komutu gönderme
 - [x] Red koşulları üyeye gösteriliyor: aktif abonelik yok / konum salon dışı (US-5)
-- [x] Konum doğrulama servisi: salon koordinatı + yarıçap ayarlardan; ayarlanmamışsa kontrol atlanır
+- [x] Konum doğrulama servisi: salon koordinatı + yarıçap ayarlardan. **Kontrol zorunludur** — konum tanımlı değilse geçiş `GYM_LOCATION_UNSET` ile reddedilir, atlanmaz: statik QR'ın fotoğrafı her yerden geçiş açabildiği için konum, taramayı binaya bağlayan tek unsurdur. Yarıçap 100–5000 m aralığıyla sınırlı, varsayılan 400 m (telefon GPS hatası onlarca metre olabildiği için cömert tutuldu).
+- [x] Anti-passback: çıkış turnikesi kayıtlıysa içeride görünen üye giriş turnikesinden geçemez (`ALREADY_INSIDE`); çıkış turnikesi yoksa üye başına 60 sn yeniden giriş bekleme süresi uygulanır. Çıkış taraması **hiçbir zaman** engellenmez — üyeyi içeride kilitlemek kabul edilemez. Kapı açılmazsa (cihaz çevrimdışı) bekleme süresi geri alınır.
+- [x] `entry_events` kaydına `distanceM` eklendi: taramanın salondan kaç metre uzakta yapıldığı. Şüpheli veya itiraz edilen bir geçişin sonradan incelenebilmesi için tek kanıt; panelde "Geçişler" tablosunda "Mesafe" sütunu.
 - [x] Event Queue ile geçiş loglama: Redis kuyruk → `entry_events` koleksiyonu; panelde "Geçişler" sayfası
 - [x] Mobilde gate-scan ekranı (GateScan.tsx): kamera taraması (expo-camera), statik QR'ı oku (`OGGATE1.` önekli), GPS konum toplama, konum izni
 - [x] Panelde "Cihazlar" sayfası (admin)
