@@ -25,6 +25,7 @@ import {
   startEntryEventConsumer,
   type EntryEventConsumer,
 } from "./eventQueue.js";
+import { startOccupancyReaper, type OccupancyReaper } from "./occupancy.js";
 import { renameLegacyConsentFields } from "./consentFieldRename.js";
 import { getLegalConfig } from "./legal.js";
 import { backfillLegacyUserPhones } from "./phoneBackfill.js";
@@ -163,6 +164,7 @@ const server = createServer(app);
 
 let entryEventConsumer: EntryEventConsumer | null = null;
 let reminderScheduler: RenewalReminderScheduler | null = null;
+let occupancyReaper: OccupancyReaper | null = null;
 
 async function main() {
   assertProductionProfilePhotoConfig();
@@ -176,6 +178,7 @@ async function main() {
   attachDeviceGateway(server);
   entryEventConsumer = await startEntryEventConsumer();
   reminderScheduler = startRenewalReminderScheduler();
+  occupancyReaper = startOccupancyReaper();
   server.listen(env.port, () => {
     console.log(`opengym-api listening on :${env.port}`);
   });
@@ -212,6 +215,11 @@ async function shutdown(signal: string): Promise<void> {
   // can leave a reminder record written but not sent.
   await step("reminder scheduler", 10_000, () =>
     reminderScheduler ? reminderScheduler.stop() : Promise.resolve(),
+  );
+  // Also Redis-backed, and for the same reason it is stopped before the
+  // connection closes.
+  await step("occupancy reaper", 5000, () =>
+    occupancyReaper ? occupancyReaper.stop() : Promise.resolve(),
   );
   await step("turnstile event consumer", 5000, () =>
     entryEventConsumer ? entryEventConsumer.stop() : Promise.resolve(),

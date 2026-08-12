@@ -42,10 +42,7 @@ export interface GymLocation {
 }
 
 export type GeofenceVerdict =
-  | "OK"
-  | "LOCATION_REQUIRED"
-  | "OUT_OF_RANGE"
-  | "GYM_LOCATION_UNSET";
+  "OK" | "LOCATION_REQUIRED" | "OUT_OF_RANGE" | "GYM_LOCATION_UNSET";
 
 export interface GeofenceEvaluation {
   verdict: GeofenceVerdict;
@@ -81,7 +78,8 @@ export function evaluateGeofence(
   return {
     // Inclusive: a member standing exactly on the configured boundary is at the
     // gym, and GPS noise around the edge should not decide entry.
-    verdict: distanceM > effectiveRadiusM(location.radiusM) ? "OUT_OF_RANGE" : "OK",
+    verdict:
+      distanceM > effectiveRadiusM(location.radiusM) ? "OUT_OF_RANGE" : "OK",
     distanceM,
   };
 }

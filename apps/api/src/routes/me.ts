@@ -502,9 +502,7 @@ async function recordLocationDrift(
 }
 
 type GeofenceReject =
-  | "LOCATION_REQUIRED"
-  | "OUT_OF_RANGE"
-  | "GYM_LOCATION_UNSET";
+  "LOCATION_REQUIRED" | "OUT_OF_RANGE" | "GYM_LOCATION_UNSET";
 
 interface GeofenceResult {
   reject: GeofenceReject | null;
@@ -607,6 +605,23 @@ meRouter.post(
     const { qr, lat, lng, mocked } = parsed.data;
 
     if (await isGateScanRateLimited(req.user.id)) {
+      // Recorded like every other refusal. This is the one denial that cannot
+      // name a device — the throttle deliberately runs before the QR is parsed,
+      // so a burst costs no signature verification — and it carries no distance
+      // either, because resolving that would put a Mongo read on the path a
+      // flood is already hammering. A run of these rows against one member is
+      // itself the finding.
+      enqueueEntryEvent({
+        deviceId: "",
+        deviceName: "",
+        userId: req.user.id,
+        memberName: req.user.name,
+        allowed: false,
+        reason: "RATE_LIMITED",
+        at: new Date(),
+        direction: "in",
+        distanceM: null,
+      });
       sendApiError(
         res,
         429,
@@ -656,7 +671,13 @@ meRouter.post(
     const scanDistanceM = geofence.distanceM;
 
     // Every denial produces both a response and an entry_events audit record.
-    const deny = (reason: GateRejectCode, message: string): void => {
+    // The status is a parameter because throttling answers 429 while the access
+    // decisions answer 403 — but both are refusals and both must be reviewable.
+    const deny = (
+      reason: GateRejectCode,
+      message: string,
+      status = 403,
+    ): void => {
       enqueueEntryEvent({
         deviceId,
         deviceName,
@@ -668,7 +689,7 @@ meRouter.post(
         direction,
         distanceM: scanDistanceM,
       });
-      sendApiError(res, 403, reason, message);
+      sendApiError(res, status, reason, message);
     };
 
     if (!device) {
@@ -757,12 +778,10 @@ meRouter.post(
     const lockKey = `og:gate-open:${req.user.id}`;
     const lockToken = randomUUID();
     if (!(await acquireLock(lockKey, lockToken, GATE_OPEN_LOCK_TTL_MS))) {
-      sendApiError(
-        res,
-        429,
-        "RATE_LIMITED",
-        "Too many requests. Please wait a moment.",
-      );
+      // Logged like the other refusals: this is where a member's QR being
+      // presented at two turnstiles at once shows up, which is precisely the
+      // pattern a reviewer is looking for.
+      deny("RATE_LIMITED", "Too many requests. Please wait a moment.", 429);
       return;
     }
 

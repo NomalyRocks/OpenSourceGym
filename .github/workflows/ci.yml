@@ -33,6 +33,11 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      # Ahead of lint: formatting drift is the cheapest failure to diagnose, and
+      # three merged PRs accumulated it while every other gate stayed green.
+      - name: Format
+        run: pnpm format:check
+
       - name: Lint
         run: pnpm lint
 

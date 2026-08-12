@@ -26,6 +26,7 @@ const reasonLabels: Record<GateRejectCode, WebTranslationKey> = {
   ENTRY_COOLDOWN: "Re-entry too soon",
   NOT_INSIDE: "No entry record",
   GYM_LOCATION_UNSET: "Gym location not set",
+  RATE_LIMITED: "Too many attempts",
 };
 
 // Fall back to raw text for records left by the old flow (INVALID_TOKEN/EXPIRED/REPLAY)

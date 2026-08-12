@@ -238,7 +238,8 @@ export function GateScan() {
 
       try {
         if (!locationGrantedRef.current) {
-          const { granted } = await Location.requestForegroundPermissionsAsync();
+          const { granted } =
+            await Location.requestForegroundPermissionsAsync();
           locationGrantedRef.current = granted;
           if (!granted) return null;
         }
@@ -493,11 +494,11 @@ function RecoveryHint({
                 ? t("Wait a moment, then scan again.")
                 : code === "NOT_INSIDE"
                   ? t("Ask reception to check you in.")
-              : // Operator misconfiguration: there is nothing the member can do
-                // on their phone, so do not send them to their own settings.
-                code === "GYM_LOCATION_UNSET"
-                ? t("The gym has not set its location yet. Ask reception.")
-                : t("Contact gym reception if the problem continues.");
+                  : // Operator misconfiguration: there is nothing the member can do
+                    // on their phone, so do not send them to their own settings.
+                    code === "GYM_LOCATION_UNSET"
+                    ? t("The gym has not set its location yet. Ask reception.")
+                    : t("Contact gym reception if the problem continues.");
 
   return <StatusMessage tone="neutral" text={text} />;
 }
