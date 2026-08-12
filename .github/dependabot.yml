@@ -1,0 +1,55 @@
+version: 2
+
+updates:
+  # pnpm workspace: Dependabot resolves the whole monorepo from the root lockfile,
+  # so one entry covers apps/* and packages/* as well.
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "06:00"
+      timezone: "Europe/Istanbul"
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "chore(deps)"
+      prefix-development: "chore(deps-dev)"
+    groups:
+      # Batch routine bumps so review stays cheap; majors still arrive one per PR.
+      production-minor-patch:
+        dependency-type: "production"
+        update-types:
+          - "minor"
+          - "patch"
+      development-minor-patch:
+        dependency-type: "development"
+        update-types:
+          - "minor"
+          - "patch"
+    ignore:
+      # Expo SDK majors move react-native, react and the whole native toolchain
+      # together; they must go through `expo install` / an SDK upgrade, not a
+      # lockfile bump. Security alerts are unaffected by these ignores.
+      - dependency-name: "expo"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "react-native"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "react"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "react-dom"
+        update-types: ["version-update:semver-major"]
+
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "06:00"
+      timezone: "Europe/Istanbul"
+    commit-message:
+      prefix: "chore(ci)"
+    groups:
+      actions:
+        update-types:
+          - "minor"
+          - "patch"
