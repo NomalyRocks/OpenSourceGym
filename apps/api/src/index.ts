@@ -204,7 +204,7 @@ async function shutdown(signal: string): Promise<void> {
   // The process must still exit if this timer is the only task awaiting shutdown
   forceExit.unref();
 
-  await step("http sunucusu", 5000, () => {
+  await step("http server", 5000, () => {
     return new Promise<void>((resolve) => {
       server.close(() => resolve());
       // Keep-alive connections may not close on their own
