@@ -10,7 +10,7 @@ import {
 
 // Two points roughly 300 m apart in Istanbul.
 const GYM = { lat: 41.0082, lng: 28.9784, radiusM: 400 };
-const NEARBY = { lat: 41.0082, lng: 28.9820 };
+const NEARBY = { lat: 41.0082, lng: 28.982 };
 // ~40 m away: inside the 100 m floor, so it exercises clamping from below.
 const AT_THE_GATE = { lat: 41.0082, lng: 28.97887 };
 const FAR_AWAY = { lat: 39.9334, lng: 32.8597 }; // Ankara
@@ -36,15 +36,23 @@ describe("evaluateGeofence", () => {
       evaluateGeofence(GYM, undefined, undefined).verdict,
       "LOCATION_REQUIRED",
     );
-    assert.equal(evaluateGeofence(GYM, NEARBY.lat, undefined).verdict, "LOCATION_REQUIRED");
-    assert.equal(evaluateGeofence(GYM, undefined, NEARBY.lng).verdict, "LOCATION_REQUIRED");
+    assert.equal(
+      evaluateGeofence(GYM, NEARBY.lat, undefined).verdict,
+      "LOCATION_REQUIRED",
+    );
+    assert.equal(
+      evaluateGeofence(GYM, undefined, NEARBY.lng).verdict,
+      "LOCATION_REQUIRED",
+    );
   });
 
   it("allows a scan inside the radius and reports the distance", () => {
     const result = evaluateGeofence(GYM, NEARBY.lat, NEARBY.lng);
     assert.equal(result.verdict, "OK");
     assert.ok(
-      result.distanceM !== null && result.distanceM > 0 && result.distanceM < GYM.radiusM,
+      result.distanceM !== null &&
+        result.distanceM > 0 &&
+        result.distanceM < GYM.radiusM,
       `expected a positive distance inside the radius, got ${result.distanceM}`,
     );
   });
@@ -89,11 +97,8 @@ describe("evaluateGeofence", () => {
     const { distanceM } = evaluateGeofence(GYM, FAR_AWAY.lat, FAR_AWAY.lng);
     assert.ok(distanceM !== null && distanceM > GEOFENCE_RADIUS_M_MAX);
     assert.equal(
-      evaluateGeofence(
-        { ...GYM, radiusM: 100_000 },
-        FAR_AWAY.lat,
-        FAR_AWAY.lng,
-      ).verdict,
+      evaluateGeofence({ ...GYM, radiusM: 100_000 }, FAR_AWAY.lat, FAR_AWAY.lng)
+        .verdict,
       "OUT_OF_RANGE",
     );
   });
@@ -120,11 +125,8 @@ describe("evaluateGeofence", () => {
 
   it("falls back to the default for a non-finite stored radius", () => {
     assert.equal(
-      evaluateGeofence(
-        { ...GYM, radiusM: Number.NaN },
-        NEARBY.lat,
-        NEARBY.lng,
-      ).verdict,
+      evaluateGeofence({ ...GYM, radiusM: Number.NaN }, NEARBY.lat, NEARBY.lng)
+        .verdict,
       "OK",
     );
   });

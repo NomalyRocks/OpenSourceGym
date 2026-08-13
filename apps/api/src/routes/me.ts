@@ -502,9 +502,7 @@ async function recordLocationDrift(
 }
 
 type GeofenceReject =
-  | "LOCATION_REQUIRED"
-  | "OUT_OF_RANGE"
-  | "GYM_LOCATION_UNSET";
+  "LOCATION_REQUIRED" | "OUT_OF_RANGE" | "GYM_LOCATION_UNSET";
 
 interface GeofenceResult {
   reject: GeofenceReject | null;
@@ -606,33 +604,51 @@ meRouter.post(
     }
     const { qr, lat, lng, mocked } = parsed.data;
 
-    if (await isGateScanRateLimited(req.user.id)) {
-      sendApiError(
-        res,
-        429,
-        "RATE_LIMITED",
-        "Too many requests. Please wait a moment.",
-      );
-      return;
-    }
-
-    const verified = verifyGateQr(qr);
-    if (!verified.ok) {
-      // Device could not be resolved; still record the event with an empty device.
+    /**
+     * Refusal before the QR has been resolved to a device, recorded all the
+     * same — a denial that leaves no trace is not reviewable, and a run of these
+     * rows against one member is itself the finding.
+     *
+     * These rows carry no device and no distance, and that is not an omission:
+     * neither is known yet. `direction` records the same "in" that the
+     * resolved-device path falls back to, because a scan whose device is unknown
+     * has no direction to report. See {@link deny} for the refusals that come
+     * after the device is in hand.
+     */
+    const denyBeforeDevice = (
+      reason: GateRejectCode,
+      message: string,
+      status = 403,
+    ): void => {
       enqueueEntryEvent({
         deviceId: "",
         deviceName: "",
         userId: req.user.id,
         memberName: req.user.name,
         allowed: false,
-        reason: "INVALID_QR",
+        reason,
         at: new Date(),
         direction: "in",
         distanceM: null,
       });
-      sendApiError(
-        res,
-        403,
+      sendApiError(res, status, reason, message);
+    };
+
+    if (await isGateScanRateLimited(req.user.id)) {
+      // Throttled before the QR is parsed, so a burst costs no signature
+      // verification, and no distance is resolved either — that would put a
+      // Mongo read on the path a flood is already hammering.
+      denyBeforeDevice(
+        "RATE_LIMITED",
+        "Too many requests. Please wait a moment.",
+        429,
+      );
+      return;
+    }
+
+    const verified = verifyGateQr(qr);
+    if (!verified.ok) {
+      denyBeforeDevice(
         "INVALID_QR",
         "Invalid QR code. Scan the code on the gate again.",
       );
@@ -656,7 +672,15 @@ meRouter.post(
     const scanDistanceM = geofence.distanceM;
 
     // Every denial produces both a response and an entry_events audit record.
-    const deny = (reason: GateRejectCode, message: string): void => {
+    // The status is a parameter because throttling answers 429 while the access
+    // decisions answer 403 — but both are refusals and both must be reviewable.
+    // The counterpart to {@link denyBeforeDevice}: this one names the device and
+    // the scan distance, so it is the form to prefer wherever both are known.
+    const deny = (
+      reason: GateRejectCode,
+      message: string,
+      status = 403,
+    ): void => {
       enqueueEntryEvent({
         deviceId,
         deviceName,
@@ -668,7 +692,7 @@ meRouter.post(
         direction,
         distanceM: scanDistanceM,
       });
-      sendApiError(res, 403, reason, message);
+      sendApiError(res, status, reason, message);
     };
 
     if (!device) {
@@ -757,12 +781,10 @@ meRouter.post(
     const lockKey = `og:gate-open:${req.user.id}`;
     const lockToken = randomUUID();
     if (!(await acquireLock(lockKey, lockToken, GATE_OPEN_LOCK_TTL_MS))) {
-      sendApiError(
-        res,
-        429,
-        "RATE_LIMITED",
-        "Too many requests. Please wait a moment.",
-      );
+      // Logged like the other refusals: this is where a member's QR being
+      // presented at two turnstiles at once shows up, which is precisely the
+      // pattern a reviewer is looking for.
+      deny("RATE_LIMITED", "Too many requests. Please wait a moment.", 429);
       return;
     }
 

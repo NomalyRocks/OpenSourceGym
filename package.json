@@ -13,6 +13,7 @@
     "test": "turbo run test",
     "typecheck": "turbo run typecheck",
     "format": "prettier --write .",
+    "format:check": "prettier --check .",
     "sim": "node agents/sim/fleet.mjs",
     "sim:setup": "node agents/sim/fleet.mjs setup"
   },

@@ -164,6 +164,7 @@ const tr = {
   "Already inside": "Zaten içeride",
   "Re-entry too soon": "Çok erken tekrar geçiş",
   "No entry record": "Giriş kaydı yok",
+  "Too many attempts": "Çok fazla deneme",
   "You have just passed through. Please wait a moment before scanning again.":
     "Az önce geçiş yaptınız. Tekrar okutmadan önce biraz bekleyin.",
   "You are not recorded as having entered the gym, so the exit turnstile cannot open. Please contact reception.":

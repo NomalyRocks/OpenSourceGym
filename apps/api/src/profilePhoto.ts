@@ -299,6 +299,15 @@ export async function removeUserProfilePhoto(userId: string): Promise<void> {
     );
     if (!user?.profilePhotoKey) return;
 
+    // DELIBERATELY THE OPPOSITE ORDER from storeUserProfilePhoto, which deletes
+    // only after the row commits. There the risk being avoided is a member left
+    // with a broken photo; here the whole point of the operation is that the
+    // object stops being served, and the bucket is public with no signature and
+    // no expiry. Unsetting first and then failing to delete would report success
+    // while leaving the photo permanently retrievable by anyone who has the URL.
+    // The residual failure mode is the mild one: a delete that succeeds and an
+    // update that throws leaves the row pointing at a key that 404s, which the
+    // next retry of this same call repairs.
     await deleteProfilePhotoObject(user.profilePhotoKey);
     const result = await users.updateOne(
       { _id: objectId },

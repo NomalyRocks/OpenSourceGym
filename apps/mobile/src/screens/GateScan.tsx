@@ -15,7 +15,7 @@ import {
 } from "expo-camera";
 import * as Haptics from "expo-haptics";
 import * as Location from "expo-location";
-import type { GateScanResponse } from "@opengym/shared";
+import type { GateRejectCode, GateScanResponse } from "@opengym/shared";
 import { ApiError, api } from "../lib/api";
 import { AlertGlyph, CheckGlyph, QrGlyph } from "../components/icons";
 import { useTheme, useThemedStyles, type Theme } from "../theme";
@@ -28,6 +28,7 @@ import {
   useReducedMotion,
 } from "../ui";
 import { errorMessage } from "../i18n/errors";
+import type { MobileTranslationKey } from "../i18n/resources";
 
 type ScanState =
   | { kind: "scanning" }
@@ -238,7 +239,8 @@ export function GateScan() {
 
       try {
         if (!locationGrantedRef.current) {
-          const { granted } = await Location.requestForegroundPermissionsAsync();
+          const { granted } =
+            await Location.requestForegroundPermissionsAsync();
           locationGrantedRef.current = granted;
           if (!granted) return null;
         }
@@ -467,6 +469,32 @@ export function GateScan() {
   );
 }
 
+/**
+ * What the member can actually do about each refusal, in the same shape as the
+ * message map in `i18n/errors.ts`. A lookup rather than a ternary chain so that
+ * adding a reject code is one line and the compiler checks both halves: the key
+ * against {@link GateRejectCode} and the hint against the translation keys.
+ *
+ * Codes absent here fall back to the generic hint, which is the right default —
+ * saying nothing specific beats sending someone to a setting that cannot help.
+ */
+const recoveryHints = {
+  LOCATION_REQUIRED: "Enable location permission and try again.",
+  MOCK_LOCATION: "Disable the mock location app and try again.",
+  SHARING_BLOCKED: "Contact gym reception about the account-sharing block.",
+  DEVICE_OFFLINE: "The turnstile is offline. Ask gym reception for help.",
+  ALREADY_INSIDE: "Scan the exit turnstile when you leave, then try again.",
+  ENTRY_COOLDOWN: "Wait a moment, then scan again.",
+  // Throttled server-side — the per-member scan window or the duplicate-scan
+  // lock. Both clear themselves in seconds, so this gets the cooldown's advice
+  // rather than being sent to reception over a transient refusal.
+  RATE_LIMITED: "Wait a moment, then scan again.",
+  NOT_INSIDE: "Ask reception to check you in.",
+  // Operator misconfiguration: there is nothing the member can do on their
+  // phone, so do not send them to their own settings.
+  GYM_LOCATION_UNSET: "The gym has not set its location yet. Ask reception.",
+} satisfies Partial<Record<GateRejectCode, MobileTranslationKey>>;
+
 function RecoveryHint({
   code,
   locationUnavailable,
@@ -475,31 +503,25 @@ function RecoveryHint({
   locationUnavailable?: boolean;
 }) {
   const { t } = useTranslation();
-  const text = locationUnavailable
-    ? // Permission is already granted, so pointing at settings would send the
-      // member somewhere that cannot help them.
-      t("Wait a few seconds for the location to be found, then scan again.")
-    : code === "LOCATION_REQUIRED"
-      ? t("Enable location permission and try again.")
-      : code === "MOCK_LOCATION"
-        ? t("Disable the mock location app and try again.")
-        : code === "SHARING_BLOCKED"
-          ? t("Contact gym reception about the account-sharing block.")
-          : code === "DEVICE_OFFLINE"
-            ? t("The turnstile is offline. Ask gym reception for help.")
-            : code === "ALREADY_INSIDE"
-              ? t("Scan the exit turnstile when you leave, then try again.")
-              : code === "ENTRY_COOLDOWN"
-                ? t("Wait a moment, then scan again.")
-                : code === "NOT_INSIDE"
-                  ? t("Ask reception to check you in.")
-              : // Operator misconfiguration: there is nothing the member can do
-                // on their phone, so do not send them to their own settings.
-                code === "GYM_LOCATION_UNSET"
-                ? t("The gym has not set its location yet. Ask reception.")
-                : t("Contact gym reception if the problem continues.");
+  // Takes priority over the code: permission is already granted, so pointing at
+  // settings would send the member somewhere that cannot help them.
+  if (locationUnavailable) {
+    const text = t(
+      "Wait a few seconds for the location to be found, then scan again.",
+    );
+    return <StatusMessage tone="neutral" text={text} />;
+  }
 
-  return <StatusMessage tone="neutral" text={text} />;
+  // `code` is whatever the server sent, which is not always a reject code.
+  const hint = code
+    ? recoveryHints[code as keyof typeof recoveryHints]
+    : undefined;
+  return (
+    <StatusMessage
+      tone="neutral"
+      text={t(hint ?? "Contact gym reception if the problem continues.")}
+    />
+  );
 }
 
 const scanStyles = (theme: Theme) =>

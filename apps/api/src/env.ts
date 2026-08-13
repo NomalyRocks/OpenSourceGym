@@ -44,7 +44,9 @@ const envSchema = z.object({
   // NODE_ENV=prod would silently boot a production install with development
   // behaviour (weak BETTER_AUTH_SECRET, the fixed bootstrap admin password).
   // Rejecting the unknown value at startup is the only safe reading.
-  NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
+  NODE_ENV: z
+    .enum(["development", "test", "production"])
+    .default("development"),
   ENABLE_API_DOCS: z.string().optional(),
   MONGODB_URI: z.string().min(1).default("mongodb://localhost:27017/opengym"),
   REDIS_URL: z.string().min(1).default("redis://localhost:6379"),

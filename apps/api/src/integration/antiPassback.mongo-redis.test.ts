@@ -21,12 +21,23 @@ test("isInside honours the autoExitHours expiry", { skip }, async () => {
   process.env.MONGODB_URI = mongoUri!;
   process.env.REDIS_URL = redisUri!;
 
-  const [{ isInside, hasInsideRecord, markInside, markOutside, getOccupancy }, { redis }, { db, mongoClient }] =
-    await Promise.all([
-      import("../occupancy.js"),
-      import("../redis.js"),
-      import("../db.js"),
-    ]);
+  const [
+    {
+      isInside,
+      hasInsideRecord,
+      markInside,
+      markOutside,
+      getOccupancy,
+      reapExpiredInsideRecords,
+      startOccupancyReaper,
+    },
+    { redis },
+    { db, mongoClient },
+  ] = await Promise.all([
+    import("../occupancy.js"),
+    import("../redis.js"),
+    import("../db.js"),
+  ]);
 
   const userId = `test-${randomUUID()}`;
   const staleUserId = `test-${randomUUID()}`;
@@ -46,7 +57,11 @@ test("isInside honours the autoExitHours expiry", { skip }, async () => {
     assert.equal(await isInside(userId), false, "unknown member is not inside");
 
     await markInside(userId);
-    assert.equal(await isInside(userId), true, "a fresh entry counts as inside");
+    assert.equal(
+      await isInside(userId),
+      true,
+      "a fresh entry counts as inside",
+    );
 
     await markOutside(userId);
     assert.equal(
@@ -102,7 +117,69 @@ test("isInside honours the autoExitHours expiry", { skip }, async () => {
     await redis.hSet(INSIDE_KEY, staleUserId, "not-a-number");
     assert.equal(await isInside(staleUserId), false);
     assert.equal(await hasInsideRecord(staleUserId), false);
+
+    // An autoExitHours longer than the 24-hour retention floor must stretch the
+    // retention with it. Otherwise the reap deletes a record the occupancy
+    // window still counts, and the member — genuinely inside — is refused at the
+    // EXIT turnstile.
+    await db
+      .collection("settings")
+      .updateOne(
+        { _id: "gym" as unknown as never },
+        { $set: { autoExitHours: 36 } },
+        { upsert: true },
+      );
+    await redis.hSet(
+      INSIDE_KEY,
+      staleUserId,
+      String(Date.now() - 30 * 60 * 60 * 1000),
+    );
+    assert.equal(
+      await isInside(staleUserId),
+      true,
+      "30 hours in is still counted when autoExitHours is 36",
+    );
+    assert.equal(
+      await hasInsideRecord(staleUserId),
+      true,
+      "a counted record must never be past its retention window",
+    );
+    assert.equal(
+      await reapExpiredInsideRecords(),
+      0,
+      "the reap must not delete a record the occupancy window still counts",
+    );
+
+    // Past that stretched window it goes.
+    await redis.hSet(
+      INSIDE_KEY,
+      staleUserId,
+      String(Date.now() - 37 * 60 * 60 * 1000),
+    );
+    assert.equal(await reapExpiredInsideRecords(), 1);
+    assert.equal(await redis.hGet(INSIDE_KEY, staleUserId), null);
+
+    // The scheduler wrapper is the same sweep; it must also survive being
+    // stopped without a tick having fired.
+    await redis.hSet(
+      INSIDE_KEY,
+      staleUserId,
+      String(Date.now() - 40 * 60 * 60 * 1000),
+    );
+    const reaper = startOccupancyReaper();
+    assert.equal(await reaper.runOnce(), 1);
+    await reaper.stop();
+    assert.equal(await redis.hGet(INSIDE_KEY, staleUserId), null);
   } finally {
+    // Leave autoExitHours as the earlier assertions expect it, so a repeat run
+    // on the same database starts from the same configuration.
+    await db
+      .collection("settings")
+      .updateOne(
+        { _id: "gym" as unknown as never },
+        { $set: { autoExitHours: 4 } },
+      )
+      .catch(() => {});
     await redis.hDel(INSIDE_KEY, [userId, staleUserId]).catch(() => {});
     await redis.quit().catch(() => {});
     await mongoClient.close().catch(() => {});

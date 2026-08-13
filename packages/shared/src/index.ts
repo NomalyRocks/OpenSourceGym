@@ -146,7 +146,11 @@ export interface AuditLogEntry {
 // Flow: the member scans the static QR attached to the turnstile with their phone;
 // the server verifies the member and sends the device an "open" command over WS.
 
-/** Reasons for rejecting a scan request (HTTP 403 body.code; entry_events.reason) */
+/**
+ * Reasons for rejecting a scan request (`entry_events.reason`, and the error
+ * body `code`). The access decisions answer HTTP 403; `RATE_LIMITED` answers
+ * 429, which is why the status is not part of this contract.
+ */
 export type GateRejectCode =
   | "INVALID_QR"
   | "UNKNOWN_DEVICE"
@@ -175,7 +179,16 @@ export type GateRejectCode =
    * nothing about it — the clients must point them at reception instead of at
    * their own location permission.
    */
-  | "GYM_LOCATION_UNSET";
+  | "GYM_LOCATION_UNSET"
+  /**
+   * The scan was throttled: either the per-member gate-scan window, or the
+   * duplicate-scan lock that keeps two turnstiles from opening on one scan.
+   *
+   * Part of this union — and therefore of the `entry_events` log — because a
+   * refusal that leaves no record is not reviewable, and a burst of throttled
+   * attempts is the signature the log most needs to show.
+   */
+  | "RATE_LIMITED";
 
 /** Stable error codes clients can translate without parsing the server message. */
 export type ApiErrorCode =
@@ -192,7 +205,6 @@ export type ApiErrorCode =
   | "PROFILE_PHOTO_RATE_LIMITED"
   | "PROFILE_PHOTO_UNAVAILABLE"
   | "INVALID_REQUEST"
-  | "RATE_LIMITED"
   | "DELETION_MEMBER_ONLY"
   | "DELETION_ALREADY_PENDING"
   | "DELETION_NOT_PENDING"

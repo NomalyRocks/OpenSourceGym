@@ -209,6 +209,7 @@ export const gateRejectCodeSchema = withId(
     "ENTRY_COOLDOWN",
     "NOT_INSIDE",
     "GYM_LOCATION_UNSET",
+    "RATE_LIMITED",
   ]),
   "GateRejectCode",
 );
