@@ -604,50 +604,51 @@ meRouter.post(
     }
     const { qr, lat, lng, mocked } = parsed.data;
 
-    if (await isGateScanRateLimited(req.user.id)) {
-      // Recorded like every other refusal. This is the one denial that cannot
-      // name a device — the throttle deliberately runs before the QR is parsed,
-      // so a burst costs no signature verification — and it carries no distance
-      // either, because resolving that would put a Mongo read on the path a
-      // flood is already hammering. A run of these rows against one member is
-      // itself the finding.
+    /**
+     * Refusal before the QR has been resolved to a device, recorded all the
+     * same — a denial that leaves no trace is not reviewable, and a run of these
+     * rows against one member is itself the finding.
+     *
+     * These rows carry no device and no distance, and that is not an omission:
+     * neither is known yet. `direction` records the same "in" that the
+     * resolved-device path falls back to, because a scan whose device is unknown
+     * has no direction to report. See {@link deny} for the refusals that come
+     * after the device is in hand.
+     */
+    const denyBeforeDevice = (
+      reason: GateRejectCode,
+      message: string,
+      status = 403,
+    ): void => {
       enqueueEntryEvent({
         deviceId: "",
         deviceName: "",
         userId: req.user.id,
         memberName: req.user.name,
         allowed: false,
-        reason: "RATE_LIMITED",
+        reason,
         at: new Date(),
         direction: "in",
         distanceM: null,
       });
-      sendApiError(
-        res,
-        429,
+      sendApiError(res, status, reason, message);
+    };
+
+    if (await isGateScanRateLimited(req.user.id)) {
+      // Throttled before the QR is parsed, so a burst costs no signature
+      // verification, and no distance is resolved either — that would put a
+      // Mongo read on the path a flood is already hammering.
+      denyBeforeDevice(
         "RATE_LIMITED",
         "Too many requests. Please wait a moment.",
+        429,
       );
       return;
     }
 
     const verified = verifyGateQr(qr);
     if (!verified.ok) {
-      // Device could not be resolved; still record the event with an empty device.
-      enqueueEntryEvent({
-        deviceId: "",
-        deviceName: "",
-        userId: req.user.id,
-        memberName: req.user.name,
-        allowed: false,
-        reason: "INVALID_QR",
-        at: new Date(),
-        direction: "in",
-        distanceM: null,
-      });
-      sendApiError(
-        res,
-        403,
+      denyBeforeDevice(
         "INVALID_QR",
         "Invalid QR code. Scan the code on the gate again.",
       );
@@ -673,6 +674,8 @@ meRouter.post(
     // Every denial produces both a response and an entry_events audit record.
     // The status is a parameter because throttling answers 429 while the access
     // decisions answer 403 — but both are refusals and both must be reviewable.
+    // The counterpart to {@link denyBeforeDevice}: this one names the device and
+    // the scan distance, so it is the form to prefer wherever both are known.
     const deny = (
       reason: GateRejectCode,
       message: string,

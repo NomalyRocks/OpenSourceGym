@@ -119,6 +119,18 @@ async function readEnteredAt(userId: string): Promise<number | null> {
 }
 
 /**
+ * Whether a stored entry instant is past retention and may be deleted.
+ *
+ * The single definition both sweepers apply — {@link reapExpiredInsideRecords}
+ * and the pass {@link getOccupancy} still makes while it has the hash in hand.
+ * A non-finite value is expired by definition: {@link readEnteredAt} already
+ * refuses to interpret it, so it can never satisfy any reader again.
+ */
+function isExpiredEntry(enteredAt: number, dropCutoff: number): boolean {
+  return !Number.isFinite(enteredAt) || enteredAt < dropCutoff;
+}
+
+/**
  * Deletes entry records past the retention window and reports how many went.
  *
  * Reaping is a housekeeping job rather than a side effect of reading the
@@ -131,10 +143,7 @@ export async function reapExpiredInsideRecords(): Promise<number> {
   const entries = await redis.hGetAll(INSIDE_KEY);
   const { drop } = await loadCutoffs();
   const expired = Object.entries(entries)
-    .filter(([, raw]) => {
-      const enteredAt = Number(raw);
-      return !Number.isFinite(enteredAt) || enteredAt < drop;
-    })
+    .filter(([, raw]) => isExpiredEntry(Number(raw), drop))
     .map(([userId]) => userId);
   if (expired.length === 0) return 0;
   await redis.hDel(INSIDE_KEY, expired);
@@ -201,7 +210,7 @@ export async function getOccupancy(): Promise<number> {
   let count = 0;
   for (const [userId, enteredAtRaw] of Object.entries(entries)) {
     const enteredAt = Number(enteredAtRaw);
-    if (!Number.isFinite(enteredAt) || enteredAt < dropCutoff) {
+    if (isExpiredEntry(enteredAt, dropCutoff)) {
       expired.push(userId);
       continue;
     }

@@ -146,7 +146,11 @@ export interface AuditLogEntry {
 // Flow: the member scans the static QR attached to the turnstile with their phone;
 // the server verifies the member and sends the device an "open" command over WS.
 
-/** Reasons for rejecting a scan request (HTTP 403 body.code; entry_events.reason) */
+/**
+ * Reasons for rejecting a scan request (`entry_events.reason`, and the error
+ * body `code`). The access decisions answer HTTP 403; `RATE_LIMITED` answers
+ * 429, which is why the status is not part of this contract.
+ */
 export type GateRejectCode =
   | "INVALID_QR"
   | "UNKNOWN_DEVICE"
