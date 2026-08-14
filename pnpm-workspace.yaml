@@ -4,3 +4,8 @@ packages:
 allowBuilds:
   "@scarf/scarf": false
   esbuild: true
+overrides:
+  # Transitive-only advisory fixes; drop an entry once every parent ships the
+  # patched range on its own.
+  # GHSA-5p4m-2wfm-xmqj — quadratic CPU in !!omap resolution.
+  "js-yaml@^4.0.0": "^4.3.1"
