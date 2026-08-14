@@ -21,7 +21,7 @@ jobs:
       TEST_MONGODB_URI: mongodb://127.0.0.1:27017
       TEST_REDIS_URL: redis://127.0.0.1:6379
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - uses: pnpm/action-setup@v4
 
