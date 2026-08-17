@@ -12,20 +12,20 @@
     "start": "node dist/index.js"
   },
   "dependencies": {
-    "@aws-sdk/client-s3": "^3.1085.0",
-    "@better-auth/expo": "^1.6.23",
+    "@aws-sdk/client-s3": "^3.1110.0",
+    "@better-auth/expo": "^1.6.28",
     "@opengym/shared": "workspace:*",
-    "better-auth": "^1.6.23",
+    "better-auth": "^1.6.28",
     "express": "^5.1.0",
-    "libphonenumber-js": "^1.13.8",
-    "mongodb": "^7.4.0",
-    "nodemailer": "^9.0.3",
-    "redis": "^6.1.0",
+    "libphonenumber-js": "^1.13.10",
+    "mongodb": "^7.5.0",
+    "nodemailer": "^9.0.5",
+    "redis": "^6.2.1",
     "sharp": "^0.35.3",
     "swagger-ui-express": "^5.0.1",
-    "ws": "^8.18.0",
+    "ws": "^8.21.3",
     "zod": "^4.4.3",
-    "zod-openapi": "^6.0.0"
+    "zod-openapi": "^6.0.1"
   },
   "devDependencies": {
     "@types/express": "^5.0.0",
