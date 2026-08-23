@@ -420,9 +420,28 @@ function AppContent() {
   );
 }
 
+/**
+ * Renders nothing and holds one app-lifetime subscription to better-auth's
+ * session nanostores atom (`authClient.$store.atoms.session`). While that atom
+ * has zero listeners, useSession()'s render-time `store.get()` mounts and
+ * unmounts it, re-scheduling the internal session fetch around discarded
+ * concurrent renders; React Native then logs "error during concurrent
+ * rendering, recovered" on cold start. Keeping one permanent listener mounted
+ * above every consumer means the atom activates exactly once and never tears
+ * down while the app lives.
+ */
+function SessionStoreKeepAlive() {
+  useEffect(() => {
+    const sessionAtom = authClient.$store.atoms.session;
+    return sessionAtom ? sessionAtom.listen(() => {}) : undefined;
+  }, []);
+  return null;
+}
+
 export default function App() {
   return (
     <SafeAreaProvider>
+      <SessionStoreKeepAlive />
       <ThemeProvider>
         <AppContent />
       </ThemeProvider>
