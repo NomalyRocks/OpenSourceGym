@@ -1,7 +1,6 @@
 import { createContext, useContext, type ReactNode } from "react";
 import {
   Image,
-  KeyboardAvoidingView,
   Platform,
   Pressable,
   RefreshControl,
@@ -16,6 +15,7 @@ import { useTranslation } from "react-i18next";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTheme, useThemedStyles, withAlpha, type Theme } from "../theme";
 import { ChevronLeftGlyph } from "../components/icons";
+import { KeyboardAwareScrollView } from "./keyboardAware";
 import authArtwork from "../../assets/auth-equipment.webp";
 
 /**
@@ -117,10 +117,7 @@ export function AuthShell({
   const bandHeight = insets.top + 156;
 
   return (
-    <KeyboardAvoidingView
-      style={styles.flex}
-      behavior={Platform.OS === "ios" ? "padding" : undefined}
-    >
+    <View style={styles.flex}>
       <View
         style={[styles.authBand, { height: bandHeight }]}
         pointerEvents="none"
@@ -152,24 +149,22 @@ export function AuthShell({
         </View>
       ) : null}
 
-      <ScrollView
+      <KeyboardAwareScrollView
         style={styles.flex}
-        contentContainerStyle={[
+        contentStyle={[
           styles.authContent,
           {
             paddingTop: bandHeight - 32,
             paddingBottom: Math.max(insets.bottom, theme.spacing.lg),
           },
         ]}
-        keyboardShouldPersistTaps="handled"
         keyboardDismissMode={Platform.OS === "ios" ? "interactive" : "on-drag"}
-        automaticallyAdjustKeyboardInsets
       >
         <LogoMark ringed />
         <View style={styles.authBody}>{children}</View>
         {footer ? <View style={styles.authFooter}>{footer}</View> : null}
-      </ScrollView>
-    </KeyboardAvoidingView>
+      </KeyboardAwareScrollView>
+    </View>
   );
 }
 
