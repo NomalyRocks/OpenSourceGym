@@ -21,17 +21,13 @@ The admin panel's Vite dev server proxies `/api` to `localhost:3000`, so
 
 ## Exposure
 
-Docs are always reachable outside production. In production they are off unless
-you opt in:
-
-```bash
-ENABLE_API_DOCS=true
-```
-
-The gate is a single expression in `apps/api/src/openapi/router.ts`:
+Docs are a development testing aid only. They are reachable whenever
+`NODE_ENV` is not `"production"` and are never registered in production — there
+is no opt-in flag. The gate is a single expression in
+`apps/api/src/openapi/router.ts`:
 
 ```ts
-export const apiDocsEnabled = env.nodeEnv !== "production" || env.enableApiDocs;
+export const apiDocsEnabled = env.nodeEnv !== "production";
 ```
 
 When it is false the routes are never registered, so `/api/docs` and

@@ -1,6 +1,6 @@
 # OpenGym
 
-Self-hosted, single-tenant gym automation: member self-registration, subscription tracking, QR turnstile entry (static QR on turnstile, mobile-scanned), staff/role management. Product docs are Turkish: `PRD.md` (requirements and non-goals) and `ROADMAP.md` (phase checklists). Current state: Faz 0–5 (MVP + v1.1: infra, auth, admin panel, mobile app, QR turnstile, MFA, occupancy) complete; Faz 6 (account sharing detection, anti-debugging) complete.
+Self-hosted, single-tenant gym automation: member self-registration, subscription tracking, QR turnstile entry (static QR on turnstile, mobile-scanned), staff/role management. Product docs are Turkish: `PRD.md` (requirements and non-goals) and `ROADMAP.md` (phase checklists). Current state: Faz 0–6 (MVP, v1.1 hardening + occupancy, v2.0 sharing detection) and Faz 7–9 (profile photos, TR/EN localization, member tools with calorie calculator) complete; open leftovers are tracked as unchecked items in `ROADMAP.md`.
 
 **Non-goals** (from PRD): online payments, multi-tenant/multi-branch, class booking/training/diet features. PRD "Ek A" (experimental path-obfuscation/custom cipher layer) is archived — never implement it.
 
@@ -59,10 +59,17 @@ One-time startup data repairs are idempotent and marker-controlled; they are
 not schema migrations.
 
 - `user` — BetterAuth-managed, extended with the custom fields above
+- `account`, `session`, `verification` — BetterAuth-owned, never written by our code directly
 - `subscriptions` — membership periods `{ userId, startsAt, endsAt, note, createdBy, createdAt }`
 - `phone_identity_conflicts` — unresolved legacy duplicate phones; resolved records are deleted
 - `migration_markers` — idempotent one-time data repair markers
 - `entry_events` — turnstile scan log; carries `distanceM`, the metres between the scanning phone and the gym, so a disputed scan can be reviewed later (null on older records and when either position was unknown). **Every refusal is logged, throttled ones included** (`RATE_LIMITED`) — a burst of refusals that leaves no record is the case the log exists for. The rate-limit row alone carries no device or distance: the throttle deliberately runs before the QR is parsed.
+- `devices` — turnstile devices; token sha256 hash + per-device static `qrContent` (see API surface)
+- `device_status_log` — device connect/disconnect events backing the 24 h uptime figure on the panel's Devices page
+- `sharing_signals` — account-sharing detection signals with a 30-day TTL (`apps/api/src/sharing.ts`)
+- `deletion_requests` — member account-deletion request workflow (`/api/me/deletion-request` + admin approve/reject)
+- `renewal_reminders` — bookkeeping of already-sent renewal reminder e-mails, used to dedupe within the reminder window (`apps/api/src/renewals.ts`)
+- `weight_history` — member weight entries behind the body-metrics/calorie features; `{ userId, at }` index and a per-member cap enforced at write time
 - `settings` — singleton gym config doc, `_id: "gym"`. Contains `legal: { dataProcessingUrl: string | null, privacyUrl: string | null, version: number }` — the product ships no legal text, only the operator's document URLs and version; managed via `GET/PUT /api/admin/settings` and read publicly through `GET /api/legal` (see `docs/legal/README.md`).
 - `audit_logs` — written via `logAudit()` (`apps/api/src/audit.ts`); **every sensitive admin mutation must call it**
 
@@ -71,18 +78,19 @@ Profile photos live in a public R2 bucket with no signature and no expiry, so th
 ### API surface
 
 - `/api/auth/*` — BetterAuth
-- `/api/admin/*` (`apps/api/src/routes/admin.ts`) — staff/admin: unified user search (`q`: phone/e-mail/name), role assignment, sequential subscriptions, settings, audit list
+- `/api/admin/*` (`apps/api/src/routes/admin.ts`) — staff/admin: unified user search (`q`: phone/e-mail/name), role assignment, sequential subscriptions, settings, audit list, deletion-request approve/reject
 - `/api/admin/devices*` (`apps/api/src/routes/devices.ts`) — **admin only, never staff**: every row carries `qrContent`, and that string _is_ the gate credential — anyone holding it can present it to `/api/me/gate-scan`.
-- `/api/me/*` (`apps/api/src/routes/me.ts`) — own profile, subscription, and `POST /gate-scan`. The geofence there is **mandatory**: an unconfigured `settings.location` rejects the scan with `GYM_LOCATION_UNSET` rather than skipping the check, because the printed turnstile QR is public and location is the only thing tying a scan to the building. Entry scans also run anti-passback — strict when a _reachable_ exit device exists, otherwise a per-member cooldown. Occupancy records (`og:inside`, Redis) have two lifetimes: `autoExitHours` ends **counting**, and retention — `max(24h, autoExitHours)`, never shorter than the counting window — ends the record. An hourly reaper (`startOccupancyReaper`) prunes them, so the hash does not depend on the panel being opened. Every one of these controls applies to **entry only**: an exit scan is never refused for location, sharing or subscription reasons, because trapping a member inside a building is worse than the abuse being prevented.
+- `/api/admin/reports/*` (`apps/api/src/routes/reports.ts`) — staff/admin: summary report, daily entry trend, renewals-due list plus `POST /renewals/:userId/remind`, and CSV export (see `docs/reports-and-reminders.md`; `REPORTS_TIME_ZONE` decides where day buckets are cut)
+- `/api/me/*` (`apps/api/src/routes/me.ts`) — own profile (`GET/PUT /profile`, photo `DELETE /profile-photo`), subscription, entry history (`GET /entries`), weight history, `PATCH /body-metrics`, occupancy, deletion request (`GET/POST/DELETE`), and `POST /gate-scan`. The geofence there is **mandatory**: an unconfigured `settings.location` rejects the scan with `GYM_LOCATION_UNSET` rather than skipping the check, because the printed turnstile QR is public and location is the only thing tying a scan to the building. Entry scans also run anti-passback — strict when a _reachable_ exit device exists, otherwise a per-member cooldown. Occupancy records (`og:inside`, Redis) have two lifetimes: `autoExitHours` ends **counting**, and retention — `max(24h, autoExitHours)`, never shorter than the counting window — ends the record. An hourly reaper (`startOccupancyReaper`) prunes them, so the hash does not depend on the panel being opened. Every one of these controls applies to **entry only**: an exit scan is never refused for location, sharing or subscription reasons, because trapping a member inside a building is worse than the abuse being prevented.
 - `GET /api/legal` — public legal document URLs (data processing and privacy)
-- `GET /health`
+- `GET /health` — liveness (process answers); `GET /health/ready` — readiness (Mongo and Redis reachable)
 
-Request bodies are validated with zod. No OpenAPI/codegen: clients use hand-rolled `api<T>()` fetch wrappers and share response types via `@opengym/shared`.
+Request bodies are validated with zod. An OpenAPI 3.1 document plus Swagger UI exist purely as a development testing aid (`/api/openapi.json`, `/api/docs`): they mount whenever `NODE_ENV` is not `"production"` and are never registered in production — there is no opt-in flag (see `docs/openapi.md`). There is still no codegen: clients use hand-rolled `api<T>()` fetch wrappers and share response types via `@opengym/shared`.
 
 ### Clients
 
 - **web**: cookie session (`credentials: "include"`), Vite dev proxy `/api → localhost:3000`. `src/App.tsx` gates by role (members are told to use the mobile app) and forces the ChangePassword screen when `mustChangePassword` is set.
-- **mobile**: better-auth expo client with SecureStore; its `api()` wrapper sends `Cookie: authClient.getCookie()` manually. Manual screen state machine in `App.tsx` (`login | register | verify | home`), no navigation library.
+- **mobile**: better-auth expo client with SecureStore; its `api()` wrapper sends `Cookie: authClient.getCookie()` manually. Pre-auth screens swap inside a manual state machine in `App.tsx` (`login | register | verify | forgot | resetCode | reset`); the signed-in state is a five-tab shell (home/calendar/scan/tools/profile) with pushed full-screen overlays (notifications/settings). No navigation library. A null-rendering session keep-alive at the app root holds one stable subscription to the better-auth session store so discarded concurrent renders cannot re-trigger its fetch during startup (React 19 LogBox "concurrent rendering" warning).
 
 ## Conventions & gotchas
 
