@@ -19,7 +19,7 @@
     "express": "^5.1.0",
     "libphonenumber-js": "^1.13.8",
     "mongodb": "^7.4.0",
-    "nodemailer": "^9.0.3",
+    "nodemailer": "^9.1.1",
     "redis": "^6.1.0",
     "sharp": "^0.35.3",
     "swagger-ui-express": "^5.0.1",
