@@ -236,7 +236,7 @@ export const openApiDocument: OpenApiDocument = createDocument({
         summary: "Raw OpenAPI document",
         ...requiredRole(
           "none",
-          "Returns the OpenAPI 3.1 document as JSON; production requires ENABLE_API_DOCS=true",
+          "Returns the OpenAPI 3.1 document as JSON; development only, never served in production",
           false,
         ),
         responses: {
@@ -265,7 +265,7 @@ export const openApiDocument: OpenApiDocument = createDocument({
         summary: "Swagger UI",
         ...requiredRole(
           "none",
-          "Opens Swagger UI using this document; production requires ENABLE_API_DOCS=true",
+          "Opens Swagger UI using this document; development only, never served in production",
           false,
         ),
         responses: {

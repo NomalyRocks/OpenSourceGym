@@ -47,7 +47,6 @@ const envSchema = z.object({
   NODE_ENV: z
     .enum(["development", "test", "production"])
     .default("development"),
-  ENABLE_API_DOCS: z.string().optional(),
   MONGODB_URI: z.string().min(1).default("mongodb://localhost:27017/opengym"),
   REDIS_URL: z.string().min(1).default("redis://localhost:6379"),
   BETTER_AUTH_SECRET: betterAuthSecret,
@@ -98,7 +97,6 @@ const raw = parsed.data;
 export const env = {
   port: raw.PORT,
   nodeEnv: raw.NODE_ENV,
-  enableApiDocs: raw.ENABLE_API_DOCS === "true",
   mongodbUri: raw.MONGODB_URI,
   redisUrl: raw.REDIS_URL,
   betterAuthSecret: raw.BETTER_AUTH_SECRET,

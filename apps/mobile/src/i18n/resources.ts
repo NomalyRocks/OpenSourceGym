@@ -72,8 +72,10 @@ const tr = {
     "Şifre sıfırlanamadı. Lütfen tekrar deneyin.",
   "Your password was updated": "Şifreniz güncellendi",
   "Sign in with your new password.": "Yeni şifrenizle giriş yapın.",
-  "Enter the code sent to {{email}} and your new password.":
-    "{{email}} adresine gönderilen kodu ve yeni şifrenizi girin.",
+  "Choose a new password for {{email}}.":
+    "{{email}} hesabı için yeni bir şifre belirleyin.",
+  "The code is no longer valid. Go back for a new one.":
+    "Kod artık geçerli değil. Geri dönüp yeni kod isteyin.",
   "Reset password": "Şifreyi sıfırla",
   "Sending code...": "Kod gönderiliyor...",
   "Could not load data.": "Yüklenemedi.",
