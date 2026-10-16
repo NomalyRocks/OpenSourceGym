@@ -198,6 +198,24 @@ export async function createSequentialSubscription(
   );
 }
 
+export function findSubscription(
+  id: ObjectId,
+): Promise<SubscriptionDocument | null> {
+  return subscriptionCollection().findOne({ _id: id });
+}
+
+/** Replaces the gyms of one period; dates and the sequence are untouched. */
+export async function setSubscriptionGymIds(
+  id: ObjectId,
+  gymIds: readonly ObjectId[],
+): Promise<SubscriptionDocument | null> {
+  return subscriptionCollection().findOneAndUpdate(
+    { _id: id },
+    { $set: { gymIds: [...gymIds] } },
+    { returnDocument: "after" },
+  );
+}
+
 export async function listUserSubscriptions(
   userId: ObjectId,
   limit = 50,

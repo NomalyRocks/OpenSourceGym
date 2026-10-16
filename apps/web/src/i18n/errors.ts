@@ -47,6 +47,8 @@ const codeMessages: Record<ApiErrorCode, WebTranslationKey> = {
   LAST_OWNER: "The last owner cannot be demoted.",
   GYM_NOT_FOUND: "The gym was not found.",
   INVALID_GYMS: "Select valid gyms within your access.",
+  SUBSCRIPTION_ENDED: "This subscription period has already ended.",
+  SUBSCRIPTION_NOT_FOUND: "Subscription not found.",
   GYM_LOCATION_UNSET:
     "Entry is unavailable because the gym location is not configured. Please contact reception.",
   DELETION_MEMBER_ONLY: "Only member accounts can create a deletion request.",

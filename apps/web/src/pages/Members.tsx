@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type {
   CreateSubscriptionRequest,
+  SetSubscriptionGymsRequest,
   MfaMethod,
   PublicUser,
   Subscription,
@@ -80,6 +81,79 @@ function subscriptionStatus(subscription: Subscription): {
   return { label: "Expired", className: "member" };
 }
 
+// Edits which gyms a current or future period covers; the dates stay as they
+// are. Gyms outside the caller's scope are not listed and therefore kept.
+function SubscriptionGymsEditor({
+  subscription,
+  onSaved,
+  onCancel,
+}: {
+  subscription: Subscription;
+  onSaved: () => void;
+  onCancel: () => void;
+}) {
+  const { t } = useTranslation();
+  const { gyms } = useGyms();
+  const [selected, setSelected] = useState<string[]>(subscription.gymIds);
+  const [error, setError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+  // Active gyms, plus any inactive gym already on the period so it can be removed
+  const options = gyms.filter(
+    (g) => g.active || subscription.gymIds.includes(g.id),
+  );
+  const toggle = (id: string) =>
+    setSelected((prev) =>
+      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id],
+    );
+
+  async function save() {
+    setError(null);
+    if (selected.length === 0) {
+      setError(t("Select at least one gym."));
+      return;
+    }
+    setSaving(true);
+    try {
+      const body: SetSubscriptionGymsRequest = { gymIds: selected };
+      await api(`/api/admin/subscriptions/${subscription.id}/gyms`, {
+        method: "PUT",
+        body,
+      });
+      onSaved();
+    } catch (err) {
+      setError(errorMessage(err, t, "Could not update the gyms."));
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div>
+      {error && <div className="msg error">{error}</div>}
+      <div className="row">
+        {options.map((g) => (
+          <label key={g.id} className="check">
+            <input
+              type="checkbox"
+              checked={selected.includes(g.id)}
+              onChange={() => toggle(g.id)}
+            />{" "}
+            {g.name}
+          </label>
+        ))}
+      </div>
+      <div className="row">
+        <button onClick={save} disabled={saving}>
+          {t("Save")}
+        </button>
+        <button className="ghost" onClick={onCancel} disabled={saving}>
+          {t("Cancel")}
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function SubscriptionPanel({ member }: { member: PublicUser }) {
   const { t, i18n } = useTranslation();
   const [subs, setSubs] = useState<Subscription[] | null>(null);
@@ -87,6 +161,7 @@ function SubscriptionPanel({ member }: { member: PublicUser }) {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [msg, setMsg] = useState<{ kind: string; text: string } | null>(null);
   const [months, setMonths] = useState<SubscriptionMonths>(1);
+  const [editingId, setEditingId] = useState<string | null>(null);
   const { gyms } = useGyms();
   const selectedGymId = useGymId();
   const activeGyms = gyms.filter((g) => g.active);
@@ -230,9 +305,41 @@ function SubscriptionPanel({ member }: { member: PublicUser }) {
                   </td>
                   <td>{subscription.note ?? "—"}</td>
                   <td>
-                    {subscription.gymIds
-                      .map((id) => gyms.find((g) => g.id === id)?.name ?? id)
-                      .join(", ")}
+                    {editingId === subscription.id ? (
+                      <SubscriptionGymsEditor
+                        subscription={subscription}
+                        onCancel={() => setEditingId(null)}
+                        onSaved={() => {
+                          setEditingId(null);
+                          setMsg({
+                            kind: "success",
+                            text: t("Subscription gyms updated."),
+                          });
+                          void load().then(setSubs);
+                        }}
+                      />
+                    ) : (
+                      <>
+                        {subscription.gymIds
+                          .map(
+                            (id) => gyms.find((g) => g.id === id)?.name ?? id,
+                          )
+                          .join(", ")}
+                        {new Date(subscription.endsAt).getTime() >
+                          Date.now() && (
+                          <>
+                            {" "}
+                            <button
+                              type="button"
+                              className="link-btn"
+                              onClick={() => setEditingId(subscription.id)}
+                            >
+                              {t("Edit gyms")}
+                            </button>
+                          </>
+                        )}
+                      </>
+                    )}
                   </td>
                   <td>
                     <span className={`badge ${status.className}`}>

@@ -104,6 +104,15 @@ export interface CreateSubscriptionRequest {
   note?: string;
 }
 
+/**
+ * PUT /api/admin/subscriptions/:id/gyms — replaces the gyms of a current or
+ * future period without changing its dates. Non-owners may only add or remove
+ * gyms in their own scope; gyms outside it stay on the period.
+ */
+export interface SetSubscriptionGymsRequest {
+  gymIds: string[];
+}
+
 export interface MySubscription {
   active: boolean;
   startsAt: string | null;
@@ -301,6 +310,9 @@ export type ApiErrorCode =
   | "GYM_NOT_FOUND"
   /** gymIds missing, empty or malformed */
   | "INVALID_GYMS"
+  /** The subscription period has already ended and can no longer be changed */
+  | "SUBSCRIPTION_ENDED"
+  | "SUBSCRIPTION_NOT_FOUND"
   /** The path's gym (or a gym in gymIds) is outside the caller's gym scope */
   | "GYM_OUT_OF_SCOPE"
   /** Demoting the only remaining owner is refused */

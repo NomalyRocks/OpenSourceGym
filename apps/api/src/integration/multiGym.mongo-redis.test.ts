@@ -299,6 +299,74 @@ test(
       ]);
       assert.equal(unknownGym.body.code, "GYM_NOT_FOUND");
 
+      // --- a period's gyms can be changed without selling a new period ---
+      const memberSubs = await call(
+        owner.cookie,
+        "GET",
+        `/api/admin/users/${member.id}/subscriptions`,
+      );
+      assert.equal(memberSubs.body.length, 1);
+      const period = memberSubs.body[0];
+      const setGyms = (cookie: string, id: string, gymIds: string[]) =>
+        call(cookie, "PUT", `/api/admin/subscriptions/${id}/gyms`, { gymIds });
+      assert.equal(
+        (await setGyms(staffA.cookie, period.id, [gymA.id, gymB.id])).body.code,
+        "GYM_OUT_OF_SCOPE",
+        "staff cannot add a gym outside their scope",
+      );
+      assert.equal(
+        (await setGyms(owner.cookie, period.id, [])).body.code,
+        "INVALID_GYMS",
+      );
+      const widened = await setGyms(owner.cookie, period.id, [
+        gymA.id,
+        gymB.id,
+      ]);
+      assert.equal(widened.status, 200);
+      assert.deepEqual(widened.body.gymIds, [gymA.id, gymB.id]);
+      assert.equal(widened.body.startsAt, period.startsAt, "dates unchanged");
+      assert.equal(widened.body.endsAt, period.endsAt, "dates unchanged");
+      assert.equal(
+        (
+          await call(
+            owner.cookie,
+            "GET",
+            `/api/admin/users/${member.id}/subscriptions`,
+          )
+        ).body.length,
+        1,
+        "no new period is created",
+      );
+      const gymsAudit = await db
+        .collection("audit_logs")
+        .findOne({ action: "subscription-gyms-updated" });
+      assert.deepEqual(gymsAudit?.details.after, [gymA.id, gymB.id]);
+      assert.equal(gymsAudit?.gymId, gymB.id);
+      assert.equal(
+        (await setGyms(staffA.cookie, period.id, [gymA.id])).body.code,
+        "GYM_OUT_OF_SCOPE",
+        "staff cannot remove a gym outside their scope",
+      );
+      assert.equal(
+        (await setGyms(owner.cookie, period.id, [gymA.id])).status,
+        200,
+      );
+      const { ObjectId } = await import("mongodb");
+      const ended = await db.collection("subscriptions").insertOne({
+        userId: new ObjectId(member.id),
+        gymIds: [new ObjectId(gymA.id)],
+        startsAt: new Date(Date.now() - 60 * 86_400_000),
+        endsAt: new Date(Date.now() - 30 * 86_400_000),
+        note: null,
+        createdBy: "test",
+        createdAt: new Date(),
+      });
+      assert.equal(
+        (await setGyms(owner.cookie, ended.insertedId.toHexString(), [gymA.id]))
+          .body.code,
+        "SUBSCRIPTION_ENDED",
+      );
+
       // --- entry: allowed gym / not allowed at gym / no subscription ---
       assert.equal(
         (await scan(member.cookie, inA.qrContent, ISTANBUL)).status,
@@ -347,7 +415,7 @@ test(
         null,
       );
       assert.ok(await redis.hGet(`og:inside:${gymB.id}`, traveller.id));
-      const { ObjectId } = await import("mongodb");
+
       const signal = await db.collection("sharing_signals").findOne({
         userId: new ObjectId(traveller.id),
         kind: "location-inconsistency",
@@ -443,6 +511,14 @@ test(
           .code,
         "NOT_INSIDE",
         "the marker is single-use",
+      );
+      const { markInside } = await import("../occupancy.js");
+      await redis.set(`og:autoexited:${gymA.id}:${traveller.id}`, "1");
+      await markInside(gymA.id, traveller.id);
+      assert.equal(
+        await redis.exists(`og:autoexited:${gymA.id}:${traveller.id}`),
+        0,
+        "a fresh entry clears the leftover auto-exit marker",
       );
 
       // --- gym settings audit records previous and new location + capacity ---
