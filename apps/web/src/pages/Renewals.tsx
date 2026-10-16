@@ -6,6 +6,7 @@ import type {
   RenewalReminderResult,
 } from "@opengym/shared";
 import { api, isAbortError } from "../lib/api";
+import { useGymApi } from "../lib/gyms";
 import { errorMessage } from "../i18n/errors";
 import { dateLocale } from "../i18n/format";
 
@@ -13,6 +14,7 @@ const WINDOWS = [7, 14, 30, 90];
 
 export function Renewals() {
   const { t, i18n } = useTranslation();
+  const gymApi = useGymApi();
   const locale = dateLocale(i18n.resolvedLanguage);
   const [members, setMembers] = useState<RenewalDueMember[]>([]);
   const [nextCursor, setNextCursor] = useState<string | null>(null);
@@ -42,7 +44,7 @@ export function Renewals() {
       if (cursor) params.set("cursor", cursor);
       try {
         const page = await api<Page<RenewalDueMember>>(
-          `/api/admin/reports/renewals?${params.toString()}`,
+          gymApi(`/reports/renewals?${params.toString()}`),
           { signal: controller.signal },
         );
         setMembers((prev) => (cursor ? [...prev, ...page.items] : page.items));
@@ -56,7 +58,7 @@ export function Renewals() {
         if (inFlight.current === controller) setLoading(false);
       }
     },
-    [withinDays, t],
+    [withinDays, t, gymApi],
   );
 
   useEffect(() => {
@@ -69,7 +71,7 @@ export function Renewals() {
     setNotice(null);
     try {
       const result = await api<RenewalReminderResult>(
-        `/api/admin/reports/renewals/${member.userId}/remind`,
+        gymApi(`/reports/renewals/${member.userId}/remind`),
         { method: "POST" },
       );
       // Update the row in place: refetching the full list would discard the

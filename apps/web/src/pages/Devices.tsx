@@ -5,12 +5,13 @@ import type {
   Device,
   DeviceCreated,
   DeviceDirection,
-  GymSettings,
+  Gym,
 } from "@opengym/shared";
 import { api, isAbortError } from "../lib/api";
 import { usePollingQuery } from "../hooks/usePollingQuery";
 import { errorMessage } from "../i18n/errors";
 import { dateLocale } from "../i18n/format";
+import { useGymApi } from "../lib/gyms";
 
 function escapeHtml(value: string): string {
   return value
@@ -54,6 +55,7 @@ function printQr(
 
 export function Devices() {
   const { t, i18n } = useTranslation();
+  const gymApi = useGymApi();
   const locale = dateLocale(i18n.resolvedLanguage);
   const fmt = (iso: string | null) =>
     iso ? new Date(iso).toLocaleString(locale) : "—";
@@ -74,14 +76,14 @@ export function Devices() {
   useEffect(() => {
     // A static QR does not prove physical presence; warn the administrator when
     // location verification is disabled (show no warning if the setting cannot be read)
-    api<GymSettings>("/api/admin/settings")
+    api<Gym>(gymApi("/settings"))
       .then((s) => setLocationConfigured(s.location !== null))
       .catch(() => undefined);
   }, []);
 
   async function load(signal?: AbortSignal) {
     try {
-      setDevices(await api<Device[]>("/api/admin/devices", { signal }));
+      setDevices(await api<Device[]>(gymApi("/devices"), { signal }));
       setError(null);
     } catch (err) {
       if (isAbortError(err)) return;
@@ -97,7 +99,7 @@ export function Devices() {
     setError(null);
     setCopied(false);
     try {
-      const device = await api<DeviceCreated>("/api/admin/devices", {
+      const device = await api<DeviceCreated>(gymApi("/devices"), {
         method: "POST",
         body: { name, direction },
       });
@@ -127,7 +129,7 @@ export function Devices() {
     }
     setError(null);
     try {
-      await api(`/api/admin/devices/${device.id}`, { method: "DELETE" });
+      await api(gymApi(`/devices/${device.id}`), { method: "DELETE" });
       await load();
     } catch (err) {
       setError(errorMessage(err, t, "Could not delete the device."));

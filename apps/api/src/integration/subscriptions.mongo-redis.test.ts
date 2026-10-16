@@ -159,11 +159,13 @@ test(
         1,
       );
 
+      const testGymId = new ObjectId();
       const sequentialUser = new ObjectId();
       await subscriptions.insertOne({
         userId: sequentialUser,
         startsAt: new Date("2098-01-31T10:00:00.000Z"),
         endsAt: new Date("2099-01-31T10:00:00.000Z"),
+        gymIds: [testGymId],
         note: null,
         createdBy: "staff-1",
         createdAt: new Date("2098-01-31T10:00:00.000Z"),
@@ -173,6 +175,7 @@ test(
           {
             userId: sequentialUser,
             months: 1,
+            gymIds: [testGymId],
             note: null,
             createdBy: "staff-1",
           },
@@ -182,6 +185,7 @@ test(
           {
             userId: sequentialUser,
             months: 1,
+            gymIds: [testGymId],
             note: null,
             createdBy: "staff-2",
           },

@@ -14,8 +14,8 @@ import { seedInitialAdmin } from "./seed.js";
 import { ensureIndexes } from "./indexes.js";
 import { adminRouter } from "./routes/admin.js";
 import { meRouter } from "./routes/me.js";
-import { devicesRouter } from "./routes/devices.js";
-import { reportsRouter } from "./routes/reports.js";
+import { gymsRouter } from "./routes/gyms.js";
+import { chainReportsRouter } from "./routes/reports.js";
 import {
   startRenewalReminderScheduler,
   type RenewalReminderScheduler,
@@ -42,10 +42,11 @@ app.all("/api/auth/{*splat}", toNodeHandler(auth));
 app.use(express.json());
 
 app.use("/api", openApiRouter);
-app.use("/api/admin/devices", devicesRouter);
 // BEFORE adminRouter: adminRouter defines broad paths, so the more specific
-// prefix must match first.
-app.use("/api/admin/reports", reportsRouter);
+// prefixes must match first. Gym-scoped routes (including devices and per-gym
+// reports) live under /api/admin/gyms/:gymId/...
+app.use("/api/admin/gyms", gymsRouter);
+app.use("/api/admin/reports", chainReportsRouter);
 app.use("/api/admin", adminRouter);
 app.use("/api/me", meRouter);
 

@@ -914,3 +914,19 @@ tr:hover td {
 .kpi-card-link:hover {
   background: rgba(243, 242, 238, 0.05);
 }
+
+.badge.owner {
+  color: var(--accent);
+}
+
+.gym-switcher {
+  margin: 0 16px;
+  max-width: 220px;
+}
+
+label.check {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}

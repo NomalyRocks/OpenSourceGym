@@ -1,13 +1,14 @@
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type {
-  GymSettings,
-  LegalConfig,
+  Gym,
   ReminderConfig,
   SharingConfig,
+  GymSettings,
 } from "@opengym/shared";
 import { api, isAbortError } from "../lib/api";
 import { errorMessage } from "../i18n/errors";
+import { useGymApi, useGyms } from "../lib/gyms";
 
 const defaultSharing: SharingConfig = {
   memberMaxSessions: 2,
@@ -18,12 +19,6 @@ const defaultSharing: SharingConfig = {
 };
 
 const defaultReminders: ReminderConfig = { enabled: false, daysBefore: [7, 1] };
-
-const defaultLegal: LegalConfig = {
-  dataProcessingUrl: null,
-  privacyUrl: null,
-  version: 1,
-};
 
 /**
  * Converts input such as "7, 1" into a threshold list. Invalid or empty input
@@ -39,7 +34,8 @@ function parseDaysBefore(raw: string, fallback: number[]): number[] {
 
 export function Settings() {
   const { t } = useTranslation();
-  const [gymName, setGymName] = useState("");
+  const gymApi = useGymApi();
+  const { refresh: refreshGyms } = useGyms();
   const [lat, setLat] = useState("");
   const [lng, setLng] = useState("");
   // Prefilled rather than blank: an operator entering coordinates for the first
@@ -51,7 +47,6 @@ export function Settings() {
   const [autoExitHours, setAutoExitHours] = useState("");
   const [sharing, setSharing] = useState<SharingConfig>(defaultSharing);
   const [reminders, setReminders] = useState<ReminderConfig>(defaultReminders);
-  const [legal, setLegal] = useState<LegalConfig>(defaultLegal);
   // Thresholds are edited as free text; intermediate states such as "7," cannot
   // be converted to a list while typing, so the raw text is kept separately.
   const [daysBeforeText, setDaysBeforeText] = useState(
@@ -70,10 +65,9 @@ export function Settings() {
     // the form was broken.
     void (async () => {
       try {
-        const s = await api<GymSettings>("/api/admin/settings", {
+        const s = await api<Gym>(gymApi("/settings"), {
           signal: controller.signal,
         });
-        setGymName(s.gymName);
         if (s.location) {
           setLat(String(s.location.lat));
           setLng(String(s.location.lng));
@@ -84,7 +78,6 @@ export function Settings() {
         setSharing(s.sharing);
         setReminders(s.reminders);
         setDaysBeforeText(s.reminders.daysBefore.join(", "));
-        setLegal(s.legal);
         setLoaded(true);
       } catch (err) {
         if (isAbortError(err)) return;
@@ -95,34 +88,31 @@ export function Settings() {
       }
     })();
     return () => controller.abort();
-  }, [t]);
+  }, [t, gymApi]);
 
   async function save(e: React.FormEvent) {
     e.preventDefault();
     setBusy(true);
     setMsg(null);
     try {
-      await api("/api/admin/settings", {
-        method: "PUT",
-        body: {
-          gymName,
-          location:
-            lat && lng && radiusM
-              ? { lat: Number(lat), lng: Number(lng), radiusM: Number(radiusM) }
-              : null,
-          capacity: capacity ? Number(capacity) : null,
-          autoExitHours: Number(autoExitHours),
-          sharing,
-          reminders: {
-            enabled: reminders.enabled,
-            // The fallback is NOT a fixed default; it is the current thresholds
-            // from the server. An administrator who clears the field and saves
-            // another setting must not silently change the gym's [30, 14] to [7, 1].
-            daysBefore: parseDaysBefore(daysBeforeText, reminders.daysBefore),
-          },
-          legal,
+      const body: GymSettings = {
+        location:
+          lat && lng && radiusM
+            ? { lat: Number(lat), lng: Number(lng), radiusM: Number(radiusM) }
+            : null,
+        capacity: capacity ? Number(capacity) : null,
+        autoExitHours: Number(autoExitHours),
+        sharing,
+        reminders: {
+          enabled: reminders.enabled,
+          // The fallback is NOT a fixed default; it is the current thresholds
+          // from the server. An administrator who clears the field and saves
+          // another setting must not silently change the gym's [30, 14] to [7, 1].
+          daysBefore: parseDaysBefore(daysBeforeText, reminders.daysBefore),
         },
-      });
+      };
+      await api(gymApi("/settings"), { method: "PUT", body });
+      await refreshGyms();
       setMsg({ kind: "success", text: t("Settings saved.") });
     } catch (err) {
       setMsg({
@@ -139,15 +129,6 @@ export function Settings() {
       <h1>{t("Gym settings")}</h1>
       <form className="panel" onSubmit={save} style={{ maxWidth: 560 }}>
         {msg && <div className={`msg ${msg.kind}`}>{msg.text}</div>}
-        <div className="field">
-          <label htmlFor="gymName">{t("Gym name")}</label>
-          <input
-            id="gymName"
-            value={gymName}
-            onChange={(e) => setGymName(e.target.value)}
-            required
-          />
-        </div>
         <div className="row" style={{ marginBottom: 14 }}>
           <div className="field">
             <label htmlFor="lat">{t("Latitude")}</label>
@@ -357,52 +338,6 @@ export function Settings() {
             onChange={(e) => setDaysBeforeText(e.target.value)}
             placeholder="7, 1"
           />
-        </div>
-
-        <h2 style={{ marginTop: 28 }}>{t("Legal documents")}</h2>
-        <p className="hint" style={{ marginBottom: 14 }}>
-          {t(
-            "OpenGym does not provide these texts; the operator defines the address of the documents it publishes under its own regulations (e.g. GDPR, CCPA). If left blank, the consent checkbox on the mobile signup screen is shown without a link.",
-          )}
-        </p>
-        <div className="row" style={{ marginBottom: 14 }}>
-          <div className="field">
-            <label htmlFor="dataProcessingUrl">
-              {t("Data processing notice URL")}
-            </label>
-            <input
-              id="dataProcessingUrl"
-              value={legal.dataProcessingUrl ?? ""}
-              onChange={(e) =>
-                setLegal({ ...legal, dataProcessingUrl: e.target.value })
-              }
-              placeholder="https://…"
-            />
-          </div>
-          <div className="field">
-            <label htmlFor="privacyUrl">{t("Privacy policy URL")}</label>
-            <input
-              id="privacyUrl"
-              value={legal.privacyUrl ?? ""}
-              onChange={(e) =>
-                setLegal({ ...legal, privacyUrl: e.target.value })
-              }
-              placeholder="https://…"
-            />
-          </div>
-          <div className="field" style={{ maxWidth: 160 }}>
-            <label htmlFor="legalVersion">{t("Document version")}</label>
-            <input
-              id="legalVersion"
-              type="number"
-              min={1}
-              value={legal.version}
-              onChange={(e) =>
-                setLegal({ ...legal, version: Number(e.target.value) })
-              }
-              required
-            />
-          </div>
         </div>
 
         <button type="submit" disabled={busy || !loaded}>

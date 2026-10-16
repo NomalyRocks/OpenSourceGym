@@ -420,6 +420,45 @@ const tr = {
   "Data processing notice URL": "Veri işleme bildirimi adresi",
   "Privacy policy URL": "Gizlilik sözleşmesi adresi",
   "Document version": "Metin sürümü",
+  Owner: "Zincir sahibi",
+  "All gyms": "Tüm salonlar",
+  Gyms: "Salonlar",
+  Gym: "Salon",
+  "Staff assignment": "Personel atama",
+  "Chain settings": "Zincir ayarları",
+  "Chain name": "Zincir adı",
+  "Add gym": "Salon ekle",
+  Rename: "Yeniden adlandır",
+  Deactivate: "Pasife al",
+  Activate: "Aktifleştir",
+  "Select at least one gym.": "En az bir salon seçin.",
+  "Could not create the gym.": "Salon oluşturulamadı.",
+  "Gym created.": "Salon oluşturuldu.",
+  'Deactivate "{{name}}"? Entry scans at this gym will be refused until it is activated again.':
+    '"{{name}}" pasife alınsın mı? Tekrar aktifleştirilene kadar bu salondaki giriş okutmaları reddedilir.',
+  "Set the location, capacity and devices from the gym's own pages after creating it.":
+    "Konum, kapasite ve cihazları salon oluşturulduktan sonra salonun kendi sayfalarından ayarlayın.",
+  "No gyms yet. Add the first one above.":
+    "Henüz salon yok. İlkini yukarıdan ekleyin.",
+  "Gym assignment saved.": "Salon ataması kaydedildi.",
+  "Find an administrator or staff member, then choose the gyms they can work in.":
+    "Bir yönetici veya personel bulun, ardından çalışabileceği salonları seçin.",
+  "No matching staff member found.": "Eşleşen personel bulunamadı.",
+  "across the chain": "zincir genelinde",
+  "Inside now": "Şu an içeride",
+  "No gym assigned": "Atanmış salon yok",
+  "Ask the chain owner to assign you to a gym.":
+    "Zincir sahibinden sizi bir salona atamasını isteyin.",
+  "Not allowed at this gym": "Bu salona giriş yetkisi yok",
+  "Gym inactive": "Salon pasif",
+  "Your subscription does not include this gym. Please contact reception.":
+    "Aboneliğiniz bu salonu kapsamıyor. Lütfen resepsiyonla iletişime geçin.",
+  "This gym is currently closed for entry.": "Bu salon şu anda girişe kapalı.",
+  "The gym was not found.": "Salon bulunamadı.",
+  "Select valid gyms within your access.":
+    "Erişiminiz dahilindeki geçerli salonları seçin.",
+  "You do not have access to this gym.": "Bu salona erişiminiz yok.",
+  "The last owner cannot be demoted.": "Son zincir sahibinin rolü düşürülemez.",
 } as const;
 
 const en = Object.fromEntries(Object.keys(tr).map((key) => [key, key])) as {

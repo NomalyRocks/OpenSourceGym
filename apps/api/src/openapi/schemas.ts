@@ -18,7 +18,10 @@ export const pageSchema = <T extends z.ZodType>(itemSchema: T) =>
     }),
   });
 
-export const roleSchema = withId(z.enum(["admin", "staff", "member"]), "Role");
+export const roleSchema = withId(
+  z.enum(["owner", "admin", "staff", "member"]),
+  "Role",
+);
 
 export const objectIdSchema = z
   .string()
@@ -48,6 +51,7 @@ export const publicUserSchema = withId(
     lastName: z.string(),
     phone: z.string(),
     role: roleSchema,
+    gymIds: z.array(objectIdSchema),
     emailVerified: z.boolean(),
     twoFactorEnabled: z.boolean(),
     profilePhotoUrl: z.url().nullable(),
@@ -62,6 +66,7 @@ export const myProfileSchema = withId(
     email: z.email(),
     name: z.string(),
     role: roleSchema,
+    gymIds: z.array(objectIdSchema),
     mustChangePassword: z.boolean(),
     twoFactorEnabled: z.boolean(),
     profilePhotoUrl: z.url().nullable(),
@@ -121,6 +126,7 @@ export const subscriptionSchema = withId(
     startsAt: isoDateTimeSchema,
     endsAt: isoDateTimeSchema,
     note: z.string().optional(),
+    gymIds: z.array(objectIdSchema),
     createdBy: z.string(),
     createdAt: isoDateTimeSchema,
   }),
@@ -162,16 +168,43 @@ export const locationSchema = withId(
   "GymLocation",
 );
 
-export const gymSettingsSchema = withId(
+export const reminderConfigSchema = withId(
   z.object({
-    gymName: z.string(),
+    enabled: z.boolean(),
+    daysBefore: z.array(z.number().int().min(0).max(90)).min(1).max(5),
+  }),
+  "ReminderConfig",
+);
+
+export const gymSchema = withId(
+  z.object({
+    id: objectIdSchema,
+    name: z.string(),
     location: locationSchema.nullable(),
     capacity: z.number().positive().nullable(),
     autoExitHours: z.number().int().min(1).max(48),
     sharing: sharingConfigSchema,
+    reminders: reminderConfigSchema,
+    active: z.boolean().meta({
+      description:
+        "Gyms are deactivated, never deleted; an inactive gym refuses every entry scan",
+    }),
+    createdAt: isoDateTimeSchema,
+  }),
+  "Gym",
+);
+
+export const gymRefSchema = withId(
+  z.object({ id: objectIdSchema, name: z.string(), active: z.boolean() }),
+  "GymRef",
+);
+
+export const chainSettingsSchema = withId(
+  z.object({
+    chainName: z.string(),
     legal: legalConfigSchema,
   }),
-  "GymSettings",
+  "ChainSettings",
 );
 
 export const adminStatsSchema = withId(
@@ -191,6 +224,9 @@ export const auditLogSchema = withId(
     targetId: z.string().optional(),
     details: z.record(z.string(), z.unknown()).optional(),
     at: isoDateTimeSchema,
+    gymId: objectIdSchema.nullable().meta({
+      description: "Null for chain-level actions",
+    }),
   }),
   "AuditLogEntry",
 );
@@ -201,6 +237,8 @@ export const gateRejectCodeSchema = withId(
     "UNKNOWN_DEVICE",
     "DEVICE_OFFLINE",
     "NO_ACTIVE_SUBSCRIPTION",
+    "NOT_ALLOWED_AT_GYM",
+    "GYM_INACTIVE",
     "LOCATION_REQUIRED",
     "OUT_OF_RANGE",
     "MOCK_LOCATION",
@@ -217,6 +255,7 @@ export const gateRejectCodeSchema = withId(
 export const entryEventSchema = withId(
   z.object({
     id: objectIdSchema,
+    gymId: objectIdSchema.nullable(),
     deviceId: z.string(),
     deviceName: z.string(),
     userId: z.string().nullable(),
@@ -254,6 +293,7 @@ export const deviceDirectionSchema = withId(
 export const deviceSchema = withId(
   z.object({
     id: objectIdSchema,
+    gymId: objectIdSchema,
     name: z.string(),
     direction: deviceDirectionSchema,
     online: z.boolean(),
@@ -268,6 +308,7 @@ export const deviceSchema = withId(
 export const deviceCreatedSchema = withId(
   z.object({
     id: objectIdSchema,
+    gymId: objectIdSchema,
     name: z.string(),
     direction: deviceDirectionSchema,
     token: z.string(),
@@ -287,6 +328,8 @@ export const mySubscriptionSchema = withId(
     startsAt: isoDateTimeSchema.nullable(),
     endsAt: isoDateTimeSchema.nullable(),
     remainingDays: z.number().int().nonnegative(),
+    gymIds: z.array(objectIdSchema),
+    gyms: z.array(gymRefSchema),
   }),
   "MySubscription",
 );
@@ -323,11 +366,18 @@ export const gateScanResponseSchema = withId(
 
 export const occupancySchema = withId(
   z.object({
+    gymId: objectIdSchema,
+    gymName: z.string(),
     inside: z.number().int().nonnegative(),
     capacity: z.number().positive().nullable(),
     ratio: z.number().nonnegative().nullable(),
   }),
   "Occupancy",
+);
+
+export const myOccupancySchema = withId(
+  z.object({ gyms: z.array(occupancySchema) }),
+  "MyOccupancy",
 );
 
 export const myDeletionRequestSchema = withId(
@@ -421,6 +471,9 @@ export const createSubscriptionRequestSchema = withId(
         z.literal(6),
         z.literal(12),
       ]),
+      gymIds: z.array(z.string()).min(1).meta({
+        description: "Active gyms the member may enter during this period",
+      }),
       note: z.string().trim().max(500).optional(),
     })
     .strict(),
@@ -432,9 +485,34 @@ const numericFormValue = z.union([z.number(), z.string()]).meta({
     "A number, or a numeric form string accepted by z.coerce.number()",
 });
 
+export const chainSettingsRequestSchema = withId(
+  z.object({
+    chainName: z.string().trim().min(1),
+    legal: legalConfigSchema.optional(),
+  }),
+  "ChainSettingsRequest",
+);
+
+export const createGymRequestSchema = withId(
+  z.object({
+    name: z.string().trim().min(1).max(100),
+    location: locationSchema.nullish(),
+    capacity: numericFormValue.nullish(),
+    autoExitHours: numericFormValue.nullish(),
+  }),
+  "GymCreateInput",
+);
+
+export const updateGymRequestSchema = withId(
+  z.object({
+    name: z.string().trim().min(1).max(100).optional(),
+    active: z.boolean().optional(),
+  }),
+  "GymUpdateInput",
+);
+
 export const gymSettingsRequestSchema = withId(
   z.object({
-    gymName: z.string().trim().min(1),
     location: z
       .object({
         lat: numericFormValue,
@@ -447,9 +525,14 @@ export const gymSettingsRequestSchema = withId(
     capacity: numericFormValue.nullish(),
     autoExitHours: numericFormValue.nullish(),
     sharing: sharingConfigSchema.optional(),
-    legal: legalConfigSchema.optional(),
+    reminders: reminderConfigSchema.optional(),
   }),
-  "GymSettingsRequest",
+  "GymSettings",
+);
+
+export const setUserGymsRequestSchema = withId(
+  z.object({ gymIds: z.array(z.string()) }),
+  "SetUserGymsRequest",
 );
 
 export const createDeviceRequestSchema = withId(

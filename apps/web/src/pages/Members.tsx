@@ -9,6 +9,7 @@ import type {
 } from "@opengym/shared";
 import { ApiError, api, authApi, isAbortError } from "../lib/api";
 import { useProfile } from "../lib/profile";
+import { useGymId, useGyms } from "../lib/gyms";
 import { dateLocale } from "../i18n/format";
 import { errorMessage } from "../i18n/errors";
 import type { WebTranslationKey } from "../i18n/resources";
@@ -17,7 +18,8 @@ const subscriptionMonthOptions: readonly SubscriptionMonths[] = [1, 3, 6, 12];
 
 function roleKey(
   role: PublicUser["role"],
-): "Administrator" | "Staff" | "Member" {
+): "Owner" | "Administrator" | "Staff" | "Member" {
+  if (role === "owner") return "Owner";
   if (role === "admin") return "Administrator";
   if (role === "staff") return "Staff";
   return "Member";
@@ -85,6 +87,15 @@ function SubscriptionPanel({ member }: { member: PublicUser }) {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [msg, setMsg] = useState<{ kind: string; text: string } | null>(null);
   const [months, setMonths] = useState<SubscriptionMonths>(1);
+  const { gyms } = useGyms();
+  const selectedGymId = useGymId();
+  const activeGyms = gyms.filter((g) => g.active);
+  // Defaults to the gym currently selected in the panel.
+  const [gymIds, setGymIds] = useState<string[]>([selectedGymId]);
+  const toggleGym = (id: string) =>
+    setGymIds((prev) =>
+      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id],
+    );
 
   function load(signal?: AbortSignal) {
     return api<Subscription[]>(`/api/admin/users/${member.id}/subscriptions`, {
@@ -115,10 +126,15 @@ function SubscriptionPanel({ member }: { member: PublicUser }) {
 
   async function grant() {
     setMsg(null);
+    if (gymIds.length === 0) {
+      setMsg({ kind: "error", text: t("Select at least one gym.") });
+      return;
+    }
     try {
       const request: CreateSubscriptionRequest = {
         userId: member.id,
         months,
+        gymIds,
         note: t("{{months}}-month plan", { months }),
       };
       await api("/api/admin/subscriptions", {
@@ -164,6 +180,21 @@ function SubscriptionPanel({ member }: { member: PublicUser }) {
             ))}
           </select>
         </div>
+        <div className="field">
+          <label>{t("Gyms")}</label>
+          <div className="row">
+            {activeGyms.map((g) => (
+              <label key={g.id} className="check">
+                <input
+                  type="checkbox"
+                  checked={gymIds.includes(g.id)}
+                  onChange={() => toggleGym(g.id)}
+                />{" "}
+                {g.name}
+              </label>
+            ))}
+          </div>
+        </div>
         <button onClick={grant}>{t("Grant subscription")}</button>
       </div>
       <table>
@@ -172,13 +203,14 @@ function SubscriptionPanel({ member }: { member: PublicUser }) {
             <th>{t("Start")}</th>
             <th>{t("End")}</th>
             <th>{t("Note")}</th>
+            <th>{t("Gyms")}</th>
             <th>{t("Status")}</th>
           </tr>
         </thead>
         <tbody>
           {loading && (
             <tr>
-              <td colSpan={4}>{t("Loading…")}</td>
+              <td colSpan={5}>{t("Loading…")}</td>
             </tr>
           )}
           {!loading &&
@@ -198,6 +230,11 @@ function SubscriptionPanel({ member }: { member: PublicUser }) {
                   </td>
                   <td>{subscription.note ?? "—"}</td>
                   <td>
+                    {subscription.gymIds
+                      .map((id) => gyms.find((g) => g.id === id)?.name ?? id)
+                      .join(", ")}
+                  </td>
+                  <td>
                     <span className={`badge ${status.className}`}>
                       {t(status.label)}
                     </span>
@@ -207,7 +244,7 @@ function SubscriptionPanel({ member }: { member: PublicUser }) {
             })}
           {!loading && subs?.length === 0 && (
             <tr>
-              <td colSpan={4}>{t("No subscription records.")}</td>
+              <td colSpan={5}>{t("No subscription records.")}</td>
             </tr>
           )}
         </tbody>
@@ -397,7 +434,7 @@ export function Members() {
                   </td>
                   <td>
                     <div className="row">
-                      {user?.role === "admin" && u.id !== user.id && (
+                      {user?.role === "owner" && u.id !== user.id && (
                         <select
                           value={u.role}
                           onChange={(e) => setRole(u, e.target.value)}
@@ -405,6 +442,7 @@ export function Members() {
                           <option value="member">{t("Member")}</option>
                           <option value="staff">{t("Staff")}</option>
                           <option value="admin">{t("Administrator")}</option>
+                          <option value="owner">{t("Owner")}</option>
                         </select>
                       )}
                       <button
