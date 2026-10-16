@@ -60,6 +60,31 @@ export const publicUserSchema = withId(
   "PublicUser",
 );
 
+export const userDirectoryRowSchema = withId(
+  publicUserSchema.extend({
+    subscriptionStatus: z.enum(["active", "expired", "none"]),
+    subscriptionGymIds: z.array(objectIdSchema).meta({
+      description:
+        "Gyms of the member's currently active subscription periods; empty when there is none",
+    }),
+    subscriptionEndsAt: isoDateTimeSchema.nullable().meta({
+      description:
+        "End of the current period when active, of the latest past period when expired, null when none",
+    }),
+  }),
+  "UserDirectoryRow",
+);
+
+export const userDirectoryPageSchema = withId(
+  z.object({
+    total: z.number().int().min(0),
+    page: z.number().int().min(1),
+    pageSize: z.number().int().min(1),
+    items: z.array(userDirectoryRowSchema),
+  }),
+  "UserDirectoryPage",
+);
+
 export const myProfileSchema = withId(
   z.object({
     id: objectIdSchema,

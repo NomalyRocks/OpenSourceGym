@@ -9,7 +9,8 @@
     "test": "tsx --test src/*.test.ts src/**/*.test.ts",
     "lint": "eslint src",
     "dev": "tsx watch --env-file-if-exists=../../.env src/index.ts",
-    "start": "node dist/index.js"
+    "start": "node dist/index.js",
+    "seed:demo": "tsx --env-file-if-exists=../../.env scripts/seed-demo.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1085.0",

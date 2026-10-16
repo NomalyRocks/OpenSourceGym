@@ -5,6 +5,7 @@ import {
   type ZodOpenApiRequestBodyObject,
   type ZodOpenApiResponseObject,
 } from "zod-openapi";
+import { userDirectoryQuerySchema } from "../userDirectory.js";
 import {
   adminStatsSchema,
   apiErrorSchema,
@@ -52,6 +53,7 @@ import {
   signUpRequestSchema,
   signUpResponseSchema,
   subscriptionSchema,
+  userDirectoryPageSchema,
   verifyEmailOtpRequestSchema,
   verifyEmailOtpResponseSchema,
 } from "./schemas.js";
@@ -454,6 +456,22 @@ export const openApiDocument: OpenApiDocument = createDocument({
         requestParams: { query: userSearchQuery },
         responses: protectedResponses({
           "200": jsonResponse("Matching users", z.array(publicUserSchema)),
+          "400": apiErrorResponse,
+        }),
+      },
+    },
+    "/api/admin/users/directory": {
+      get: {
+        tags: ["admin"],
+        operationId: "listUserDirectory",
+        summary: "User directory",
+        ...requiredRole(
+          "owner | admin | staff",
+          "Chain-wide paged user table with filters and derived subscription status. Roles, status and gym filters accept comma-separated values; a gym outside the caller's scope is refused with GYM_OUT_OF_SCOPE",
+        ),
+        requestParams: { query: userDirectoryQuerySchema },
+        responses: protectedResponses({
+          "200": jsonResponse("Directory page", userDirectoryPageSchema),
           "400": apiErrorResponse,
         }),
       },
