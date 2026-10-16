@@ -93,14 +93,29 @@ function parseDeviceArgs(args) {
   });
 }
 
+// Devices belong to a gym: GYM_ID picks it, otherwise the first active gym is used
+async function resolveGymId(cookie) {
+  if (process.env.GYM_ID) return process.env.GYM_ID;
+  const gyms = await (await apiFetch("/api/admin/gyms", cookie)).json();
+  const gym = gyms.find((g) => g.active);
+  if (!gym) {
+    console.error("no active gym — create one in the panel or set GYM_ID");
+    process.exit(2);
+  }
+  console.log(`gym: ${gym.name} (${gym.id})`);
+  return gym.id;
+}
+
 async function setup(args) {
   const wanted = args.length > 0 ? parseDeviceArgs(args) : DEFAULT_DEVICES;
   const cookie = await adminLogin();
+  const gymId = await resolveGymId(cookie);
+  const devicesPath = `/api/admin/gyms/${encodeURIComponent(gymId)}/devices`;
 
-  // Clean setup: deletes all existing devices (also disconnects them from the gateway)
-  const existing = await (await apiFetch("/api/admin/devices", cookie)).json();
+  // Clean setup: deletes all existing devices of the gym (also disconnects them from the gateway)
+  const existing = await (await apiFetch(devicesPath, cookie)).json();
   for (const device of existing) {
-    await apiFetch(`/api/admin/devices/${device.id}`, cookie, {
+    await apiFetch(`${devicesPath}/${device.id}`, cookie, {
       method: "DELETE",
     });
     console.log(`deleted: ${device.name}`);
@@ -109,7 +124,7 @@ async function setup(args) {
   const devices = [];
   for (const { name, direction } of wanted) {
     const created = await (
-      await apiFetch("/api/admin/devices", cookie, {
+      await apiFetch(devicesPath, cookie, {
         method: "POST",
         body: JSON.stringify({ name, direction }),
       })
