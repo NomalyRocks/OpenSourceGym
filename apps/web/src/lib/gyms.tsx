@@ -76,3 +76,13 @@ export function useGymLink(): (suffix: string) => string {
     [gymId],
   );
 }
+
+export const LAST_GYM_KEY = "opengym:lastGymId";
+
+/** Picks the gym to open when the URL names none (or an unknown one). */
+export function useDefaultGymId(): string | null {
+  const { gyms } = useGyms();
+  const last = localStorage.getItem(LAST_GYM_KEY);
+  const remembered = gyms.find((g) => g.id === last);
+  return (remembered ?? gyms.find((g) => g.active) ?? gyms[0])?.id ?? null;
+}

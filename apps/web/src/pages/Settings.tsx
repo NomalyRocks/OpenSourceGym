@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { PageHeader } from "../components/PageHeader";
 import type {
   Gym,
   ReminderConfig,
@@ -126,7 +127,12 @@ export function Settings() {
 
   return (
     <div className="stagger">
-      <h1>{t("Gym settings")}</h1>
+      <PageHeader
+        title={t("Gym settings")}
+        subtitle={t(
+          "Location, capacity, account sharing and reminders for this gym.",
+        )}
+      />
       <form className="panel" onSubmit={save} style={{ maxWidth: 560 }}>
         {msg && <div className={`msg ${msg.kind}`}>{msg.text}</div>}
         <div className="row" style={{ marginBottom: 14 }}>

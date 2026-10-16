@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { PageHeader } from "../components/PageHeader";
 import type {
   Page,
   RenewalDueMember,
@@ -95,7 +96,10 @@ export function Renewals() {
 
   return (
     <div className="stagger">
-      <h1>{t("Renewals")}</h1>
+      <PageHeader
+        title={t("Renewals")}
+        subtitle={t("Members whose subscriptions are about to expire.")}
+      />
 
       <div className="row" style={{ marginBottom: 16 }}>
         <div className="field">

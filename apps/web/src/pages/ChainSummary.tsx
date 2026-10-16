@@ -4,6 +4,7 @@ import { useTranslation } from "react-i18next";
 import type { ChainSummary as ChainSummaryData } from "@opengym/shared";
 import { api, isAbortError } from "../lib/api";
 import { usePollingQuery } from "../hooks/usePollingQuery";
+import { PageHeader } from "../components/PageHeader";
 import { errorMessage } from "../i18n/errors";
 import { dateInputValue, rangeBounds } from "../lib/dateRange";
 
@@ -46,7 +47,10 @@ export function ChainSummary() {
 
   return (
     <div className="stagger">
-      <h1>{t("All gyms")}</h1>
+      <PageHeader
+        title={t("All gyms")}
+        subtitle={t("Totals for every gym in the chain over the last 30 days.")}
+      />
       {error && <div className="msg error">{error}</div>}
       <div className="kpi-grid">
         <div className="kpi-card">

@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { PageHeader } from "../components/PageHeader";
 import QRCode from "qrcode";
 import type {
   Device,
@@ -162,7 +163,10 @@ export function Devices() {
 
   return (
     <div className="stagger">
-      <h1>{t("Devices")}</h1>
+      <PageHeader
+        title={t("Devices")}
+        subtitle={t("Turnstile devices and their QR codes for this gym.")}
+      />
       {!locationConfigured && (
         <div className="msg error">
           {t(
