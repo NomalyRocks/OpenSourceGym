@@ -27,7 +27,10 @@ const API_URL = process.env.API_URL ?? "http://127.0.0.1:3000";
 const GATEWAY_URL =
   process.env.GATEWAY_URL ??
   `${API_URL.replace(/^http/, "ws")}/api/device-gateway`;
-const CONFIG_PATH = fileURLToPath(new URL("devices.json", import.meta.url));
+// SIM_CONFIG keeps one credentials file per gym when several fleets run at once
+const CONFIG_PATH =
+  process.env.SIM_CONFIG ??
+  fileURLToPath(new URL("devices.json", import.meta.url));
 const DEFAULT_DEVICES = [
   { name: "Giriş Turnikesi", direction: "in" },
   { name: "Çıkış Turnikesi", direction: "out" },

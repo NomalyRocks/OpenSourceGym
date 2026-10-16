@@ -71,7 +71,7 @@ ADMIN_PASSWORD=... pnpm sim:setup "Yan Kapı:in"
 pnpm sim
 ```
 
-Customize with the `API_URL` (default `http://127.0.0.1:3000`), `GATEWAY_URL`, `ADMIN_EMAIL` (default `admin@opengym.local`, the seeded owner) and `GYM_ID` (the gym the devices belong to; defaults to the first active gym) environment variables. Logs are prefixed with the device name; when the `open` command arrives, it writes `[Name] OPEN — relay N ms`.
+Customize with the `API_URL` (default `http://127.0.0.1:3000`), `GATEWAY_URL`, `ADMIN_EMAIL` (default `admin@opengym.local`, the seeded owner) and `GYM_ID` (the gym the devices belong to; defaults to the first active gym) and `SIM_CONFIG` (credentials file; default `agents/sim/devices.json` — use one file per gym to run several fleets at once, e.g. `agents/sim/devices-b.json`) environment variables. Logs are prefixed with the device name; when the `open` command arrives, it writes `[Name] OPEN — relay N ms`.
 
 ## Hardware connections
 

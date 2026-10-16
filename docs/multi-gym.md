@@ -73,6 +73,13 @@ the indexes its gym-scoped queries use (`entry_events: { gymId, at }`, etc.).
   recorded inside gym A closes the A record (auto-exit, logged on the
   `entry_events` row) — see resolved question 2.
 - Anti-passback state and exit-device reachability are per gym.
+- Closing the gym A record on an entry at gym B leaves a single-use
+  `og:autoexited:<A>:<userId>` marker (TTL = A's record retention), so one exit
+  scan at A is still allowed. This is deliberate: with a shared account the
+  real member may still be inside A, and an exit is never refused. The marker
+  is kept even when the travel looks plausible, because sharing between nearby
+  gyms is indistinguishable from honest travel. An exit at A or a fresh entry
+  at A clears it.
 
 ## Authorization
 

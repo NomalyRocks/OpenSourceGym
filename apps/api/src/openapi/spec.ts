@@ -13,6 +13,7 @@ import {
   authErrorSchema,
   createDeviceRequestSchema,
   createSubscriptionRequestSchema,
+  setSubscriptionGymsRequestSchema,
   createSubscriptionResponseSchema,
   deletionRequestSchema,
   deviceCreatedSchema,
@@ -513,6 +514,28 @@ export const openApiDocument: OpenApiDocument = createDocument({
           "400": apiErrorResponse,
           "404": apiErrorResponse,
           "503": apiErrorResponse,
+        }),
+      },
+    },
+    "/api/admin/subscriptions/{id}/gyms": {
+      put: {
+        tags: ["admin"],
+        operationId: "setSubscriptionGyms",
+        summary: "Change the gyms of a subscription period",
+        ...requiredRole(
+          "owner | admin | staff (only gyms in scope may be added or removed)",
+          "Replaces the gyms of a current or future period without changing its dates",
+        ),
+        requestParams: { path: idPathParams },
+        requestBody: jsonBody(setSubscriptionGymsRequestSchema),
+        responses: protectedResponses({
+          "200": jsonResponse(
+            "Updated subscription period",
+            subscriptionSchema,
+          ),
+          "400": apiErrorResponse,
+          "404": apiErrorResponse,
+          "409": apiErrorResponse,
         }),
       },
     },

@@ -486,6 +486,18 @@ export const roleRequestSchema = withId(
   "RoleRequest",
 );
 
+export const setSubscriptionGymsRequestSchema = withId(
+  z
+    .object({
+      gymIds: z.array(z.string()).min(1).meta({
+        description:
+          "Replaces the period's gyms; dates stay. Non-owners may only add or remove gyms in their scope",
+      }),
+    })
+    .strict(),
+  "SetSubscriptionGymsRequest",
+);
+
 export const createSubscriptionRequestSchema = withId(
   z
     .object({

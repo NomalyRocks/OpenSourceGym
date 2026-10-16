@@ -258,6 +258,12 @@ const tr = {
   "How long the automatic block remains active.":
     "Otomatik engelin ne kadar süreceği.",
   Save: "Kaydet",
+  "Edit gyms": "Salonları düzenle",
+  "Subscription gyms updated.": "Aboneliğin salonları güncellendi.",
+  "Could not update the gyms.": "Salonlar güncellenemedi.",
+  "This subscription period has already ended.":
+    "Bu abonelik dönemi sona ermiş.",
+  "Subscription not found.": "Abonelik bulunamadı.",
   "Settings saved.": "Ayarlar kaydedildi.",
   Actor: "Kim",
   Details: "Detay",

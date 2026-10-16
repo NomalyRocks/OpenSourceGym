@@ -37,10 +37,16 @@ import {
 import { FP_CHURN_KEY, QR_BLOCK_KEY, QR_LOC_KEY } from "../sharing.js";
 import { LEGAL_DEFAULTS } from "../legal.js";
 import { legalDocumentUrlSchema } from "../legalUrl.js";
-import { findGymsByIds, validateSubscriptionGymIds } from "../gyms.js";
+import {
+  canAccessGym,
+  findGymsByIds,
+  validateSubscriptionGymIds,
+} from "../gyms.js";
 import {
   createSequentialSubscription,
+  findSubscription,
   listUserSubscriptions,
+  setSubscriptionGymIds,
   SubscriptionLockTimeoutError,
 } from "../subscriptions.js";
 import { tryNormalizePhoneToE164 } from "../phone.js";
@@ -481,6 +487,32 @@ const createSubscriptionSchema = z
   })
   .strict();
 
+type GymCheckFailure = Extract<
+  Awaited<ReturnType<typeof validateSubscriptionGymIds>>,
+  { ok: false }
+>["reason"];
+
+function sendGymCheckError(res: Response, reason: GymCheckFailure): void {
+  switch (reason) {
+    case "out-of-scope":
+      sendApiError(
+        res,
+        403,
+        "GYM_OUT_OF_SCOPE",
+        "A selected gym is outside your scope.",
+      );
+      break;
+    case "not-found":
+      sendApiError(res, 404, "GYM_NOT_FOUND", "A selected gym does not exist.");
+      break;
+    case "inactive":
+      sendApiError(res, 400, "GYM_INACTIVE", "A selected gym is inactive.");
+      break;
+    default:
+      sendApiError(res, 400, "INVALID_GYMS", "Select at least one active gym.");
+  }
+}
+
 // US-6: create or extend a subscription. Members are chain-wide, so the route
 // is not gym-scoped; instead the caller must have access to EVERY gym listed.
 adminRouter.post(
@@ -503,34 +535,7 @@ adminRouter.post(
       req.user,
     );
     if (!gymCheck.ok) {
-      switch (gymCheck.reason) {
-        case "out-of-scope":
-          sendApiError(
-            res,
-            403,
-            "GYM_OUT_OF_SCOPE",
-            "A selected gym is outside your scope.",
-          );
-          break;
-        case "not-found":
-          sendApiError(
-            res,
-            404,
-            "GYM_NOT_FOUND",
-            "A selected gym does not exist.",
-          );
-          break;
-        case "inactive":
-          sendApiError(res, 400, "GYM_INACTIVE", "A selected gym is inactive.");
-          break;
-        default:
-          sendApiError(
-            res,
-            400,
-            "INVALID_GYMS",
-            "Select at least one active gym.",
-          );
-      }
+      sendGymCheckError(res, gymCheck.reason);
       return;
     }
     const target = await userCollection().findOne({ _id: targetId });
@@ -578,6 +583,108 @@ adminRouter.post(
       }
       throw error;
     }
+  }),
+);
+
+const setSubscriptionGymsSchema = z
+  .object({ gymIds: z.array(z.string().min(1).max(64)).max(200) })
+  .strict();
+
+// Changes which gyms a current or future period covers, without touching its
+// dates — adding a gym must not sell a new period. Non-owners may only add or
+// remove gyms in their own scope; gyms outside it stay on the period.
+adminRouter.put(
+  "/subscriptions/:id/gyms",
+  requireRole("owner", "admin", "staff"),
+  authed(async (req, res) => {
+    const subscriptionId = toObjectId(String(req.params.id ?? ""));
+    const parsed = setSubscriptionGymsSchema.safeParse(req.body ?? {});
+    if (!subscriptionId || !parsed.success) {
+      sendApiError(res, 400, "INVALID_GYMS", "Select at least one active gym.");
+      return;
+    }
+    const subscription = await findSubscription(subscriptionId);
+    if (!subscription) {
+      sendApiError(
+        res,
+        404,
+        "SUBSCRIPTION_NOT_FOUND",
+        "Subscription not found.",
+      );
+      return;
+    }
+    if (subscription.endsAt.getTime() <= Date.now()) {
+      sendApiError(
+        res,
+        409,
+        "SUBSCRIPTION_ENDED",
+        "This subscription period has already ended.",
+      );
+      return;
+    }
+    const before = (subscription.gymIds ?? []).map((id) => id.toHexString());
+    const requested = [
+      ...new Set(parsed.data.gymIds.map((id) => id.toLowerCase())),
+    ];
+    if (requested.length === 0) {
+      sendApiError(res, 400, "INVALID_GYMS", "Select at least one active gym.");
+      return;
+    }
+    const added = requested.filter((id) => !before.includes(id));
+    const removed = before.filter((id) => !requested.includes(id));
+    if (removed.some((id) => !canAccessGym(req.user, id))) {
+      sendApiError(
+        res,
+        403,
+        "GYM_OUT_OF_SCOPE",
+        "A selected gym is outside your scope.",
+      );
+      return;
+    }
+    // Only newly added gyms must be active and in scope; gyms already on the
+    // period are kept even if one has since been deactivated.
+    if (added.length > 0) {
+      const gymCheck = await validateSubscriptionGymIds(added, req.user);
+      if (!gymCheck.ok) {
+        sendGymCheckError(res, gymCheck.reason);
+        return;
+      }
+    }
+    const kept = (subscription.gymIds ?? []).filter((id) =>
+      requested.includes(id.toHexString()),
+    );
+    const next = [...kept, ...added.map((id) => new ObjectId(id))];
+    const updated = await setSubscriptionGymIds(subscriptionId, next);
+    if (!updated) {
+      sendApiError(
+        res,
+        404,
+        "SUBSCRIPTION_NOT_FOUND",
+        "Subscription not found.",
+      );
+      return;
+    }
+    const after = next.map((id) => id.toHexString());
+    await logAudit(
+      req.user,
+      "subscription-gyms-updated",
+      updated.userId.toHexString(),
+      { subscriptionId: subscriptionId.toHexString(), before, after },
+      // Tie the row to a gym only when exactly one gym changed
+      added.length + removed.length === 1
+        ? (added[0] ?? removed[0] ?? null)
+        : null,
+    );
+    res.json({
+      id: updated._id.toHexString(),
+      userId: updated.userId.toHexString(),
+      startsAt: updated.startsAt.toISOString(),
+      endsAt: updated.endsAt.toISOString(),
+      note: updated.note ?? undefined,
+      gymIds: after,
+      createdBy: updated.createdBy,
+      createdAt: updated.createdAt.toISOString(),
+    });
   }),
 );
 

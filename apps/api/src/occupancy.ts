@@ -5,9 +5,14 @@ import { redis } from "./redis.js";
 const INSIDE_KEY_PREFIX = "og:inside:";
 const insideKey = (gymId: string): string => `${INSIDE_KEY_PREFIX}${gymId}`;
 
+const autoExitKey = (gymId: string, userId: string): string =>
+  `og:autoexited:${gymId}:${userId}`;
+
 // Marks a member as "inside" a gym (when entry through the turnstile is allowed)
 export async function markInside(gymId: string, userId: string): Promise<void> {
   await redis.hSet(insideKey(gymId), userId, String(Date.now()));
+  // A fresh entry replaces any auto-exit right left over from an earlier visit
+  await redis.del(autoExitKey(gymId, userId));
 }
 
 // Marks a member as "outside" a gym (exit turnstile event)
@@ -18,9 +23,6 @@ export async function markOutside(
   await redis.hDel(insideKey(gymId), userId);
   await redis.del(autoExitKey(gymId, userId));
 }
-
-const autoExitKey = (gymId: string, userId: string): string =>
-  `og:autoexited:${gymId}:${userId}`;
 
 /**
  * Whether the member's record at this gym was closed by an entry at another
