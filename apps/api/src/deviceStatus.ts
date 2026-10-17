@@ -5,6 +5,7 @@ const WINDOW_MS = 24 * 60 * 60 * 1000;
 
 interface DeviceStatusLogDoc {
   deviceId: string;
+  gymId: string | null;
   online: boolean;
   at: Date;
 }
@@ -31,9 +32,13 @@ interface UptimeAggregationResult {
 
 // Device connection status history (KPI-4: percentage online in the last 24 hours).
 // Fire-and-forget: does not block the API/Gateway flow; errors go to the console.
-export function logDeviceStatus(deviceId: string, online: boolean): void {
+export function logDeviceStatus(
+  deviceId: string,
+  gymId: string | null,
+  online: boolean,
+): void {
   db.collection<DeviceStatusLogDoc>(COLLECTION)
-    .insertOne({ deviceId, online, at: new Date() })
+    .insertOne({ deviceId, gymId, online, at: new Date() })
     .catch((err) => {
       console.error("device status record could not be written:", err);
     });
@@ -53,7 +58,12 @@ export function sweepStaleOnlineStatus(): void {
         .limit(1)
         .next();
       if (latest?.online === true) {
-        await collection.insertOne({ deviceId, online: false, at: new Date() });
+        await collection.insertOne({
+          deviceId,
+          gymId: latest.gymId ?? null,
+          online: false,
+          at: new Date(),
+        });
       }
     }
   })().catch((err) => {

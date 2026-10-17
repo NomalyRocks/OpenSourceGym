@@ -101,6 +101,7 @@ interface RenewalAggregateRow {
 }
 
 export interface ListRenewalsParams {
+  gymId: string;
   withinDays: number;
   cursor?: string | undefined;
   limit: number;
@@ -128,6 +129,7 @@ export async function listRenewalsDue(
 
   const match: Document = { endsAt: { $gte: now, $lte: horizon } };
   const stages: Document[] = [
+    { $match: { gymIds: new ObjectId(params.gymId) } },
     ...latestSubscriptionStages(),
     {
       $match: cursor
@@ -201,15 +203,16 @@ export interface RenewalTarget {
   firstName: string;
 }
 
-/** Reads a member's latest subscription for a reminder. */
+/** Reads a member's latest subscription listing the gym, for a reminder. */
 export async function findRenewalTarget(
   userId: ObjectId,
+  gymId: string,
   database: Db = db,
 ): Promise<RenewalTarget | null> {
   const [row] = await database
     .collection("subscriptions")
     .aggregate<RenewalAggregateRow>([
-      { $match: { userId } },
+      { $match: { userId, gymIds: new ObjectId(gymId) } },
       ...latestSubscriptionStages(),
       {
         $lookup: {

@@ -60,7 +60,7 @@ It connects, authenticates, and waits for the `open` command from the server; yo
 It simulates multiple turnstiles in one process without physical hardware; setup is also automatic (there is no need to copy the token manually):
 
 ```bash
-# One-time setup: DELETES ALL EXISTING DEVICES, creates new ones,
+# One-time setup: DELETES ALL EXISTING DEVICES OF THE GYM, creates new ones,
 # writes credentials to agents/sim/devices.json (not tracked by git, mode 600)
 # default: "Giriş Turnikesi"(in) + "Çıkış Turnikesi"(out)
 ADMIN_PASSWORD=... pnpm sim:setup
@@ -71,7 +71,7 @@ ADMIN_PASSWORD=... pnpm sim:setup "Yan Kapı:in"
 pnpm sim
 ```
 
-Customize with the `API_URL` (default `http://127.0.0.1:3000`), `GATEWAY_URL`, and `ADMIN_EMAIL` (default `admin@opengym.local`) environment variables. Logs are prefixed with the device name; when the `open` command arrives, it writes `[Name] OPEN — relay N ms`.
+Customize with the `API_URL` (default `http://127.0.0.1:3000`), `GATEWAY_URL`, `ADMIN_EMAIL` (default `admin@opengym.local`, the seeded owner) and `GYM_ID` (the gym the devices belong to; defaults to the first active gym) and `SIM_CONFIG` (credentials file; default `agents/sim/devices.json` — use one file per gym to run several fleets at once, e.g. `agents/sim/devices-b.json`) environment variables. Logs are prefixed with the device name; when the `open` command arrives, it writes `[Name] OPEN — relay N ms`.
 
 ## Hardware connections
 

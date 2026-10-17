@@ -7,6 +7,7 @@ import {
   useThemedStyles,
   type Theme,
 } from "../theme";
+import { useKeyboardReveal } from "../ui/keyboardAware";
 
 const CELL_COUNT = 6;
 
@@ -30,10 +31,12 @@ export function OtpInput({
   const theme = useTheme();
   const styles = useThemedStyles(otpStyles);
   const inputRef = useRef<TextInput>(null);
+  const fieldRef = useRef<View>(null);
+  const reveal = useKeyboardReveal();
   const activeIndex = Math.min(value.length, CELL_COUNT - 1);
 
   return (
-    <View style={styles.field}>
+    <View ref={fieldRef} style={styles.field}>
       <Text style={styles.label}>{t("Verification code")}</Text>
       <Pressable
         accessibilityElementsHidden
@@ -73,6 +76,7 @@ export function OtpInput({
         autoComplete="one-time-code"
         maxLength={CELL_COUNT}
         autoFocus={autoFocus}
+        onFocus={() => reveal(fieldRef.current)}
         caretHidden
         selectionColor={theme.colors.accent}
         style={styles.hiddenInput}

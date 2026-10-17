@@ -3,7 +3,7 @@ import { setTimeout as delay } from "node:timers/promises";
 import type { MySubscription, SubscriptionMonths } from "@opengym/shared";
 import { ObjectId } from "mongodb";
 import type { Db, WithId } from "mongodb";
-import { db } from "./db.js";
+import { db, gymCollection } from "./db.js";
 import { acquireLock, redis, releaseLock } from "./redis.js";
 import {
   calculateSubscriptionPeriod,
@@ -29,6 +29,8 @@ interface SubscriptionFields {
   userId: ObjectId;
   startsAt: Date;
   endsAt: Date;
+  /** Gyms the member may enter during this period */
+  gymIds: ObjectId[];
   note: string | null;
   createdBy: string;
   createdAt: Date;
@@ -54,6 +56,8 @@ export interface SubscriptionRepairReport {
 export interface CreateSequentialSubscriptionInput {
   userId: ObjectId;
   months: SubscriptionMonths;
+  /** Validated, non-empty list of active gyms */
+  gymIds: ObjectId[];
   note: string | null;
   createdBy: string;
 }
@@ -184,12 +188,31 @@ export async function createSequentialSubscription(
         userId: input.userId,
         startsAt,
         endsAt,
+        gymIds: input.gymIds,
         note: input.note,
         createdBy: input.createdBy,
         createdAt: now,
       });
       return { id: inserted.insertedId, startsAt, endsAt };
     },
+  );
+}
+
+export function findSubscription(
+  id: ObjectId,
+): Promise<SubscriptionDocument | null> {
+  return subscriptionCollection().findOne({ _id: id });
+}
+
+/** Replaces the gyms of one period; dates and the sequence are untouched. */
+export async function setSubscriptionGymIds(
+  id: ObjectId,
+  gymIds: readonly ObjectId[],
+): Promise<SubscriptionDocument | null> {
+  return subscriptionCollection().findOneAndUpdate(
+    { _id: id },
+    { $set: { gymIds: [...gymIds] } },
+    { returnDocument: "after" },
   );
 }
 
@@ -204,16 +227,57 @@ export async function listUserSubscriptions(
     .toArray();
 }
 
-/** Whether the user currently has an active subscription interval (QR check). */
-export async function hasActiveSubscription(userId: string): Promise<boolean> {
-  if (!ObjectId.isValid(userId)) return false;
+export type EntrySubscriptionStatus = "ok" | "none" | "other-gym";
+
+/**
+ * Entry check against the subscription periods covering now: "ok" when one of
+ * them lists the gym, "other-gym" when the member is subscribed but not for
+ * this gym, "none" when there is no active period at all.
+ */
+export async function checkEntrySubscription(
+  userId: string,
+  gymId: string,
+): Promise<EntrySubscriptionStatus> {
+  if (!ObjectId.isValid(userId) || !ObjectId.isValid(gymId)) return "none";
   const now = new Date();
-  const doc = await subscriptionCollection().findOne({
-    userId: new ObjectId(userId),
-    startsAt: { $lte: now },
-    endsAt: { $gte: now },
-  });
-  return doc !== null;
+  const docs = await subscriptionCollection()
+    .find(
+      {
+        userId: new ObjectId(userId),
+        startsAt: { $lte: now },
+        endsAt: { $gte: now },
+      },
+      { projection: { gymIds: 1 } },
+    )
+    .toArray();
+  if (docs.length === 0) return "none";
+  const gymOid = new ObjectId(gymId);
+  return docs.some((doc) => (doc.gymIds ?? []).some((id) => id.equals(gymOid)))
+    ? "ok"
+    : "other-gym";
+}
+
+/** Gyms listed on the periods covering now (empty when not subscribed). */
+export async function listActiveSubscriptionGymIds(
+  userId: string,
+  now = new Date(),
+): Promise<ObjectId[]> {
+  if (!ObjectId.isValid(userId)) return [];
+  const docs = await subscriptionCollection()
+    .find(
+      {
+        userId: new ObjectId(userId),
+        startsAt: { $lte: now },
+        endsAt: { $gte: now },
+      },
+      { projection: { gymIds: 1 } },
+    )
+    .toArray();
+  const seen = new Map<string, ObjectId>();
+  for (const doc of docs) {
+    for (const id of doc.gymIds ?? []) seen.set(id.toHexString(), id);
+  }
+  return [...seen.values()];
 }
 
 /** Converts the active subscription and contiguous future packages to a mobile summary. */
@@ -222,18 +286,41 @@ export async function getSubscriptionSummary(
   now = new Date(),
 ): Promise<MySubscription> {
   if (!ObjectId.isValid(userId)) {
-    return { active: false, startsAt: null, endsAt: null, remainingDays: 0 };
+    return {
+      active: false,
+      startsAt: null,
+      endsAt: null,
+      remainingDays: 0,
+      gymIds: [],
+      gyms: [],
+    };
   }
   const docs = await subscriptionCollection()
     .find({ userId: new ObjectId(userId), endsAt: { $gte: now } })
     .sort({ startsAt: 1, endsAt: 1, createdAt: 1, _id: 1 })
     .toArray();
   const summary = summarizeSubscriptionTimeline(docs, now);
+  const gymIds = summary.active
+    ? await listActiveSubscriptionGymIds(userId, now)
+    : [];
+  const gymDocs =
+    gymIds.length > 0
+      ? await gymCollection()
+          .find({ _id: { $in: gymIds } })
+          .sort({ createdAt: 1, _id: 1 })
+          .toArray()
+      : [];
   return {
     active: summary.active,
     startsAt: summary.startsAt?.toISOString() ?? null,
     endsAt: summary.endsAt?.toISOString() ?? null,
     remainingDays: summary.remainingDays,
+    gymIds: gymDocs.map((gym) => gym._id.toHexString()),
+    gyms: gymDocs.map((gym) => ({
+      id: gym._id.toHexString(),
+      name: gym.name,
+      active: gym.active,
+    })),
   };
 }
 

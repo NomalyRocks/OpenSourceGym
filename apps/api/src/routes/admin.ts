@@ -1,57 +1,52 @@
+import { randomUUID } from "node:crypto";
 import { Router, type Response } from "express";
-import { ObjectId } from "mongodb";
+import { ObjectId, type Document, type WithId } from "mongodb";
 import { fromNodeHeaders } from "better-auth/node";
 import { z } from "zod";
 import type {
-  AdminStats,
-  ApiErrorCode,
   AuditLogEntry,
+  ChainSettings,
   DeletionRequest,
-  EntryEvent,
-  GymSettings,
   Page,
   PublicUser,
+  SubscriptionStatus,
+  UserDirectoryPage,
 } from "@opengym/shared";
 import { auth } from "../auth.js";
 import { sendApiError } from "../apiError.js";
 import {
   db,
-  findGymSettings,
-  gymSettingsCollection,
+  findChainSettings,
+  chainSettingsCollection,
   toObjectId,
   userCollection,
   weightHistoryCollection,
-  GYM_SETTINGS_ID,
-  type GymSettingsDocument,
+  CHAIN_SETTINGS_ID,
+  type ChainSettingsDocument,
   type UserDocument,
 } from "../db.js";
-import { redis } from "../redis.js";
+import { acquireLock, redis, releaseLock } from "../redis.js";
 import { logAudit } from "../audit.js";
 import { authed, requireRole } from "../middleware.js";
-import { markOutside } from "../occupancy.js";
-import {
-  GEOFENCE_RADIUS_M_DEFAULT,
-  GEOFENCE_RADIUS_M_MAX,
-  GEOFENCE_RADIUS_M_MIN,
-} from "../geo.js";
+import { markOutsideEverywhere } from "../occupancy.js";
 import { revokeUserSessions } from "../sessions.js";
 import {
   buildProfilePhotoUrl,
   deleteUserProfilePhotoForAccountDeletion,
 } from "../profilePhoto.js";
-import {
-  FP_CHURN_KEY,
-  QR_BLOCK_KEY,
-  QR_LOC_KEY,
-  SHARING_DEFAULTS,
-} from "../sharing.js";
-import { countActiveMembers, countRenewalsDue } from "../reports.js";
+import { FP_CHURN_KEY, QR_BLOCK_KEY, QR_LOC_KEY } from "../sharing.js";
 import { LEGAL_DEFAULTS } from "../legal.js";
 import { legalDocumentUrlSchema } from "../legalUrl.js";
-import { REMINDER_DEFAULTS } from "../renewalReminders.js";
+import {
+  canAccessGym,
+  findGymsByIds,
+  validateSubscriptionGymIds,
+} from "../gyms.js";
 import {
   createSequentialSubscription,
+  findSubscription,
   listUserSubscriptions,
+  setSubscriptionGymIds,
   SubscriptionLockTimeoutError,
 } from "../subscriptions.js";
 import { tryNormalizePhoneToE164 } from "../phone.js";
@@ -66,6 +61,11 @@ import {
   parseUserSearchQuery,
   USER_SEARCH_LIMIT,
 } from "../userSearch.js";
+import {
+  buildDirectoryPlan,
+  buildDirectoryUserMatch,
+  userDirectoryQuerySchema,
+} from "../userDirectory.js";
 import {
   findActivePhoneConflictUserIds,
   reconcilePhoneConflictsAfterUserChange,
@@ -83,6 +83,7 @@ function toPublicUser(doc: UserDocument): PublicUser {
     phone:
       doc.phoneE164 ?? tryNormalizePhoneToE164(doc.phone) ?? doc.phone ?? "",
     role: doc.role ?? "member",
+    gymIds: doc.gymIds ?? [],
     emailVerified: doc.emailVerified ?? false,
     twoFactorEnabled: doc.twoFactorEnabled ?? false,
     profilePhotoUrl: buildProfilePhotoUrl(
@@ -90,6 +91,20 @@ function toPublicUser(doc: UserDocument): PublicUser {
       doc.profilePhotoUpdatedAt,
     ),
     createdAt: doc.createdAt?.toISOString() ?? "",
+  };
+}
+
+/** Audit row → API shape (shared by the chain and per-gym audit viewers). */
+export function toAuditLogEntry(d: WithId<Document>): AuditLogEntry {
+  return {
+    id: d._id.toString(),
+    actorId: d.actorId,
+    actorEmail: d.actorEmail,
+    action: d.action,
+    targetId: d.targetId ?? undefined,
+    details: d.details ?? undefined,
+    at: (d.at as Date).toISOString(),
+    gymId: d.gymId ?? null,
   };
 }
 
@@ -101,7 +116,7 @@ const initialPasswordSchema = z.object({
 // US-2: mandatory password change after first sign-in
 adminRouter.post(
   "/initial-password",
-  requireRole("admin", "staff", "member"),
+  requireRole("owner", "admin", "staff", "member"),
   authed(async (req, res) => {
     const parsed = initialPasswordSchema.safeParse(req.body ?? {});
     if (!parsed.success) {
@@ -138,39 +153,177 @@ adminRouter.post(
 );
 
 // US-3: member search by phone, email, first name, or last name (staff + admin)
-adminRouter.get("/users", requireRole("admin", "staff"), async (req, res) => {
-  const query = parseUserSearchQuery(req.query.q);
-  if (!query) {
-    sendApiError(
-      res,
-      400,
-      "SEARCH_QUERY_TOO_SHORT",
-      "Enter at least two characters to search.",
-    );
-    return;
-  }
-  const phoneE164 = tryNormalizePhoneToE164(query);
-  const conflictUserIds = phoneE164
-    ? await findActivePhoneConflictUserIds(phoneE164)
-    : [];
-  const docs = await userCollection()
-    .find(buildUserSearchFilter(query, conflictUserIds))
-    .limit(USER_SEARCH_LIMIT)
-    .toArray();
-  res.json(docs.map(toPublicUser));
-});
+adminRouter.get(
+  "/users",
+  requireRole("owner", "admin", "staff"),
+  async (req, res) => {
+    const query = parseUserSearchQuery(req.query.q);
+    if (!query) {
+      sendApiError(
+        res,
+        400,
+        "SEARCH_QUERY_TOO_SHORT",
+        "Enter at least two characters to search.",
+      );
+      return;
+    }
+    const phoneE164 = tryNormalizePhoneToE164(query);
+    const conflictUserIds = phoneE164
+      ? await findActivePhoneConflictUserIds(phoneE164)
+      : [];
+    const docs = await userCollection()
+      .find(buildUserSearchFilter(query, conflictUserIds))
+      .limit(USER_SEARCH_LIMIT)
+      .toArray();
+    res.json(docs.map(toPublicUser));
+  },
+);
 
-const roleSchema = z.object({ role: z.enum(["admin", "staff", "member"]) });
+// Paged, filterable user directory for the admin panel (chain-wide, like search)
+adminRouter.get(
+  "/users/directory",
+  requireRole("owner", "admin", "staff"),
+  authed(async (req, res) => {
+    const parsed = userDirectoryQuerySchema.safeParse(req.query);
+    if (!parsed.success) {
+      sendApiError(
+        res,
+        400,
+        "INVALID_REQUEST",
+        "Invalid user directory query parameters.",
+      );
+      return;
+    }
+    const query = parsed.data;
+
+    // An empty `q` means "no search"; a single character is too short to
+    // match meaningfully, same as the search endpoint.
+    const rawQuery = (query.q ?? "").trim();
+    const searchText = parseUserSearchQuery(rawQuery);
+    if (rawQuery && !searchText) {
+      sendApiError(
+        res,
+        400,
+        "SEARCH_QUERY_TOO_SHORT",
+        "Enter at least two characters to search.",
+      );
+      return;
+    }
+
+    if (
+      query.gymId &&
+      req.user.role !== "owner" &&
+      !req.user.gymIds.includes(query.gymId)
+    ) {
+      sendApiError(
+        res,
+        403,
+        "GYM_OUT_OF_SCOPE",
+        "This gym is outside your scope.",
+      );
+      return;
+    }
+
+    let searchFilter = null;
+    if (searchText) {
+      const phoneE164 = tryNormalizePhoneToE164(searchText);
+      const conflictUserIds = phoneE164
+        ? await findActivePhoneConflictUserIds(phoneE164)
+        : [];
+      searchFilter = buildUserSearchFilter(searchText, conflictUserIds);
+    }
+
+    const plan = buildDirectoryPlan(
+      query,
+      buildDirectoryUserMatch(query, searchFilter),
+      new Date(),
+    );
+    const [result] = await userCollection()
+      .aggregate<{
+        total: { n: number }[];
+        items: (UserDocument & {
+          subscriptionStatus: SubscriptionStatus;
+          subscriptionEndsAt: Date | null;
+          subscriptionGymIds: string[];
+        })[];
+      }>(plan.pipeline, plan.collation ? { collation: plan.collation } : {})
+      .toArray();
+
+    const body: UserDirectoryPage = {
+      total: result?.total[0]?.n ?? 0,
+      page: query.page,
+      pageSize: query.pageSize,
+      items: (result?.items ?? []).map((doc) => ({
+        ...toPublicUser(doc),
+        subscriptionStatus: doc.subscriptionStatus,
+        subscriptionEndsAt: doc.subscriptionEndsAt?.toISOString() ?? null,
+        subscriptionGymIds: doc.subscriptionGymIds ?? [],
+      })),
+    };
+    res.json(body);
+  }),
+);
+
+const OWNER_ROLE_LOCK_KEY = "og:lock:owner-role";
+const OWNER_ROLE_LOCK_TTL_MS = 10_000;
+const OWNER_ROLE_LOCK_WAIT_MS = 3_000;
+
+type RoleChange =
+  | { status: "ok"; previous: UserDocument }
+  | { status: "not-found" | "last-owner" | "busy" };
+
+/**
+ * Applies a role change. Every change is serialized through one Redis lock: the
+ * last-owner check is a count followed by a write, so without the lock two
+ * owners demoting each other at the same time would both pass the count and
+ * leave the chain with no owner.
+ */
+async function changeUserRole(
+  targetId: ObjectId,
+  role: "owner" | "admin" | "staff" | "member",
+): Promise<RoleChange> {
+  const token = randomUUID();
+  const deadline = Date.now() + OWNER_ROLE_LOCK_WAIT_MS;
+  while (
+    !(await acquireLock(OWNER_ROLE_LOCK_KEY, token, OWNER_ROLE_LOCK_TTL_MS))
+  ) {
+    if (Date.now() >= deadline) return { status: "busy" };
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  }
+  try {
+    const current = await userCollection().findOne({ _id: targetId });
+    if (!current) return { status: "not-found" };
+    if (current.role === "owner" && role !== "owner") {
+      const owners = await userCollection().countDocuments({ role: "owner" });
+      if (owners <= 1) return { status: "last-owner" };
+    }
+    // Gym scope only exists for admin/staff, so it is cleared on any change to
+    // member or owner and kept otherwise (the owner re-assigns it explicitly).
+    const previous = await userCollection().findOneAndUpdate(
+      { _id: targetId },
+      role === "member" || role === "owner"
+        ? { $set: { role }, $unset: { gymIds: "" } }
+        : { $set: { role } },
+    );
+    return previous ? { status: "ok", previous } : { status: "not-found" };
+  } finally {
+    await releaseLock(OWNER_ROLE_LOCK_KEY, token);
+  }
+}
+
+const roleSchema = z.object({
+  role: z.enum(["owner", "admin", "staff", "member"]),
+});
 
 const mfaSchema = z.object({
   mfaCode: z.string().min(1),
   mfaMethod: z.enum(["totp", "otp"]),
 });
 
-// US-3: role assignment (admin only) — requires step-up verification when the caller has MFA enabled
+// US-3: role assignment (owner only) — requires step-up verification when the caller has MFA enabled
 adminRouter.post(
   "/users/:id/role",
-  requireRole("admin"),
+  requireRole("owner"),
   authed(async (req, res) => {
     const idParam = String(req.params.id ?? "");
     const targetId = toObjectId(idParam);
@@ -248,14 +401,26 @@ adminRouter.post(
       }
     }
 
-    const result = await userCollection().findOneAndUpdate(
-      { _id: targetId },
-      { $set: { role } },
-    );
-    if (!result) {
+    const change = await changeUserRole(targetId, role);
+    if (change.status === "busy") {
+      sendApiError(
+        res,
+        429,
+        "RATE_LIMITED",
+        "Another role change is in progress. Please retry.",
+      );
+      return;
+    }
+    if (change.status === "not-found") {
       sendApiError(res, 404, "USER_NOT_FOUND", "User not found.");
       return;
     }
+    if (change.status === "last-owner") {
+      sendApiError(res, 409, "LAST_OWNER", "The last owner cannot be demoted.");
+      return;
+    }
+    if (change.status !== "ok") return;
+    const result = change.previous;
     await logAudit(req.user, "role-assigned", idParam, {
       previousRole: result.role ?? "member",
       newRole: role,
@@ -265,18 +430,94 @@ adminRouter.post(
   }),
 );
 
+const setUserGymsSchema = z.object({
+  gymIds: z.array(z.string().min(1).max(64)).max(200),
+});
+
+// Owner assigns an admin/staff account to gyms (replaces the whole scope).
+adminRouter.put(
+  "/users/:id/gyms",
+  requireRole("owner"),
+  authed(async (req, res) => {
+    const targetId = toObjectId(String(req.params.id ?? ""));
+    const parsed = setUserGymsSchema.safeParse(req.body ?? {});
+    if (!targetId || !parsed.success) {
+      sendApiError(res, 400, "INVALID_GYMS", "Invalid gym list.");
+      return;
+    }
+    const gymIds = [...new Set(parsed.data.gymIds)];
+    const gyms = await findGymsByIds(gymIds);
+    if (gyms.length !== gymIds.length) {
+      sendApiError(res, 404, "GYM_NOT_FOUND", "One or more gyms do not exist.");
+      return;
+    }
+    const target = await userCollection().findOne({ _id: targetId });
+    if (!target) {
+      sendApiError(res, 404, "USER_NOT_FOUND", "User not found.");
+      return;
+    }
+    if (target.role !== "admin" && target.role !== "staff") {
+      sendApiError(
+        res,
+        400,
+        "INVALID_USER_OR_ROLE",
+        "Only admin and staff accounts have a gym scope.",
+      );
+      return;
+    }
+    const canonical = gyms.map((gym) => gym._id.toHexString());
+    await userCollection().updateOne(
+      { _id: targetId },
+      { $set: { gymIds: canonical } },
+    );
+    await logAudit(req.user, "user-gyms-assigned", targetId.toHexString(), {
+      previousGymIds: target.gymIds ?? [],
+      newGymIds: canonical,
+    });
+    res.json({ ok: true });
+  }),
+);
+
 const createSubscriptionSchema = z
   .object({
     userId: z.string(),
     months: z.union([z.literal(1), z.literal(3), z.literal(6), z.literal(12)]),
+    gymIds: z.array(z.string().min(1).max(64)).max(200),
     note: z.string().trim().max(500).optional(),
   })
   .strict();
 
-// US-6: create or extend a subscription (staff + admin)
+type GymCheckFailure = Extract<
+  Awaited<ReturnType<typeof validateSubscriptionGymIds>>,
+  { ok: false }
+>["reason"];
+
+function sendGymCheckError(res: Response, reason: GymCheckFailure): void {
+  switch (reason) {
+    case "out-of-scope":
+      sendApiError(
+        res,
+        403,
+        "GYM_OUT_OF_SCOPE",
+        "A selected gym is outside your scope.",
+      );
+      break;
+    case "not-found":
+      sendApiError(res, 404, "GYM_NOT_FOUND", "A selected gym does not exist.");
+      break;
+    case "inactive":
+      sendApiError(res, 400, "GYM_INACTIVE", "A selected gym is inactive.");
+      break;
+    default:
+      sendApiError(res, 400, "INVALID_GYMS", "Select at least one active gym.");
+  }
+}
+
+// US-6: create or extend a subscription. Members are chain-wide, so the route
+// is not gym-scoped; instead the caller must have access to EVERY gym listed.
 adminRouter.post(
   "/subscriptions",
-  requireRole("admin", "staff"),
+  requireRole("owner", "admin", "staff"),
   authed(async (req, res) => {
     const parsed = createSubscriptionSchema.safeParse(req.body ?? {});
     const targetId = parsed.success ? toObjectId(parsed.data.userId) : null;
@@ -289,6 +530,14 @@ adminRouter.post(
       );
       return;
     }
+    const gymCheck = await validateSubscriptionGymIds(
+      parsed.data.gymIds,
+      req.user,
+    );
+    if (!gymCheck.ok) {
+      sendGymCheckError(res, gymCheck.reason);
+      return;
+    }
     const target = await userCollection().findOne({ _id: targetId });
     if (!target) {
       sendApiError(res, 404, "USER_NOT_FOUND", "User not found.");
@@ -298,15 +547,24 @@ adminRouter.post(
       const created = await createSequentialSubscription({
         userId: targetId,
         months: parsed.data.months,
+        gymIds: gymCheck.ids,
         note: parsed.data.note || null,
         createdBy: req.user.id,
       });
-      await logAudit(req.user, "subscription-created", parsed.data.userId, {
-        months: parsed.data.months,
-        startsAt: created.startsAt.toISOString(),
-        endsAt: created.endsAt.toISOString(),
-        subscriptionId: created.id.toHexString(),
-      });
+      const gymHexIds = gymCheck.ids.map((id) => id.toHexString());
+      await logAudit(
+        req.user,
+        "subscription-created",
+        parsed.data.userId,
+        {
+          months: parsed.data.months,
+          startsAt: created.startsAt.toISOString(),
+          endsAt: created.endsAt.toISOString(),
+          subscriptionId: created.id.toHexString(),
+          gymIds: gymHexIds,
+        },
+        gymHexIds.length === 1 ? (gymHexIds[0] ?? null) : null,
+      );
       res.json({
         ok: true,
         id: created.id.toHexString(),
@@ -328,9 +586,111 @@ adminRouter.post(
   }),
 );
 
+const setSubscriptionGymsSchema = z
+  .object({ gymIds: z.array(z.string().min(1).max(64)).max(200) })
+  .strict();
+
+// Changes which gyms a current or future period covers, without touching its
+// dates — adding a gym must not sell a new period. Non-owners may only add or
+// remove gyms in their own scope; gyms outside it stay on the period.
+adminRouter.put(
+  "/subscriptions/:id/gyms",
+  requireRole("owner", "admin", "staff"),
+  authed(async (req, res) => {
+    const subscriptionId = toObjectId(String(req.params.id ?? ""));
+    const parsed = setSubscriptionGymsSchema.safeParse(req.body ?? {});
+    if (!subscriptionId || !parsed.success) {
+      sendApiError(res, 400, "INVALID_GYMS", "Select at least one active gym.");
+      return;
+    }
+    const subscription = await findSubscription(subscriptionId);
+    if (!subscription) {
+      sendApiError(
+        res,
+        404,
+        "SUBSCRIPTION_NOT_FOUND",
+        "Subscription not found.",
+      );
+      return;
+    }
+    if (subscription.endsAt.getTime() <= Date.now()) {
+      sendApiError(
+        res,
+        409,
+        "SUBSCRIPTION_ENDED",
+        "This subscription period has already ended.",
+      );
+      return;
+    }
+    const before = (subscription.gymIds ?? []).map((id) => id.toHexString());
+    const requested = [
+      ...new Set(parsed.data.gymIds.map((id) => id.toLowerCase())),
+    ];
+    if (requested.length === 0) {
+      sendApiError(res, 400, "INVALID_GYMS", "Select at least one active gym.");
+      return;
+    }
+    const added = requested.filter((id) => !before.includes(id));
+    const removed = before.filter((id) => !requested.includes(id));
+    if (removed.some((id) => !canAccessGym(req.user, id))) {
+      sendApiError(
+        res,
+        403,
+        "GYM_OUT_OF_SCOPE",
+        "A selected gym is outside your scope.",
+      );
+      return;
+    }
+    // Only newly added gyms must be active and in scope; gyms already on the
+    // period are kept even if one has since been deactivated.
+    if (added.length > 0) {
+      const gymCheck = await validateSubscriptionGymIds(added, req.user);
+      if (!gymCheck.ok) {
+        sendGymCheckError(res, gymCheck.reason);
+        return;
+      }
+    }
+    const kept = (subscription.gymIds ?? []).filter((id) =>
+      requested.includes(id.toHexString()),
+    );
+    const next = [...kept, ...added.map((id) => new ObjectId(id))];
+    const updated = await setSubscriptionGymIds(subscriptionId, next);
+    if (!updated) {
+      sendApiError(
+        res,
+        404,
+        "SUBSCRIPTION_NOT_FOUND",
+        "Subscription not found.",
+      );
+      return;
+    }
+    const after = next.map((id) => id.toHexString());
+    await logAudit(
+      req.user,
+      "subscription-gyms-updated",
+      updated.userId.toHexString(),
+      { subscriptionId: subscriptionId.toHexString(), before, after },
+      // Tie the row to a gym only when exactly one gym changed
+      added.length + removed.length === 1
+        ? (added[0] ?? removed[0] ?? null)
+        : null,
+    );
+    res.json({
+      id: updated._id.toHexString(),
+      userId: updated.userId.toHexString(),
+      startsAt: updated.startsAt.toISOString(),
+      endsAt: updated.endsAt.toISOString(),
+      note: updated.note ?? undefined,
+      gymIds: after,
+      createdBy: updated.createdBy,
+      createdAt: updated.createdAt.toISOString(),
+    });
+  }),
+);
+
 adminRouter.get(
   "/users/:id/subscriptions",
-  requireRole("admin", "staff"),
+  requireRole("owner", "admin", "staff"),
   async (req, res) => {
     const targetId = toObjectId(String(req.params.id ?? ""));
     if (!targetId) {
@@ -345,6 +705,7 @@ adminRouter.get(
         startsAt: d.startsAt.toISOString(),
         endsAt: d.endsAt.toISOString(),
         note: d.note ?? undefined,
+        gymIds: (d.gymIds ?? []).map((id) => id.toHexString()),
         createdBy: d.createdBy,
         createdAt: d.createdAt.toISOString(),
       })),
@@ -352,27 +713,20 @@ adminRouter.get(
   },
 );
 
-// Setup wizard: gym settings (admin only)
-adminRouter.get("/settings", requireRole("admin"), async (_req, res) => {
-  const doc = await findGymSettings();
-  const settings: GymSettings = {
-    gymName: doc?.gymName ?? "",
-    location: doc?.location ?? null,
-    capacity: doc?.capacity ?? null,
-    autoExitHours: doc?.autoExitHours ?? 4,
-    sharing: { ...SHARING_DEFAULTS, ...(doc?.sharing ?? {}) },
-    reminders: { ...REMINDER_DEFAULTS, ...(doc?.reminders ?? {}) },
-    legal: { ...LEGAL_DEFAULTS, ...(doc?.legal ?? {}) },
-  };
-  res.json(settings);
-});
-
-const reminderSchema = z.object({
-  enabled: z.boolean(),
-  // Thresholds are not deduplicated or sorted here; the sweep already chooses
-  // the narrowest one. The upper bound is 90: reminders beyond it are pointless.
-  daysBefore: z.array(z.number().int().min(0).max(90)).min(1).max(5),
-});
+// Chain-wide settings (owner only): chain display name and legal documents.
+// Gym-specific settings live under /api/admin/gyms/:gymId/settings.
+adminRouter.get(
+  "/settings",
+  requireRole("owner", "admin"),
+  async (_req, res) => {
+    const doc = await findChainSettings();
+    const settings: ChainSettings = {
+      chainName: doc?.chainName ?? "",
+      legal: { ...LEGAL_DEFAULTS, ...(doc?.legal ?? {}) },
+    };
+    res.json(settings);
+  },
+);
 
 // An empty string means clear: deleting the field in the panel resets the URL
 // to null while the consent checkbox remains visible without a link.
@@ -387,111 +741,42 @@ const legalSchema = z.object({
   version: z.coerce.number().int().min(1).max(1_000_000),
 });
 
-const sharingSchema = z.object({
-  memberMaxSessions: z.number().int().min(1).max(10),
-  staffMaxSessions: z.number().int().min(1).max(20),
-  signalThreshold: z.number().int().min(1).max(20),
-  signalWindowHours: z.number().int().min(1).max(168),
-  qrBlockHours: z.number().int().min(1).max(168),
-});
-
-// The setup wizard may send numeric fields as string form inputs; coerce
-// preserves the behavior of the previous hand-written Number() conversion.
-const gymSettingsSchema = z.object({
-  gymName: z.string().trim().min(1),
-  location: z
-    .object({
-      lat: z.coerce.number().finite(),
-      lng: z.coerce.number().finite(),
-      // Bounded, not merely positive. Consumer GPS is accurate to tens of
-      // metres and worse indoors, so a radius below 100 m denies members who
-      // are genuinely at the gate, and an unbounded one silently disables the
-      // check that the static turnstile QR depends on.
-      radiusM: z.coerce
-        .number()
-        .int()
-        .min(GEOFENCE_RADIUS_M_MIN)
-        .max(GEOFENCE_RADIUS_M_MAX)
-        .default(GEOFENCE_RADIUS_M_DEFAULT),
-    })
-    .nullish(),
-  capacity: z.coerce.number().finite().positive().nullish(),
-  autoExitHours: z.coerce.number().int().min(1).max(48).nullish(),
-  // Phase 6: sharing-detection settings are updated only when present in the
-  // request body; silently overwriting configured values must be avoided.
-  sharing: sharingSchema.optional(),
-  // Same rationale as sharing: preserve the existing setting when absent.
-  reminders: reminderSchema.optional(),
-  // Same rationale as sharing: preserve existing legal document URLs when absent.
+const chainSettingsSchema = z.object({
+  chainName: z.string().trim().min(1),
+  // Preserve the existing legal document URLs when absent.
   legal: legalSchema.optional(),
 });
 
-// Clients interpret the code, not the message; each field keeps its stable code.
-const SETTINGS_FIELD_ERRORS: Record<string, [ApiErrorCode, string]> = {
-  gymName: ["GYM_NAME_REQUIRED", "Gym name is required."],
-  location: ["INVALID_LOCATION", "Invalid location information."],
-  capacity: ["INVALID_CAPACITY", "Invalid capacity."],
-  autoExitHours: ["INVALID_AUTO_EXIT", "Invalid automatic exit duration."],
-  sharing: ["INVALID_SHARING_SETTINGS", "Invalid sharing detection settings."],
-  reminders: [
-    "INVALID_REMINDER_SETTINGS",
-    "Invalid renewal reminder settings.",
-  ],
-  legal: ["INVALID_LEGAL_SETTINGS", "Invalid legal document settings."],
-};
-
 adminRouter.put(
   "/settings",
-  requireRole("admin"),
+  requireRole("owner"),
   authed(async (req, res) => {
-    const parsed = gymSettingsSchema.safeParse(req.body ?? {});
+    const parsed = chainSettingsSchema.safeParse(req.body ?? {});
     if (!parsed.success) {
       const field = String(parsed.error.issues[0]?.path[0] ?? "");
-      const [code, message] = SETTINGS_FIELD_ERRORS[field] ?? [
-        "GYM_NAME_REQUIRED",
-        "Gym name is required.",
-      ];
-      sendApiError(res, 400, code, message);
+      if (field === "legal") {
+        sendApiError(
+          res,
+          400,
+          "INVALID_LEGAL_SETTINGS",
+          "Invalid legal document settings.",
+        );
+      } else {
+        sendApiError(res, 400, "GYM_NAME_REQUIRED", "Chain name is required.");
+      }
       return;
     }
-    const {
-      gymName,
-      location,
-      capacity,
-      autoExitHours,
-      sharing,
-      reminders,
-      legal,
-    } = parsed.data;
+    const { chainName, legal } = parsed.data;
+    const setDoc: Partial<Omit<ChainSettingsDocument, "_id">> = { chainName };
+    if (legal !== undefined) setDoc.legal = legal;
 
-    const setDoc: Partial<Omit<GymSettingsDocument, "_id">> = {
-      gymName,
-      location: location ?? null,
-      capacity: capacity ?? null,
-      autoExitHours: autoExitHours ?? 4,
-    };
-    if (sharing !== undefined) {
-      setDoc.sharing = sharing;
-    }
-    if (reminders !== undefined) {
-      setDoc.reminders = reminders;
-    }
-    if (legal !== undefined) {
-      setDoc.legal = legal;
-    }
-
-    await gymSettingsCollection().updateOne(
-      { _id: GYM_SETTINGS_ID },
+    await chainSettingsCollection().updateOne(
+      { _id: CHAIN_SETTINGS_ID },
       { $set: setDoc },
       { upsert: true },
     );
     await logAudit(req.user, "settings-updated", undefined, {
-      gymName,
-      autoExitHours: setDoc.autoExitHours,
-      ...(sharing !== undefined ? { sharing } : {}),
-      // Enabling or disabling reminders determines whether members receive
-      // email, so it must appear in the audit log.
-      ...(reminders !== undefined ? { reminders } : {}),
+      chainName,
       // The consent-text version presented is evidence in a legal dispute, so
       // changes must be recorded in the audit log.
       ...(legal !== undefined ? { legal } : {}),
@@ -500,25 +785,12 @@ adminRouter.put(
   }),
 );
 
-// Overview dashboard KPIs (staff + admin)
-// Counts use the same helpers as the reports module: if Renewals Due in the
-// overview differs from the reports page, there is no clear source of truth.
-adminRouter.get("/stats", requireRole("admin", "staff"), async (_req, res) => {
-  const now = new Date();
-  const [activeMembers, renewalsDue] = await Promise.all([
-    countActiveMembers(db, now),
-    countRenewalsDue(db, now),
-  ]);
-  const body: AdminStats = { activeMembers, renewalsDue };
-  res.json(body);
-});
-
 /**
  * Converts findPage's malformed-cursor error to 400 and leaves other errors to
  * the terminal error handler. Express 5 catches rejected promises in async
  * routes, so rethrowing is safe.
  */
-function toInvalidCursorResponse(res: Response) {
+export function toInvalidCursorResponse(res: Response) {
   return (err: unknown): null => {
     if (err instanceof InvalidCursorError) {
       sendApiError(res, 400, "INVALID_REQUEST", "Invalid pagination cursor.");
@@ -530,64 +802,19 @@ function toInvalidCursorResponse(res: Response) {
 
 const auditQuerySchema = pageQuerySchema.extend({
   action: z.string().min(1).max(64).optional(),
+  gymId: z.string().min(1).max(64).optional(),
   from: z.coerce.date().optional(),
   to: z.coerce.date().optional(),
 });
 
-// Audit log viewer (admin only) — cursor pagination + action/date filters
-adminRouter.get("/audit", requireRole("admin"), async (req, res) => {
-  const query = auditQuerySchema.safeParse(req.query);
-  if (!query.success) {
-    sendApiError(res, 400, "INVALID_REQUEST", "Invalid list query parameters.");
-    return;
-  }
-  const { cursor, limit, action, from, to } = query.data;
-
-  const filters: Record<string, unknown>[] = [];
-  if (action) filters.push({ action });
-  const range = dateRangeFilter("at", from, to);
-  if (Object.keys(range).length > 0) filters.push(range);
-
-  const page = await findPage(db.collection("audit_logs"), {
-    timeField: "at",
-    filter: filters.length > 0 ? { $and: filters } : {},
-    cursor,
-    limit,
-  }).catch(toInvalidCursorResponse(res));
-  if (!page) return;
-
-  const body: Page<AuditLogEntry> = {
-    items: page.docs.map((d) => ({
-      id: d._id.toString(),
-      actorId: d.actorId,
-      actorEmail: d.actorEmail,
-      action: d.action,
-      targetId: d.targetId ?? undefined,
-      details: d.details ?? undefined,
-      at: (d.at as Date).toISOString(),
-    })),
-    nextCursor: page.nextCursor,
-  };
-  res.json(body);
-});
-
-const entryEventQuerySchema = pageQuerySchema.extend({
-  deviceId: z.string().min(1).max(64).optional(),
-  userId: z.string().min(1).max(64).optional(),
-  // Query parameters always arrive as strings; z.coerce.boolean() also turns
-  // "false" into true, so use an explicit enum.
-  allowed: z.enum(["true", "false"]).optional(),
-  from: z.coerce.date().optional(),
-  to: z.coerce.date().optional(),
-});
-
-// Phase 4: gate entry events (allow/deny) — staff + admin
-// Cursor pagination + device/member/result/date filters
+// Audit log viewer — cursor pagination + action/gym/date filters. Owner sees
+// everything; an admin sees only rows whose gymId is in their scope (chain-level
+// rows are hidden).
 adminRouter.get(
-  "/entry-events",
-  requireRole("admin", "staff"),
-  async (req, res) => {
-    const query = entryEventQuerySchema.safeParse(req.query);
+  "/audit",
+  requireRole("owner", "admin"),
+  authed(async (req, res) => {
+    const query = auditQuerySchema.safeParse(req.query);
     if (!query.success) {
       sendApiError(
         res,
@@ -597,16 +824,30 @@ adminRouter.get(
       );
       return;
     }
-    const { cursor, limit, deviceId, userId, allowed, from, to } = query.data;
+    const { cursor, limit, action, gymId, from, to } = query.data;
 
     const filters: Record<string, unknown>[] = [];
-    if (deviceId) filters.push({ deviceId });
-    if (userId) filters.push({ userId });
-    if (allowed) filters.push({ allowed: allowed === "true" });
+    if (action) filters.push({ action });
+    if (req.user.role === "owner") {
+      if (gymId) filters.push({ gymId });
+    } else if (gymId) {
+      if (!req.user.gymIds.includes(gymId)) {
+        sendApiError(
+          res,
+          403,
+          "GYM_OUT_OF_SCOPE",
+          "This gym is outside your scope.",
+        );
+        return;
+      }
+      filters.push({ gymId });
+    } else {
+      filters.push({ gymId: { $in: req.user.gymIds } });
+    }
     const range = dateRangeFilter("at", from, to);
     if (Object.keys(range).length > 0) filters.push(range);
 
-    const page = await findPage(db.collection("entry_events"), {
+    const page = await findPage(db.collection("audit_logs"), {
       timeField: "at",
       filter: filters.length > 0 ? { $and: filters } : {},
       cursor,
@@ -614,23 +855,12 @@ adminRouter.get(
     }).catch(toInvalidCursorResponse(res));
     if (!page) return;
 
-    const body: Page<EntryEvent> = {
-      items: page.docs.map((d) => ({
-        id: d._id.toString(),
-        deviceId: d.deviceId,
-        deviceName: d.deviceName,
-        userId: d.userId ?? null,
-        memberName: d.memberName ?? null,
-        allowed: d.allowed,
-        reason: d.reason ?? null,
-        at: (d.at as Date).toISOString(),
-        // Absent on events recorded before distance was tracked.
-        distanceM: typeof d.distanceM === "number" ? d.distanceM : null,
-      })),
+    const body: Page<AuditLogEntry> = {
+      items: page.docs.map(toAuditLogEntry),
       nextCursor: page.nextCursor,
     };
     res.json(body);
-  },
+  }),
 );
 
 const deletionRequestQuerySchema = pageQuerySchema.extend({
@@ -641,7 +871,7 @@ const deletionRequestQuerySchema = pageQuerySchema.extend({
 // Cursor pagination + status filter
 adminRouter.get(
   "/deletion-requests",
-  requireRole("admin"),
+  requireRole("owner"),
   async (req, res) => {
     const query = deletionRequestQuerySchema.safeParse(req.query);
     if (!query.success) {
@@ -683,7 +913,7 @@ adminRouter.get(
 // Data protection: approve deletion — permanently deletes the member and all related data
 adminRouter.post(
   "/deletion-requests/:id/approve",
-  requireRole("admin"),
+  requireRole("owner"),
   authed(async (req, res) => {
     const requestId = toObjectId(String(req.params.id ?? ""));
     if (!requestId) {
@@ -777,7 +1007,7 @@ adminRouter.post(
       FP_CHURN_KEY(targetIdStr),
       `og:mfa-fail:${targetIdStr}`,
     ]);
-    await markOutside(targetIdStr);
+    await markOutsideEverywhere(targetIdStr);
     // Historical gate records are kept for statistics but must not contain
     // personal data.
     await db
@@ -811,7 +1041,7 @@ adminRouter.post(
 // Data protection: reject a deletion request
 adminRouter.post(
   "/deletion-requests/:id/reject",
-  requireRole("admin"),
+  requireRole("owner"),
   authed(async (req, res) => {
     const requestId = toObjectId(String(req.params.id ?? ""));
     if (!requestId) {

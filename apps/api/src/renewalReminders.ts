@@ -2,7 +2,8 @@ import { randomUUID } from "node:crypto";
 import type { ReminderConfig } from "@opengym/shared";
 import { ObjectId } from "mongodb";
 import type { Db } from "mongodb";
-import { db, findGymSettings } from "./db.js";
+import { db, gymCollection } from "./db.js";
+import { reminderConfigOf, type GymDoc } from "./gyms.js";
 import { acquireLock, releaseLock } from "./redis.js";
 import {
   remainingDays,
@@ -10,25 +11,12 @@ import {
   sendRenewalReminder,
 } from "./renewals.js";
 
-export const REMINDER_DEFAULTS: ReminderConfig = {
-  // Starts disabled: an upgraded installation must not send bulk email to
-  // members until the operator explicitly enables it.
-  enabled: false,
-  daysBefore: [7, 1],
-};
+export { REMINDER_DEFAULTS } from "./gyms.js";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const SWEEP_INTERVAL_MS = 60 * 60 * 1000;
 const SWEEP_LOCK_KEY = "og:lock:renewal-reminder-sweep";
 const SWEEP_LOCK_LEASE_MS = 10 * 60 * 1000;
-
-/** Merges reminder settings in settings._id: "gym" with defaults. */
-export async function findReminderConfig(
-  database: Db = db,
-): Promise<ReminderConfig> {
-  const doc = await findGymSettings(database);
-  return { ...REMINDER_DEFAULTS, ...(doc?.reminders ?? {}) };
-}
 
 export interface SweepReport {
   /** No action is taken when reminders are disabled. */
@@ -62,7 +50,7 @@ export async function runRenewalReminderSweep(
   now = new Date(),
 ): Promise<SweepReport> {
   const report: SweepReport = {
-    skipped: false,
+    skipped: true,
     scanned: 0,
     sent: 0,
     alreadySent: 0,
@@ -70,17 +58,35 @@ export async function runRenewalReminderSweep(
     failed: 0,
   };
 
-  const settingsDoc = await findGymSettings(database);
-  const config: ReminderConfig = {
-    ...REMINDER_DEFAULTS,
-    ...(settingsDoc?.reminders ?? {}),
-  };
-  if (!config.enabled || config.daysBefore.length === 0) {
-    report.skipped = true;
-    return report;
+  // Each active gym has its own reminder settings. Reminder bookkeeping is per
+  // subscription, so a period listing several gyms is reminded once only.
+  const gyms = await gymCollection(database)
+    .find({ active: true })
+    .sort({ createdAt: 1, _id: 1 })
+    .toArray();
+  for (const gym of gyms) {
+    const config = reminderConfigOf(gym);
+    if (!config.enabled || config.daysBefore.length === 0) continue;
+    report.skipped = false;
+    await sweepGym(database, gym, config, now, report);
   }
 
-  const gymName = settingsDoc?.gymName?.trim() || "OpenGym";
+  if (report.sent > 0 || report.failed > 0) {
+    console.info(
+      `[reminders] ${report.sent} sent, ${report.failed} failed, ${report.scanned} scanned`,
+    );
+  }
+  return report;
+}
+
+async function sweepGym(
+  database: Db,
+  gym: GymDoc,
+  config: ReminderConfig,
+  now: Date,
+  report: SweepReport,
+): Promise<void> {
+  const gymName = gym.name.trim() || "OpenGym";
   // Ascending order: if a subscription has crossed multiple thresholds, use the
   // narrowest one (for example, "1 day left") because it reflects the correct urgency.
   const thresholds = [...new Set(config.daysBefore)].sort((a, b) => a - b);
@@ -90,6 +96,7 @@ export async function runRenewalReminderSweep(
   // Do not collect results with toArray: as member count grows, so does the list
   // loaded into memory at once; streaming through the cursor uses constant memory.
   const cursor = database.collection("subscriptions").aggregate<DueRow>([
+    { $match: { gymIds: gym._id } },
     { $sort: { userId: 1, endsAt: -1, _id: -1 } },
     {
       $group: {
@@ -178,13 +185,6 @@ export async function runRenewalReminderSweep(
       console.error("renewal reminder could not be sent:", err);
     }
   }
-
-  if (report.sent > 0 || report.failed > 0) {
-    console.info(
-      `[reminders] ${report.sent} sent, ${report.failed} failed, ${report.scanned} scanned`,
-    );
-  }
-  return report;
 }
 
 export interface RenewalReminderScheduler {
