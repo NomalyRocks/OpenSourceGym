@@ -40,6 +40,10 @@ const codeMessages = {
     "You are not recorded as having entered the gym, so the exit turnstile cannot open. Please contact reception.",
   GYM_LOCATION_UNSET:
     "Entry is unavailable because the gym location is not configured. Please contact reception.",
+  NOT_ALLOWED_AT_GYM:
+    "Your membership does not include this gym. Please contact reception.",
+  GYM_INACTIVE:
+    "This gym is currently closed for entry. Please contact reception.",
   LOCAL_FILE_READ_FAILED: "The selected photo could not be read.",
   DELETION_MEMBER_ONLY: "Only member accounts can create a deletion request.",
   DELETION_ALREADY_PENDING: "You already have a pending deletion request.",

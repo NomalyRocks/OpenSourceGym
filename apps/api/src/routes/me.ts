@@ -8,17 +8,13 @@ import type {
   MyBodyMetrics,
   MyDeletionRequest,
   MyEntriesResponse,
+  MyOccupancyResponse,
   MySubscription,
   MyWeightHistoryResponse,
   OccupancyResponse,
   ProfilePhotoResponse,
 } from "@opengym/shared";
-import {
-  db,
-  findGymSettings,
-  isDuplicateKeyError,
-  userCollection,
-} from "../db.js";
+import { db, isDuplicateKeyError, userCollection } from "../db.js";
 import {
   AGE_RANGE,
   buildBodyMetricsUpdate,
@@ -41,13 +37,24 @@ import { sendApiError } from "../apiError.js";
 import { acquireLock, redis, releaseLock } from "../redis.js";
 import { authed, requireRole, type AuthedRequest } from "../middleware.js";
 import { distanceMeters, evaluateGeofence } from "../geo.js";
+import { isImpossibleTravel } from "../travel.js";
 import { verifyGateQr } from "../gateQr.js";
 import {
+  checkEntrySubscription,
   getSubscriptionSummary,
-  hasActiveSubscription,
+  listActiveSubscriptionGymIds,
 } from "../subscriptions.js";
+import {
+  canAccessGym,
+  findGym,
+  findGymsByIds,
+  listActiveGyms,
+  type GymDoc,
+} from "../gyms.js";
 import { isDeviceOnline, openDevice } from "../gateway.js";
 import {
+  closeInsideRecordsElsewhere,
+  hasAutoExitMarker,
   getOccupancy,
   hasInsideRecord,
   isInside,
@@ -71,7 +78,7 @@ export const meRouter: Router = Router();
 // Current profile of the signed-in user (role/flags are read fresh from the DB)
 meRouter.get(
   "/profile",
-  requireRole("admin", "staff", "member"),
+  requireRole("owner", "admin", "staff", "member"),
   authed((req, res) => {
     res.json(req.user);
   }),
@@ -161,7 +168,7 @@ meRouter.delete(
 // US-4: member's own subscription status (mobile home screen)
 meRouter.get(
   "/subscription",
-  requireRole("admin", "staff", "member"),
+  requireRole("owner", "admin", "staff", "member"),
   authed(async (req, res) => {
     const body: MySubscription = await getSubscriptionSummary(req.user.id);
     res.json(body);
@@ -184,7 +191,7 @@ const myEntriesQuerySchema = z.object({
  */
 meRouter.get(
   "/entries",
-  requireRole("admin", "staff", "member"),
+  requireRole("owner", "admin", "staff", "member"),
   authed(async (req, res) => {
     const query = myEntriesQuerySchema.safeParse(req.query);
     if (!query.success) {
@@ -254,7 +261,7 @@ meRouter.get(
 // Weight layer for the mobile calendar: history appended whenever weightKg changes.
 meRouter.get(
   "/weight-history",
-  requireRole("admin", "staff", "member"),
+  requireRole("owner", "admin", "staff", "member"),
   authed(async (req, res) => {
     const entries = await listWeightHistory(req.user.id);
     const body: MyWeightHistoryResponse = {
@@ -301,7 +308,7 @@ async function isBodyMetricsRateLimited(userId: string): Promise<boolean> {
 
 meRouter.patch(
   "/body-metrics",
-  requireRole("admin", "staff", "member"),
+  requireRole("owner", "admin", "staff", "member"),
   authed(async (req, res) => {
     const parsed = bodyMetricsSchema.safeParse(req.body);
     if (!parsed.success) {
@@ -468,6 +475,7 @@ async function recordLocationDrift(
   req: AuthedRequest,
   lat: number,
   lng: number,
+  gymId: string,
 ): Promise<void> {
   const fingerprintId = resolveDeviceFingerprint(req);
   const locKey = QR_LOC_KEY(req.user.id);
@@ -486,11 +494,16 @@ async function recordLocationDrift(
     ) {
       const distanceM = distanceMeters(prev.lat, prev.lng, lat, lng);
       if (distanceM > LOCATION_DRIFT_THRESHOLD_M) {
-        await recordSharingSignal(req.user, "location-inconsistency", {
-          distanceM,
-          deviceId: fingerprintId,
-          prevDeviceId: prev.d,
-        });
+        await recordSharingSignal(
+          req.user,
+          "location-inconsistency",
+          {
+            distanceM,
+            deviceId: fingerprintId,
+            prevDeviceId: prev.d,
+          },
+          gymId,
+        );
       }
     }
   }
@@ -510,13 +523,13 @@ interface GeofenceResult {
   distanceM: number | null;
 }
 
-/** Loads the configured gym location and applies {@link evaluateGeofence} to it. */
-async function checkGymGeofence(
+/** Applies {@link evaluateGeofence} to the scanned gym's configured location. */
+function checkGymGeofence(
+  gym: GymDoc | null,
   lat: number | undefined,
   lng: number | undefined,
-): Promise<GeofenceResult> {
-  const settings = await findGymSettings();
-  const { verdict, distanceM } = evaluateGeofence(settings?.location, lat, lng);
+): GeofenceResult {
+  const { verdict, distanceM } = evaluateGeofence(gym?.location, lat, lng);
   return { reject: verdict === "OK" ? null : verdict, distanceM };
 }
 
@@ -530,10 +543,10 @@ async function checkGymGeofence(
  * from the member's side — they cannot scan out, so refusing their entry would
  * lock them out of their own gym until `autoExitHours` elapses.
  */
-async function hasUsableExitDevice(): Promise<boolean> {
+async function hasUsableExitDevice(gymId: string): Promise<boolean> {
   const exitDevices = await db
     .collection("devices")
-    .find({ direction: "out" }, { projection: { _id: 1 } })
+    .find({ gymId, direction: "out" }, { projection: { _id: 1 } })
     .toArray();
   return exitDevices.some((device) => isDeviceOnline(device._id.toString()));
 }
@@ -553,9 +566,10 @@ async function hasUsableExitDevice(): Promise<boolean> {
  * regardless of which QRs the attacker holds.
  */
 async function checkAntiPassback(
+  gymId: string,
   userId: string,
 ): Promise<{ reason: GateRejectCode; message: string } | null> {
-  if ((await hasUsableExitDevice()) && (await isInside(userId))) {
+  if ((await hasUsableExitDevice(gymId)) && (await isInside(gymId, userId))) {
     return {
       reason: "ALREADY_INSIDE",
       message:
@@ -563,8 +577,9 @@ async function checkAntiPassback(
     };
   }
 
-  // Keyed per member, not per device, so a second entry gate cannot reset it.
-  const fresh = await redis.set(entryCooldownKey(userId), "1", {
+  // Keyed per member and gym, not per device, so a second entry gate of the
+  // same gym cannot reset it.
+  const fresh = await redis.set(entryCooldownKey(gymId, userId), "1", {
     condition: "NX",
     expiration: { type: "EX", value: ENTRY_COOLDOWN_SECONDS },
   });
@@ -580,22 +595,25 @@ async function checkAntiPassback(
     : null;
 }
 
-const entryCooldownKey = (userId: string): string =>
-  `og:gate-cooldown:${userId}`;
+const entryCooldownKey = (gymId: string, userId: string): string =>
+  `og:gate-cooldown:${gymId}:${userId}`;
 
 /**
  * Undoes the cooldown claimed by {@link checkAntiPassback} when the gate never
  * actually opened. Without this an offline turnstile would cost the member a
  * full cooldown for an entry they never made.
  */
-async function clearEntryCooldown(userId: string): Promise<void> {
-  await redis.del(entryCooldownKey(userId));
+async function clearEntryCooldown(
+  gymId: string,
+  userId: string,
+): Promise<void> {
+  await redis.del(entryCooldownKey(gymId, userId));
 }
 
 // US-7: member scans the static QR attached to the gate to request entry
 meRouter.post(
   "/gate-scan",
-  requireRole("admin", "staff", "member"),
+  requireRole("owner", "admin", "staff", "member"),
   authed(async (req, res) => {
     const parsed = gateScanSchema.safeParse(req.body ?? {});
     if (!parsed.success) {
@@ -621,6 +639,7 @@ meRouter.post(
       status = 403,
     ): void => {
       enqueueEntryEvent({
+        gymId: null,
         deviceId: "",
         deviceName: "",
         userId: req.user.id,
@@ -663,12 +682,19 @@ meRouter.post(
       .findOne({ _id: new ObjectId(deviceId) });
     const deviceName = device ? (device.name as string) : "";
     const direction = (device?.direction as "in" | "out" | undefined) ?? "in";
+    // The QR resolves device -> gym. A device without a resolvable gym is as
+    // good as unregistered.
+    const gym =
+      device && typeof device.gymId === "string"
+        ? await findGym(device.gymId)
+        : null;
+    const gymId = gym ? gym._id.toHexString() : null;
 
     // Resolved up front rather than at the geofence check, so that an early
     // denial (unknown device, sharing block, no subscription) still records
     // where the attempt came from. Otherwise those rows are indistinguishable
     // from a scan that carried no coordinates at all.
-    const geofence = await checkGymGeofence(lat, lng);
+    const geofence = checkGymGeofence(gym, lat, lng);
     const scanDistanceM = geofence.distanceM;
 
     // Every denial produces both a response and an entry_events audit record.
@@ -682,6 +708,7 @@ meRouter.post(
       status = 403,
     ): void => {
       enqueueEntryEvent({
+        gymId,
         deviceId,
         deviceName,
         userId: req.user.id,
@@ -695,11 +722,18 @@ meRouter.post(
       sendApiError(res, status, reason, message);
     };
 
-    if (!device) {
+    if (!device || !gym || !gymId) {
       deny(
         "UNKNOWN_DEVICE",
         "This gate is no longer registered. Contact reception.",
       );
+      return;
+    }
+
+    // A deactivated gym refuses every ENTRY scan; exits are never refused, so
+    // nobody is trapped inside when the owner deactivates a gym.
+    if (direction === "in" && !gym.active) {
+      deny("GYM_INACTIVE", "This gym is currently closed. Contact reception.");
       return;
     }
 
@@ -722,7 +756,7 @@ meRouter.post(
       // The signal is recorded either way; only entry is refused. A spoofed
       // location cannot fake someone OUT of a building they are standing in, so
       // refusing the exit would only trap them.
-      await recordSharingSignal(req.user, "mock-location", { lat, lng });
+      await recordSharingSignal(req.user, "mock-location", { lat, lng }, gymId);
       if (direction === "in") {
         deny(
           "MOCK_LOCATION",
@@ -733,16 +767,28 @@ meRouter.post(
     }
 
     // Do not check subscriptions on exit; a member with an expired subscription must be able to leave.
-    if (direction === "in" && !(await hasActiveSubscription(req.user.id))) {
-      deny(
-        "NO_ACTIVE_SUBSCRIPTION",
-        "You do not have an active subscription. Contact gym reception.",
-      );
-      return;
+    // Staff pass the subscription check at their own gyms (the owner at every
+    // gym): they still go through the QR flow, geofence and anti-passback.
+    if (direction === "in" && !canAccessGym(req.user, gymId)) {
+      const subscription = await checkEntrySubscription(req.user.id, gymId);
+      if (subscription === "none") {
+        deny(
+          "NO_ACTIVE_SUBSCRIPTION",
+          "You do not have an active subscription. Contact gym reception.",
+        );
+        return;
+      }
+      if (subscription === "other-gym") {
+        deny(
+          "NOT_ALLOWED_AT_GYM",
+          "Your subscription does not include this gym. Contact gym reception.",
+        );
+        return;
+      }
     }
 
     if (typeof lat === "number" && typeof lng === "number") {
-      await recordLocationDrift(req, lat, lng);
+      await recordLocationDrift(req, lat, lng, gymId);
     }
 
     // The geofence guards ENTRY only. It defends against someone opening the
@@ -756,12 +802,17 @@ meRouter.post(
     }
 
     if (direction === "in") {
-      const passback = await checkAntiPassback(req.user.id);
+      const passback = await checkAntiPassback(gymId, req.user.id);
       if (passback) {
         deny(passback.reason, passback.message);
         return;
       }
-    } else if (!(await hasInsideRecord(req.user.id))) {
+    } else if (
+      !(await hasInsideRecord(gymId, req.user.id)) &&
+      // A record closed by an entry at another gym does not revoke the right
+      // to leave: "exit is never refused" for someone who may still be inside.
+      !(await hasAutoExitMarker(gymId, req.user.id))
+    ) {
       // Symmetric anti-passback on the way out. Safe to refuse — and only
       // refused — when there is no record of the member ever coming in, so it
       // cannot trap anyone: someone with no entry record is by definition not in
@@ -792,7 +843,7 @@ meRouter.post(
       // The gate did not open; release the lock and the anti-passback cooldown
       // so the member can retry as soon as the connection returns.
       await releaseLock(lockKey, lockToken);
-      if (direction === "in") await clearEntryCooldown(req.user.id);
+      if (direction === "in") await clearEntryCooldown(gymId, req.user.id);
       deny("DEVICE_OFFLINE", "The gate is offline. Contact reception.");
       return;
     }
@@ -801,16 +852,47 @@ meRouter.post(
     // that is physically open. An occupancy write that fails here must not turn
     // that into a 500 with no audit record — worse, on exit a failed markOutside
     // would leave the member flagged inside and refused re-entry for hours.
+    let autoExitedGymId: string | null = null;
     try {
       if (direction === "out") {
-        await markOutside(req.user.id);
+        await markOutside(gymId, req.user.id);
       } else {
-        await markInside(req.user.id);
+        // A member is inside at most one gym: entering here closes any record
+        // elsewhere, and an implausible hop between the two gyms is a sharing
+        // signal (the entry itself is not refused).
+        const closed = await closeInsideRecordsElsewhere(req.user.id, gymId);
+        await markInside(gymId, req.user.id);
+        const previous = closed[0];
+        if (previous) {
+          autoExitedGymId = previous.gymId;
+          const previousGym = await findGym(previous.gymId);
+          const travel = isImpossibleTravel(
+            previousGym?.location ?? null,
+            gym.location ?? null,
+            distanceMeters,
+            Date.now() - previous.enteredAt,
+          );
+          if (travel.impossible) {
+            await recordSharingSignal(
+              req.user,
+              "location-inconsistency",
+              {
+                fromGymId: previous.gymId,
+                toGymId: gymId,
+                distanceM: travel.distanceM,
+                speedKmh: travel.speedKmh,
+              },
+              gymId,
+            );
+          }
+        }
       }
     } catch (error) {
       console.error("occupancy update failed after the gate opened:", error);
     }
     enqueueEntryEvent({
+      gymId,
+      autoExitedGymId,
       deviceId,
       deviceName,
       userId: req.user.id,
@@ -832,27 +914,47 @@ meRouter.post(
   }),
 );
 
-// Phase 5 — US-4: live gym occupancy
+// Phase 5 — US-4: live occupancy of every active gym the caller may enter:
+// the gyms on a member's active subscription, an admin/staff account's own
+// gyms, or (owner) every active gym.
 meRouter.get(
   "/occupancy",
-  requireRole("admin", "staff", "member"),
-  async (_req, res) => {
-    const inside = await getOccupancy();
-    const settings = await findGymSettings();
-    const capacity = settings?.capacity ?? null;
-    const body: OccupancyResponse = {
-      inside,
-      capacity,
-      ratio: capacity ? Math.round((inside / capacity) * 100) / 100 : null,
-    };
+  requireRole("owner", "admin", "staff", "member"),
+  authed(async (req, res) => {
+    let gyms: GymDoc[];
+    if (req.user.role === "owner") {
+      gyms = await listActiveGyms();
+    } else if (req.user.role === "member") {
+      const ids = await listActiveSubscriptionGymIds(req.user.id);
+      gyms = (await findGymsByIds(ids.map((id) => id.toHexString()))).filter(
+        (gym) => gym.active,
+      );
+    } else {
+      gyms = (await findGymsByIds(req.user.gymIds)).filter((gym) => gym.active);
+    }
+    const items: OccupancyResponse[] = await Promise.all(
+      gyms.map(async (gym) => {
+        const gymId = gym._id.toHexString();
+        const inside = await getOccupancy(gymId);
+        const capacity = gym.capacity ?? null;
+        return {
+          gymId,
+          gymName: gym.name,
+          inside,
+          capacity,
+          ratio: capacity ? Math.round((inside / capacity) * 100) / 100 : null,
+        };
+      }),
+    );
+    const body: MyOccupancyResponse = { gyms: items };
     res.json(body);
-  },
+  }),
 );
 
 // Phase 5 — Data protection: member's own account deletion request status
 meRouter.get(
   "/deletion-request",
-  requireRole("admin", "staff", "member"),
+  requireRole("owner", "admin", "staff", "member"),
   authed(async (req, res) => {
     const latest = await db
       .collection("deletion_requests")
@@ -880,7 +982,7 @@ meRouter.get(
 // Data protection: create an account deletion request — members may request only for their own account
 meRouter.post(
   "/deletion-request",
-  requireRole("admin", "staff", "member"),
+  requireRole("owner", "admin", "staff", "member"),
   authed(async (req, res) => {
     if (req.user.role !== "member") {
       sendApiError(
@@ -938,7 +1040,7 @@ meRouter.post(
 // Data protection: withdraw a pending deletion request
 meRouter.delete(
   "/deletion-request",
-  requireRole("admin", "staff", "member"),
+  requireRole("owner", "admin", "staff", "member"),
   authed(async (req, res) => {
     const result = await db.collection("deletion_requests").deleteOne({
       userId: new ObjectId(req.user.id),
