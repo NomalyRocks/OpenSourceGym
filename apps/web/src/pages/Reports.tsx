@@ -1,11 +1,13 @@
 import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { PageHeader } from "../components/PageHeader";
 import type { EntryTrend, ReportSummary } from "@opengym/shared";
 import { api, isAbortError } from "../lib/api";
 import { errorMessage } from "../i18n/errors";
 import { dateLocale } from "../i18n/format";
 import { dateInputValue, rangeBounds } from "../lib/dateRange";
 import { useProfile } from "../lib/profile";
+import { useGymApi } from "../lib/gyms";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -71,6 +73,7 @@ function TrendChart({ trend }: { trend: EntryTrend }) {
 
 export function Reports() {
   const { t, i18n } = useTranslation();
+  const gymApi = useGymApi();
   const locale = dateLocale(i18n.resolvedLanguage);
   const { profile } = useProfile();
   const today = dateInputValue(new Date());
@@ -104,8 +107,8 @@ export function Reports() {
       const query = new URLSearchParams(bounds).toString();
       try {
         const [nextSummary, nextTrend] = await Promise.all([
-          api<ReportSummary>(`/api/admin/reports/summary?${query}`, { signal }),
-          api<EntryTrend>(`/api/admin/reports/entry-trend?${query}`, {
+          api<ReportSummary>(gymApi(`/reports/summary?${query}`), { signal }),
+          api<EntryTrend>(gymApi(`/reports/entry-trend?${query}`), {
             signal,
           }),
         ]);
@@ -122,7 +125,7 @@ export function Reports() {
         if (!signal.aborted) setLoading(false);
       }
     },
-    [applied, t],
+    [applied, t, gymApi],
   );
 
   useEffect(() => {
@@ -141,14 +144,19 @@ export function Reports() {
   const bounds = rangeBounds(applied.from, applied.to);
   const exportHref = (dataset: string) =>
     bounds
-      ? `/api/admin/reports/export?${new URLSearchParams({ dataset, ...bounds }).toString()}`
+      ? gymApi(
+          `/reports/export?${new URLSearchParams({ dataset, ...bounds }).toString()}`,
+        )
       : undefined;
 
   const number = (value: number) => new Intl.NumberFormat(locale).format(value);
 
   return (
     <div className="stagger">
-      <h1>{t("Reports")}</h1>
+      <PageHeader
+        title={t("Reports")}
+        subtitle={t("Membership and entry statistics for a date range.")}
+      />
 
       <div className="panel">
         <div className="row" style={{ alignItems: "flex-end", gap: 16 }}>
@@ -245,7 +253,7 @@ export function Reports() {
         {trend && <TrendChart trend={trend} />}
       </div>
 
-      {profile?.role === "admin" && bounds && (
+      {(profile?.role === "admin" || profile?.role === "owner") && bounds && (
         <div className="panel">
           <h2>{t("Export")}</h2>
           <p className="hint" style={{ marginBottom: 14 }}>

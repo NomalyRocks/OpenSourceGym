@@ -258,6 +258,12 @@ const tr = {
   "How long the automatic block remains active.":
     "Otomatik engelin ne kadar süreceği.",
   Save: "Kaydet",
+  "Edit gyms": "Salonları düzenle",
+  "Subscription gyms updated.": "Aboneliğin salonları güncellendi.",
+  "Could not update the gyms.": "Salonlar güncellenemedi.",
+  "This subscription period has already ended.":
+    "Bu abonelik dönemi sona ermiş.",
+  "Subscription not found.": "Abonelik bulunamadı.",
   "Settings saved.": "Ayarlar kaydedildi.",
   Actor: "Kim",
   Details: "Detay",
@@ -420,6 +426,98 @@ const tr = {
   "Data processing notice URL": "Veri işleme bildirimi adresi",
   "Privacy policy URL": "Gizlilik sözleşmesi adresi",
   "Document version": "Metin sürümü",
+  Owner: "Zincir sahibi",
+  "All gyms": "Tüm salonlar",
+  Gyms: "Salonlar",
+  Gym: "Salon",
+  "Staff assignment": "Personel atama",
+  "Chain settings": "Zincir ayarları",
+  "Chain name": "Zincir adı",
+  "Add gym": "Salon ekle",
+  Rename: "Yeniden adlandır",
+  Deactivate: "Pasife al",
+  Activate: "Aktifleştir",
+  "Select at least one gym.": "En az bir salon seçin.",
+  "Could not create the gym.": "Salon oluşturulamadı.",
+  "Gym created.": "Salon oluşturuldu.",
+  'Deactivate "{{name}}"? Entry scans at this gym will be refused until it is activated again.':
+    '"{{name}}" pasife alınsın mı? Tekrar aktifleştirilene kadar bu salondaki giriş okutmaları reddedilir.',
+  "Set the location, capacity and devices from the gym's own pages after creating it.":
+    "Konum, kapasite ve cihazları salon oluşturulduktan sonra salonun kendi sayfalarından ayarlayın.",
+  "No gyms yet. Add the first one above.":
+    "Henüz salon yok. İlkini yukarıdan ekleyin.",
+  "Gym assignment saved.": "Salon ataması kaydedildi.",
+  "Find an administrator or staff member, then choose the gyms they can work in.":
+    "Bir yönetici veya personel bulun, ardından çalışabileceği salonları seçin.",
+  "No matching staff member found.": "Eşleşen personel bulunamadı.",
+  "across the chain": "zincir genelinde",
+  "Inside now": "Şu an içeride",
+  "No gym assigned": "Atanmış salon yok",
+  "Ask the chain owner to assign you to a gym.":
+    "Zincir sahibinden sizi bir salona atamasını isteyin.",
+  "Not allowed at this gym": "Bu salona giriş yetkisi yok",
+  "Gym inactive": "Salon pasif",
+  "Your subscription does not include this gym. Please contact reception.":
+    "Aboneliğiniz bu salonu kapsamıyor. Lütfen resepsiyonla iletişime geçin.",
+  "This gym is currently closed for entry.": "Bu salon şu anda girişe kapalı.",
+  "The gym was not found.": "Salon bulunamadı.",
+  "Select valid gyms within your access.":
+    "Erişiminiz dahilindeki geçerli salonları seçin.",
+  "You do not have access to this gym.": "Bu salona erişiminiz yok.",
+  "The last owner cannot be demoted.": "Son zincir sahibinin rolü düşürülemez.",
+  Users: "Kullanıcılar",
+  Chain: "Zincir",
+  General: "Genel",
+  Account: "Hesap",
+  "Quick actions": "Hızlı işlemler",
+  "Type a page or gym name…": "Bir sayfa veya salon adı yazın…",
+  "No results.": "Sonuç yok.",
+  "Switch to {{name}}": "{{name}} salonuna geç",
+  "Search members, manage roles and grant subscriptions.":
+    "Üyeleri arayın, rolleri yönetin ve abonelik tanımlayın.",
+  Table: "Tablo",
+  Board: "Pano",
+  List: "Liste",
+  "2FA": "2FA",
+  Enabled: "Açık",
+  Disabled: "Kapalı",
+  Any: "Hepsi",
+  None: "Yok",
+  "Add filter": "Filtre ekle",
+  "Select all": "Tümünü seç",
+  Joined: "Katılım",
+  "{{count}} selected": "{{count}} seçili",
+  "Showing {{from}}–{{to}} of {{total}}":
+    "{{total}} kayıttan {{from}}–{{to}} gösteriliyor",
+  Previous: "Önceki",
+  Next: "Sonraki",
+  "Page {{page}} of {{count}}": "Sayfa {{page}} / {{count}}",
+  "Totals for every gym in the chain over the last 30 days.":
+    "Zincirdeki tüm salonların son 30 güne ait toplamları.",
+  "Chain name and the legal documents shared by every gym.":
+    "Zincir adı ve tüm salonların ortak hukuki belgeleri.",
+  "Protect your account with two-factor authentication.":
+    "Hesabınızı iki adımlı doğrulama ile koruyun.",
+  "Location, capacity, account sharing and reminders for this gym.":
+    "Bu salonun konumu, kapasitesi, hesap paylaşımı ve hatırlatma ayarları.",
+  "A record of sensitive actions taken in the panel.":
+    "Panelde yapılan hassas işlemlerin kaydı.",
+  "Live numbers and the latest entries at this gym.":
+    "Bu salonun anlık rakamları ve son geçişleri.",
+  "Members whose subscriptions are about to expire.":
+    "Aboneliği yakında bitecek üyeler.",
+  "Review member requests to delete their account data.":
+    "Üyelerin hesap verilerini silme taleplerini inceleyin.",
+  "Membership and entry statistics for a date range.":
+    "Seçilen tarih aralığı için üyelik ve geçiş istatistikleri.",
+  "Choose which gyms each administrator or staff member can work in.":
+    "Her yönetici veya personelin çalışabileceği salonları seçin.",
+  "Turnstile devices and their QR codes for this gym.":
+    "Bu salonun turnike cihazları ve QR kodları.",
+  "Turnstile scans at this gym, including refused attempts.":
+    "Bu salondaki turnike okutmaları, reddedilenler dahil.",
+  "Create gyms, rename them or switch them off.":
+    "Salon oluşturun, adlandırın veya devre dışı bırakın.",
 } as const;
 
 const en = Object.fromEntries(Object.keys(tr).map((key) => [key, key])) as {

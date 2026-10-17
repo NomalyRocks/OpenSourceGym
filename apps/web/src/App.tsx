@@ -1,17 +1,25 @@
 import {
   BrowserRouter,
-  NavLink,
   Navigate,
+  Outlet,
   Route,
   Routes,
+  useMatch,
 } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { authClient, useSessionUser } from "./lib/auth";
 import { ProfileProvider, useProfile } from "./lib/profile";
+import {
+  GymsProvider,
+  LAST_GYM_KEY,
+  useDefaultGymId,
+  useGyms,
+} from "./lib/gyms";
+import { Shell } from "./components/Shell";
 import { Login } from "./pages/Login";
 import { ChangePassword } from "./pages/ChangePassword";
 import { Overview } from "./pages/Overview";
-import { Members } from "./pages/Members";
+import { Users } from "./pages/Users";
 import { Settings } from "./pages/Settings";
 import { Audit } from "./pages/Audit";
 import { Devices } from "./pages/Devices";
@@ -20,74 +28,41 @@ import { Renewals } from "./pages/Renewals";
 import { Reports } from "./pages/Reports";
 import { Security } from "./pages/Security";
 import { DataRequests } from "./pages/DataRequests";
+import { Gyms } from "./pages/Gyms";
+import { StaffGyms } from "./pages/StaffGyms";
+import { ChainSummary } from "./pages/ChainSummary";
+import { ChainSettings } from "./pages/ChainSettings";
 import { LanguageSwitcher } from "./i18n/LanguageSwitcher";
-import { dateLocale } from "./i18n/format";
 
-function roleLabel(
-  role: string | undefined,
-  t: (key: "Administrator" | "Staff" | "Member") => string,
-) {
-  if (role === "admin") return t("Administrator");
-  if (role === "staff") return t("Staff");
-  return t("Member");
+/** Validates `:gymId` against the caller's gyms and remounts pages on a gym switch. */
+function GymScope() {
+  const { t } = useTranslation();
+  const { gyms, loading } = useGyms();
+  const { gymId } = useMatch("/gyms/:gymId/*")?.params ?? {};
+  const fallback = useDefaultGymId();
+  if (loading) return <div className="auth-wrap">{t("Loading…")}</div>;
+  if (!gyms.some((g) => g.id === gymId)) {
+    return (
+      <Navigate to={fallback ? `/gyms/${fallback}/overview` : "/"} replace />
+    );
+  }
+  // Server enforces scope; this keeps the last choice for the next visit.
+  localStorage.setItem(LAST_GYM_KEY, gymId!);
+  return <Outlet key={gymId} />;
 }
 
-function Shell({ children }: { children: React.ReactNode }) {
-  const { t, i18n } = useTranslation();
-  const { refetch } = useSessionUser();
+function HomeRedirect() {
+  const { t } = useTranslation();
+  const { loading } = useGyms();
   const { profile } = useProfile();
-  const locale = dateLocale(i18n.resolvedLanguage);
-  const todayLabel = new Date()
-    .toLocaleDateString(locale, {
-      weekday: "short",
-      day: "numeric",
-      month: "short",
-      year: "numeric",
-    })
-    .toLocaleUpperCase(locale);
+  const gymId = useDefaultGymId();
+  if (loading) return <div className="auth-wrap">{t("Loading…")}</div>;
+  if (gymId) return <Navigate to={`/gyms/${gymId}/overview`} replace />;
+  if (profile?.role === "owner") return <Navigate to="/chain/gyms" replace />;
   return (
-    <div className="shell">
-      <header className="topbar">
-        <div className="topbar-left">
-          <div className="brand">
-            Open<em>Gym</em>
-          </div>
-          <nav className="nav">
-            <NavLink to="/overview">{t("Overview")}</NavLink>
-            <NavLink to="/members">{t("Members")}</NavLink>
-            <NavLink to="/entries">{t("Entries")}</NavLink>
-            <NavLink to="/renewals">{t("Renewals")}</NavLink>
-            <NavLink to="/reports">{t("Reports")}</NavLink>
-            <NavLink to="/security">{t("Security")}</NavLink>
-            {profile?.role === "admin" && (
-              <NavLink to="/devices">{t("Devices")}</NavLink>
-            )}
-            {profile?.role === "admin" && (
-              <NavLink to="/settings">{t("Settings")}</NavLink>
-            )}
-            {profile?.role === "admin" && (
-              <NavLink to="/audit">{t("Audit log")}</NavLink>
-            )}
-            {profile?.role === "admin" && (
-              <NavLink to="/data-requests">{t("Data protection")}</NavLink>
-            )}
-          </nav>
-        </div>
-        <div className="topbar-right">
-          <span className="topbar-date">{todayLabel}</span>
-          <span className="topbar-who">
-            {roleLabel(profile?.role, t)} · {profile?.email}
-          </span>
-          <LanguageSwitcher compact />
-          <button
-            className="ghost"
-            onClick={() => authClient.signOut().then(() => refetch())}
-          >
-            {t("Sign out")}
-          </button>
-        </div>
-      </header>
-      <main className="content">{children}</main>
+    <div className="panel">
+      <h2>{t("No gym assigned")}</h2>
+      <p className="hint">{t("Ask the chain owner to assign you to a gym.")}</p>
     </div>
   );
 }
@@ -123,31 +98,44 @@ function Gate() {
     );
   }
 
+  const isOwner = profile.role === "owner";
+  const canAdmin = isOwner || profile.role === "admin";
+
   return (
     <BrowserRouter>
-      <Shell>
-        <Routes>
-          <Route path="/overview" element={<Overview />} />
-          <Route path="/members" element={<Members />} />
-          <Route path="/entries" element={<Entries />} />
-          <Route path="/renewals" element={<Renewals />} />
-          <Route path="/reports" element={<Reports />} />
-          <Route path="/security" element={<Security />} />
-          {profile.role === "admin" && (
-            <Route path="/devices" element={<Devices />} />
-          )}
-          {profile.role === "admin" && (
-            <Route path="/settings" element={<Settings />} />
-          )}
-          {profile.role === "admin" && (
-            <Route path="/audit" element={<Audit />} />
-          )}
-          {profile.role === "admin" && (
-            <Route path="/data-requests" element={<DataRequests />} />
-          )}
-          <Route path="*" element={<Navigate to="/overview" replace />} />
-        </Routes>
-      </Shell>
+      <GymsProvider>
+        <Shell>
+          <Routes>
+            <Route path="/gyms/:gymId" element={<GymScope />}>
+              <Route path="overview" element={<Overview />} />
+              <Route path="users" element={<Users />} />
+              <Route
+                path="members"
+                element={<Navigate to="../users" replace />}
+              />
+              <Route path="entries" element={<Entries />} />
+              <Route path="renewals" element={<Renewals />} />
+              <Route path="reports" element={<Reports />} />
+              {canAdmin && <Route path="devices" element={<Devices />} />}
+              {canAdmin && <Route path="settings" element={<Settings />} />}
+              <Route path="*" element={<Navigate to="overview" replace />} />
+              <Route index element={<Navigate to="overview" replace />} />
+            </Route>
+            <Route path="/security" element={<Security />} />
+            {isOwner && <Route path="/chain" element={<ChainSummary />} />}
+            {isOwner && <Route path="/chain/gyms" element={<Gyms />} />}
+            {isOwner && <Route path="/chain/staff" element={<StaffGyms />} />}
+            {canAdmin && (
+              <Route path="/chain/settings" element={<ChainSettings />} />
+            )}
+            {canAdmin && <Route path="/audit" element={<Audit />} />}
+            {isOwner && (
+              <Route path="/data-requests" element={<DataRequests />} />
+            )}
+            <Route path="*" element={<HomeRedirect />} />
+          </Routes>
+        </Shell>
+      </GymsProvider>
     </BrowserRouter>
   );
 }

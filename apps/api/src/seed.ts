@@ -11,7 +11,8 @@ import {
 export { INITIAL_ADMIN_EMAIL } from "./initialAdmin.js";
 
 /**
- * Initial setup: creates the default admin account if no admin exists.
+ * Initial setup: creates the chain owner account if no owner exists. No gym is
+ * seeded: the owner creates the first gym (and its devices) from the panel.
  * The account starts with mustChangePassword=true; no admin endpoint works
  * until the password is changed at first sign-in (US-2).
  *
@@ -20,8 +21,8 @@ export { INITIAL_ADMIN_EMAIL } from "./initialAdmin.js";
  */
 export async function seedInitialAdmin(): Promise<void> {
   const users = userCollection();
-  const existingAdmin = await users.findOne({ role: "admin" });
-  if (existingAdmin) return;
+  const existingOwner = await users.findOne({ role: "owner" });
+  if (existingOwner) return;
 
   const password = resolveInitialAdminPassword();
 
@@ -44,7 +45,7 @@ export async function seedInitialAdmin(): Promise<void> {
     { email: INITIAL_ADMIN_EMAIL },
     {
       $set: {
-        role: "admin",
+        role: "owner",
         mustChangePassword: true,
         emailVerified: true,
       },
@@ -61,6 +62,6 @@ export async function seedInitialAdmin(): Promise<void> {
       : `password: ${password}`;
 
   console.log(
-    `[seed] Initial admin created: ${INITIAL_ADMIN_EMAIL} (${credentialHint}; password change required at first sign-in)`,
+    `[seed] Initial owner created: ${INITIAL_ADMIN_EMAIL} (${credentialHint}; password change required at first sign-in)`,
   );
 }

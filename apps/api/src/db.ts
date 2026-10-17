@@ -1,7 +1,7 @@
 import { MongoClient, MongoServerError, ObjectId } from "mongodb";
 import type { Collection, Db, WithId } from "mongodb";
 import type {
-  GymSettings,
+  GymLocation,
   LegalConfig,
   ReminderConfig,
   Role,
@@ -42,6 +42,8 @@ export interface UserDocument {
   /** Internal unique phone identity—present only in deduplicated records */
   phoneE164?: string;
   role?: Role;
+  /** Gym scope of admin/staff accounts (hex ObjectId strings); empty for owner and member */
+  gymIds?: string[];
   mustChangePassword?: boolean;
   twoFactorEnabled?: boolean;
   profilePhotoKey?: string;
@@ -74,31 +76,44 @@ export function sessionCollection(
   return database.collection<SessionDocument>("session");
 }
 
-/** Fixed ID of the singleton gym settings document */
-export const GYM_SETTINGS_ID = "gym";
+/** Fixed ID of the singleton chain-wide settings document */
+export const CHAIN_SETTINGS_ID = "chain";
 
-export interface GymSettingsDocument {
-  _id: typeof GYM_SETTINGS_ID;
-  gymName?: string;
-  location?: GymSettings["location"];
-  capacity?: number | null;
-  autoExitHours?: number;
-  sharing?: Partial<SharingConfig>;
-  reminders?: Partial<ReminderConfig>;
+export interface ChainSettingsDocument {
+  _id: typeof CHAIN_SETTINGS_ID;
+  chainName?: string;
   legal?: Partial<LegalConfig>;
 }
 
-export function gymSettingsCollection(
+export function chainSettingsCollection(
   database: Db = db,
-): Collection<GymSettingsDocument> {
-  return database.collection<GymSettingsDocument>("settings");
+): Collection<ChainSettingsDocument> {
+  return database.collection<ChainSettingsDocument>("settings");
 }
 
-/** Reads the singleton settings._id: "gym" document (or null if absent). */
-export function findGymSettings(
+/** Reads the singleton settings._id: "chain" document (or null if absent). */
+export function findChainSettings(
   database: Db = db,
-): Promise<WithId<GymSettingsDocument> | null> {
-  return gymSettingsCollection(database).findOne({ _id: GYM_SETTINGS_ID });
+): Promise<WithId<ChainSettingsDocument> | null> {
+  return chainSettingsCollection(database).findOne({ _id: CHAIN_SETTINGS_ID });
+}
+
+/** One gym of the chain. Gyms are deactivated, never deleted. */
+export interface GymDocument {
+  _id: ObjectId;
+  name: string;
+  location: GymLocation | null;
+  capacity: number | null;
+  autoExitHours: number;
+  sharing?: Partial<SharingConfig>;
+  reminders?: Partial<ReminderConfig>;
+  active: boolean;
+  createdBy: string;
+  createdAt: Date;
+}
+
+export function gymCollection(database: Db = db): Collection<GymDocument> {
+  return database.collection<GymDocument>("gyms");
 }
 
 /** Timestamped snapshot added whenever the member's `weightKg` changes */

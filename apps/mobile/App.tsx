@@ -50,6 +50,7 @@ import { Register } from "./src/screens/Register";
 import { VerifyOtp } from "./src/screens/VerifyOtp";
 import { ForgotPassword } from "./src/screens/ForgotPassword";
 import { ResetPassword } from "./src/screens/ResetPassword";
+import { VerifyResetCode } from "./src/screens/VerifyResetCode";
 import { Home } from "./src/screens/Home";
 import { Calendar } from "./src/screens/Calendar";
 import { GateScan } from "./src/screens/GateScan";
@@ -70,7 +71,8 @@ type ScreenState =
   | { name: "register" }
   | { name: "verify"; email: string; password: string }
   | { name: "forgot" }
-  | { name: "reset"; email: string };
+  | { name: "resetCode"; email: string }
+  | { name: "reset"; email: string; otp: string };
 
 /** Full-screen layer pushed above the tabs (Notifications, Settings). */
 type Overlay = "notifications" | "settings" | null;
@@ -370,14 +372,25 @@ function AppContent() {
     body = (
       <ForgotPassword
         onBack={resetToLogin}
-        onSent={(email) => setScreen({ name: "reset", email })}
+        onSent={(email) => setScreen({ name: "resetCode", email })}
+      />
+    );
+  } else if (screen.name === "resetCode") {
+    const { email } = screen;
+    body = (
+      <VerifyResetCode
+        email={email}
+        onBack={resetToLogin}
+        onVerified={(otp) => setScreen({ name: "reset", email, otp })}
       />
     );
   } else if (screen.name === "reset") {
+    const { email } = screen;
     body = (
       <ResetPassword
-        email={screen.email}
-        onBack={resetToLogin}
+        email={email}
+        otp={screen.otp}
+        onBack={() => setScreen({ name: "resetCode", email })}
         onDone={resetToLogin}
       />
     );
@@ -407,9 +420,28 @@ function AppContent() {
   );
 }
 
+/**
+ * Renders nothing and holds one app-lifetime subscription to better-auth's
+ * session nanostores atom (`authClient.$store.atoms.session`). While that atom
+ * has zero listeners, useSession()'s render-time `store.get()` mounts and
+ * unmounts it, re-scheduling the internal session fetch around discarded
+ * concurrent renders; React Native then logs "error during concurrent
+ * rendering, recovered" on cold start. Keeping one permanent listener mounted
+ * above every consumer means the atom activates exactly once and never tears
+ * down while the app lives.
+ */
+function SessionStoreKeepAlive() {
+  useEffect(() => {
+    const sessionAtom = authClient.$store.atoms.session;
+    return sessionAtom ? sessionAtom.listen(() => {}) : undefined;
+  }, []);
+  return null;
+}
+
 export default function App() {
   return (
     <SafeAreaProvider>
+      <SessionStoreKeepAlive />
       <ThemeProvider>
         <AppContent />
       </ThemeProvider>

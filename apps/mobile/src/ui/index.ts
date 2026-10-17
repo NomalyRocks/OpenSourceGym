@@ -1,3 +1,4 @@
+export { KeyboardAwareScrollView, useKeyboardReveal } from "./keyboardAware";
 export { easing, useEnter, useReducedMotion } from "./motion";
 export {
   AuthFooterLink,

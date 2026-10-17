@@ -224,7 +224,7 @@ test(
       });
       assert.equal(initialAdmin?.phone, "-");
       assert.equal(initialAdmin?.phoneE164, undefined);
-      assert.equal(initialAdmin?.role, "admin");
+      assert.equal(initialAdmin?.role, "owner");
 
       const conflictPartnerEmail =
         concurrent[0]?.status === 200

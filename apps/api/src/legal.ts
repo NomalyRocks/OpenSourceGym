@@ -1,6 +1,6 @@
 import type { Db } from "mongodb";
 import type { LegalConfig } from "@opengym/shared";
-import { findGymSettings } from "./db.js";
+import { findChainSettings } from "./db.js";
 
 /**
  * OpenGym contains no region-specific legal text. The disclosure/data
@@ -17,9 +17,11 @@ export const LEGAL_DEFAULTS: LegalConfig = {
   version: 1,
 };
 
-// settings._id: "gym" tekil belgesindeki opsiyonel "legal" alt nesnesi,
+// Optional "legal" object of the settings._id: "chain" singleton,
 // Shallow-merged over the defaults
 export async function getLegalConfig(database?: Db): Promise<LegalConfig> {
-  const doc = await (database ? findGymSettings(database) : findGymSettings());
+  const doc = await (database
+    ? findChainSettings(database)
+    : findChainSettings());
   return { ...LEGAL_DEFAULTS, ...(doc?.legal ?? {}) };
 }
