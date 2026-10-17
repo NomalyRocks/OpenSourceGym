@@ -22,7 +22,7 @@
     "mongodb": "^7.4.0",
     "nodemailer": "^10.0.9",
     "redis": "^6.1.0",
-    "sharp": "^0.35.4",
+    "sharp": "^0.35.5",
     "swagger-ui-express": "^5.0.1",
     "ws": "^8.18.0",
     "zod": "^4.4.3",
