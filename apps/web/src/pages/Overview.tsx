@@ -1,6 +1,7 @@
 import { useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { useTranslation } from "react-i18next";
+import { PageHeader } from "../components/PageHeader";
 import type {
   AdminStats,
   EntryEvent,
@@ -12,6 +13,7 @@ import { api, isAbortError } from "../lib/api";
 import { usePollingQuery } from "../hooks/usePollingQuery";
 import { errorMessage } from "../i18n/errors";
 import { dateLocale } from "../i18n/format";
+import { useGymApi, useGymLink } from "../lib/gyms";
 
 // Payment/revenue tracking is out of scope (a PRD non-goal) — the card is blurred
 // with a placeholder value only for visual consistency.
@@ -61,6 +63,8 @@ function KpiCard({
 export function Overview() {
   const { t, i18n } = useTranslation();
   const locale = dateLocale(i18n.resolvedLanguage);
+  const gymApi = useGymApi();
+  const gymLink = useGymLink();
   const [stats, setStats] = useState<AdminStats | null>(null);
   const [occupancy, setOccupancy] = useState<OccupancyResponse | null>(null);
   const [entries, setEntries] = useState<EntryEvent[]>([]);
@@ -72,10 +76,10 @@ export function Overview() {
   async function load(signal: AbortSignal) {
     try {
       const [s, occ, ev] = await Promise.all([
-        api<AdminStats>("/api/admin/stats", { signal }),
-        api<OccupancyResponse>("/api/me/occupancy", { signal }),
+        api<AdminStats>(gymApi("/stats"), { signal }),
+        api<OccupancyResponse>(gymApi("/occupancy"), { signal }),
         // The overview shows only the latest few entries, so request fewer from the server.
-        api<Page<EntryEvent>>("/api/admin/entry-events?limit=6", { signal }),
+        api<Page<EntryEvent>>(gymApi("/entry-events?limit=6"), { signal }),
       ]);
       setStats(s);
       setOccupancy(occ);
@@ -129,7 +133,10 @@ export function Overview() {
 
   return (
     <div className="stagger">
-      <h1>{t("Overview")}</h1>
+      <PageHeader
+        title={t("Overview")}
+        subtitle={t("Live numbers and the latest entries at this gym.")}
+      />
       {error && <div className="msg error">{error}</div>}
 
       <div className="kpi-grid">
@@ -159,7 +166,7 @@ export function Overview() {
           value={stats ? String(stats.renewalsDue) : "—"}
           delta={t("within 7 days")}
           color="var(--warn)"
-          to="/renewals"
+          to={gymLink("/renewals")}
         />
       </div>
 
@@ -199,11 +206,13 @@ export function Overview() {
                   <td>
                     <span className={`badge ${u.role}`}>
                       {t(
-                        u.role === "admin"
-                          ? "Administrator"
-                          : u.role === "staff"
-                            ? "Staff"
-                            : "Member",
+                        u.role === "owner"
+                          ? "Owner"
+                          : u.role === "admin"
+                            ? "Administrator"
+                            : u.role === "staff"
+                              ? "Staff"
+                              : "Member",
                       )}
                     </span>
                   </td>

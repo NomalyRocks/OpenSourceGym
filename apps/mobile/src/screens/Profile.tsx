@@ -27,6 +27,7 @@ import {
   saveCalorieCalculatorState,
 } from "../lib/calorieCalculatorStorage";
 import { Avatar } from "../components/Avatar";
+import { GymList } from "../components/GymList";
 import { errorMessage } from "../i18n/errors";
 import { dateLocale } from "../i18n/format";
 import {
@@ -464,6 +465,15 @@ export function Profile({
                       {subscription?.remainingDays ?? 0}
                     </Text>
                   </View>
+                  {subscription && subscription.gyms.length > 0 ? (
+                    <>
+                      <Divider />
+                      <View style={styles.gymsBlock}>
+                        <Text style={styles.factLabel}>{t("Gyms")}</Text>
+                        <GymList gyms={subscription.gyms} />
+                      </View>
+                    </>
+                  ) : null}
                 </>
               ) : null}
             </>
@@ -632,6 +642,7 @@ const profileStyles = (theme: Theme) =>
     messages: { gap: theme.spacing.xs, marginTop: theme.spacing.sm },
     section: { marginTop: theme.spacing.xl },
 
+    gymsBlock: { paddingVertical: theme.spacing.xs, gap: theme.spacing.xxs },
     factRow: {
       minHeight: 40,
       flexDirection: "row",

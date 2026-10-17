@@ -1,10 +1,14 @@
 import type {
+  ChainGymSummary,
+  ChainSummary,
   EntryTrend,
   EntryTrendPoint,
   ReportSummary,
 } from "@opengym/shared";
-import type { Db, Document } from "mongodb";
+import { ObjectId, type Db, type Document } from "mongodb";
 import { db } from "./db.js";
+import { getOccupancy } from "./occupancy.js";
+import type { GymDoc } from "./gyms.js";
 import { env } from "./env.js";
 
 /** Maximum report range—limits the number of chart buckets. */
@@ -78,27 +82,37 @@ function latestEndPipeline(match: Document): Document[] {
   ];
 }
 
-/** Number of unique members whose subscription ends within the next seven days. */
+/** Restricts a subscriptions pipeline to periods listing the gym (all when omitted). */
+export function gymScopeStages(gymId?: string | undefined): Document[] {
+  return gymId ? [{ $match: { gymIds: new ObjectId(gymId) } }] : [];
+}
+
+/**
+ * Number of unique members whose latest subscription (for the gym, when given)
+ * ends within the next seven days.
+ */
 export async function countRenewalsDue(
   database: Db = db,
   now = new Date(),
+  gymId?: string,
 ): Promise<number> {
-  return countFrom(
-    database,
-    "subscriptions",
-    latestEndPipeline({
+  return countFrom(database, "subscriptions", [
+    ...gymScopeStages(gymId),
+    ...latestEndPipeline({
       $gte: now,
       $lte: new Date(now.getTime() + RENEWAL_WINDOW_DAYS * DAY_MS),
     }),
-  );
+  ]);
 }
 
 /** Number of unique members with an active subscription now. */
 export async function countActiveMembers(
   database: Db = db,
   now = new Date(),
+  gymId?: string,
 ): Promise<number> {
   return countFrom(database, "subscriptions", [
+    ...gymScopeStages(gymId),
     { $match: { startsAt: { $lte: now }, endsAt: { $gte: now } } },
     { $group: { _id: "$userId" } },
   ]);
@@ -111,6 +125,7 @@ export interface ReportRangeInput {
 
 export async function buildReportSummary(
   { from, to }: ReportRangeInput,
+  gymId: string,
   database: Db = db,
   now = new Date(),
 ): Promise<ReportSummary> {
@@ -122,22 +137,39 @@ export async function buildReportSummary(
     lapsedMembers,
     entries,
   ] = await Promise.all([
-    countActiveMembers(database, now),
-    countRenewalsDue(database, now),
-    database
-      .collection("user")
-      .countDocuments({ role: "member", createdAt: { $gte: from, $lte: to } }),
-    database
-      .collection("subscriptions")
-      .countDocuments({ createdAt: { $gte: from, $lte: to } }),
+    countActiveMembers(database, now, gymId),
+    countRenewalsDue(database, now, gymId),
+    // Accounts are chain-wide, so "new members" of a gym are the members who
+    // registered in the range AND hold a subscription period for this gym.
+    countFrom(database, "subscriptions", [
+      ...gymScopeStages(gymId),
+      { $group: { _id: "$userId" } },
+      {
+        $lookup: {
+          from: "user",
+          localField: "_id",
+          foreignField: "_id",
+          as: "userDocs",
+        },
+      },
+      {
+        $match: {
+          "userDocs.createdAt": { $gte: from, $lte: to },
+          "userDocs.role": "member",
+        },
+      },
+    ]),
+    database.collection("subscriptions").countDocuments({
+      gymIds: new ObjectId(gymId),
+      createdAt: { $gte: from, $lte: to },
+    }),
     // Members ending in the range AND not renewed by range end: if the latest
     // end remains within the range, the member is unsubscribed at range end.
-    countFrom(
-      database,
-      "subscriptions",
-      latestEndPipeline({ $gte: from, $lte: to }),
-    ),
-    aggregateEntryTotals(database, from, to),
+    countFrom(database, "subscriptions", [
+      ...gymScopeStages(gymId),
+      ...latestEndPipeline({ $gte: from, $lte: to }),
+    ]),
+    aggregateEntryTotals(database, from, to, gymId),
   ]);
 
   return {
@@ -168,6 +200,7 @@ async function aggregateEntryTotals(
   database: Db,
   from: Date,
   to: Date,
+  gymId: string,
 ): Promise<EntryTotals> {
   const [result] = await database
     .collection("entry_events")
@@ -175,7 +208,7 @@ async function aggregateEntryTotals(
       totals: { total: number; allowed: number }[];
       members: { n: number }[];
     }>([
-      { $match: { at: { $gte: from, $lte: to } } },
+      { $match: { gymId, at: { $gte: from, $lte: to } } },
       {
         $facet: {
           totals: [
@@ -211,13 +244,14 @@ async function aggregateEntryTotals(
 
 export async function buildEntryTrend(
   { from, to }: ReportRangeInput,
+  gymId: string,
   database: Db = db,
 ): Promise<EntryTrend> {
   const timeZone = env.reportsTimeZone;
   const rows = await database
     .collection("entry_events")
     .aggregate<{ _id: string; total: number; allowed: number }>([
-      { $match: { at: { $gte: from, $lte: to } } },
+      { $match: { gymId, at: { $gte: from, $lte: to } } },
       {
         $group: {
           // The bucket boundary is the gym's local day: grouping by UTC would
@@ -252,5 +286,40 @@ export async function buildEntryTrend(
     range: { from: from.toISOString(), to: to.toISOString() },
     timeZone,
     points,
+  };
+}
+
+/** Owner's chain summary: one row per gym plus the chain-wide unique member count. */
+export async function buildChainSummary(
+  { from, to }: ReportRangeInput,
+  gyms: readonly GymDoc[],
+  database: Db = db,
+  now = new Date(),
+): Promise<ChainSummary> {
+  const rows: ChainGymSummary[] = await Promise.all(
+    gyms.map(async (gym) => {
+      const gymId = gym._id.toHexString();
+      const [activeMembers, renewalsDue, entries, inside] = await Promise.all([
+        countActiveMembers(database, now, gymId),
+        countRenewalsDue(database, now, gymId),
+        aggregateEntryTotals(database, from, to, gymId),
+        getOccupancy(gymId),
+      ]);
+      return {
+        gymId,
+        gymName: gym.name,
+        active: gym.active,
+        activeMembers,
+        renewalsDue,
+        inside,
+        entries,
+      };
+    }),
+  );
+  return {
+    range: { from: from.toISOString(), to: to.toISOString() },
+    timeZone: env.reportsTimeZone,
+    activeMembers: await countActiveMembers(database, now),
+    gyms: rows,
   };
 }

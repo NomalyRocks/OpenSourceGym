@@ -6,6 +6,13 @@ const QUEUE_KEY = "og:entry-events";
 const DEAD_LETTER_KEY = "og:entry-events:dead";
 
 export interface EntryEventInput {
+  /** Gym the scanned device belongs to; null when the scan never resolved a device */
+  gymId: string | null;
+  /**
+   * Gym whose inside record this entry closed (a member is inside at most one
+   * gym); null when none was closed.
+   */
+  autoExitedGymId?: string | null;
   deviceId: string;
   deviceName: string;
   userId: string | null;

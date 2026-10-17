@@ -12,6 +12,7 @@ ROADMAP.md
 
 # Simulator device tokens (produced by fleet.mjs setup)
 agents/sim/devices.json
+agents/sim/devices-*.json
 
 # Obsidian architecture memory wiki (companion knowledge base, not product code)
 docs/wiki/

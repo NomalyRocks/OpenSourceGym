@@ -3,6 +3,7 @@ import { useTranslation } from "react-i18next";
 import { AppState, Pressable, StyleSheet, Text, View } from "react-native";
 import type {
   MyProfile,
+  MyOccupancyResponse,
   MySubscription,
   OccupancyResponse,
 } from "@opengym/shared";
@@ -10,6 +11,7 @@ import { api } from "../lib/api";
 import { fetchAttendance, type AttendanceDay } from "../lib/attendance";
 import { buildWeek, dayKey } from "../lib/dateKeys";
 import { Avatar } from "../components/Avatar";
+import { GymList } from "../components/GymList";
 import { BellGlyph, QrGlyph } from "../components/icons";
 import { WeekStrip } from "../components/WeekStrip";
 import {
@@ -74,6 +76,83 @@ function useCurrentDayKey() {
   return currentDayKey;
 }
 
+/** Occupancy of one gym: name, percentage, head count and a coloured meter. */
+function GymOccupancy({
+  gym,
+  showName,
+}: {
+  gym: OccupancyResponse;
+  showName: boolean;
+}) {
+  const { t } = useTranslation();
+  const theme = useTheme();
+  const styles = useThemedStyles(homeStyles);
+
+  const percent =
+    gym.ratio != null
+      ? Math.max(0, Math.min(100, Math.round(gym.ratio * 100)))
+      : null;
+  const tone =
+    percent == null
+      ? "neutral"
+      : percent > 90
+        ? "error"
+        : percent >= 70
+          ? "warning"
+          : "success";
+  const color =
+    tone === "error"
+      ? theme.colors.error
+      : tone === "warning"
+        ? theme.colors.warning
+        : tone === "success"
+          ? theme.colors.success
+          : theme.colors.textTertiary;
+  const label =
+    percent == null
+      ? t("Unknown")
+      : percent > 90
+        ? t("Busy")
+        : percent >= 70
+          ? t("Moderate")
+          : t("Quiet");
+
+  return (
+    <View style={styles.gymOccupancy}>
+      <View style={styles.gymOccupancyHeader}>
+        {showName ? (
+          <Text style={styles.gymOccupancyName} numberOfLines={1}>
+            {gym.gymName}
+          </Text>
+        ) : null}
+        <Badge label={label} tone={tone} />
+      </View>
+      <View style={styles.occupancyRow}>
+        <Text style={styles.occupancyPercent}>
+          {percent ?? "—"}
+          {percent == null ? null : (
+            <Text style={styles.occupancyPercentUnit}>%</Text>
+          )}
+        </Text>
+        <Text style={styles.occupancyPeople}>
+          {gym.capacity != null
+            ? t("{{inside}} of {{capacity}} people inside", {
+                inside: gym.inside,
+                capacity: gym.capacity,
+              })
+            : t("{{inside}} people inside", { inside: gym.inside })}
+        </Text>
+      </View>
+      <Meter
+        ratio={percent == null ? null : percent / 100}
+        color={color}
+        label={gym.gymName}
+        valueText={label}
+      />
+    </View>
+  );
+}
+
 export function Home({
   userName,
   onOpenQr,
@@ -88,13 +167,12 @@ export function Home({
   unreadCount?: number;
 }) {
   const { t, i18n } = useTranslation();
-  const theme = useTheme();
   const styles = useThemedStyles(homeStyles);
   const locale = dateLocale(i18n.resolvedLanguage);
   const [profile, setProfile] = useState<MyProfile | null>(null);
   const [profileLoaded, setProfileLoaded] = useState(false);
   const [subscription, setSubscription] = useState<MySubscription | null>(null);
-  const [occupancy, setOccupancy] = useState<OccupancyResponse | null>(null);
+  const [occupancy, setOccupancy] = useState<OccupancyResponse[]>([]);
   const [subscriptionLoaded, setSubscriptionLoaded] = useState(false);
   const [occupancyLoaded, setOccupancyLoaded] = useState(false);
   const [subscriptionError, setSubscriptionError] = useState<string | null>(
@@ -123,7 +201,7 @@ export function Home({
     ] = await Promise.allSettled([
       api<MyProfile>("/api/me/profile"),
       api<MySubscription>("/api/me/subscription"),
-      api<OccupancyResponse>("/api/me/occupancy"),
+      api<MyOccupancyResponse>("/api/me/occupancy"),
       weekFrom && weekTo
         ? fetchAttendance({ from: weekFrom, to: weekTo })
         : Promise.resolve({ days: [], timeZone: "" }),
@@ -149,7 +227,7 @@ export function Home({
     setSubscriptionLoaded(true);
 
     if (occupancyResult.status === "fulfilled") {
-      setOccupancy(occupancyResult.value);
+      setOccupancy(occupancyResult.value.gyms);
       setOccupancyError(null);
     } else {
       setOccupancyError(
@@ -179,35 +257,6 @@ export function Home({
     await load();
     setRefreshing(false);
   }
-
-  const occupancyPercent =
-    occupancy?.ratio != null
-      ? Math.max(0, Math.min(100, Math.round(occupancy.ratio * 100)))
-      : null;
-  const occupancyTone =
-    occupancyPercent == null
-      ? "neutral"
-      : occupancyPercent > 90
-        ? "error"
-        : occupancyPercent >= 70
-          ? "warning"
-          : "success";
-  const occupancyColor =
-    occupancyTone === "error"
-      ? theme.colors.error
-      : occupancyTone === "warning"
-        ? theme.colors.warning
-        : occupancyTone === "success"
-          ? theme.colors.success
-          : theme.colors.textTertiary;
-  const occupancyLabel =
-    occupancyPercent == null
-      ? t("Unknown")
-      : occupancyPercent > 90
-        ? t("Busy")
-        : occupancyPercent >= 70
-          ? t("Moderate")
-          : t("Quiet");
 
   const firstName = userName.trim().split(/\s+/)[0] || t("Member");
   const formatDate = (value?: string | null) =>
@@ -345,6 +394,13 @@ export function Home({
               </Text>
             </View>
           </View>
+
+          {active && subscription && subscription.gyms.length > 0 ? (
+            <View style={styles.passGyms}>
+              <Text style={styles.passDateLabel}>{t("Gyms")}</Text>
+              <GymList gyms={subscription.gyms} />
+            </View>
+          ) : null}
         </Plate>
       )}
 
@@ -367,14 +423,7 @@ export function Home({
       </View>
 
       <View style={styles.occupancy}>
-        <SectionHeading
-          title={t("Gym occupancy")}
-          trailing={
-            occupancyLoaded && !occupancyError ? (
-              <Badge label={occupancyLabel} tone={occupancyTone} />
-            ) : null
-          }
-        />
+        <SectionHeading title={t("Gym occupancy")} />
 
         {!occupancyLoaded ? (
           <View style={styles.occupancyLoading}>
@@ -388,33 +437,16 @@ export function Home({
             actionLabel={t("Try again")}
             onAction={() => void load()}
           />
+        ) : occupancy.length === 0 ? (
+          <Text style={styles.occupancyEmpty}>
+            {t(
+              "No gym occupancy to show. Occupancy appears once you have an active membership.",
+            )}
+          </Text>
         ) : (
-          <>
-            <View style={styles.occupancyRow}>
-              <Text style={styles.occupancyPercent}>
-                {occupancyPercent ?? "—"}
-                {occupancyPercent == null ? null : (
-                  <Text style={styles.occupancyPercentUnit}>%</Text>
-                )}
-              </Text>
-              <Text style={styles.occupancyPeople}>
-                {occupancy?.capacity != null
-                  ? t("{{inside}} of {{capacity}} people inside", {
-                      inside: occupancy.inside,
-                      capacity: occupancy.capacity,
-                    })
-                  : t("{{inside}} people inside", {
-                      inside: occupancy?.inside ?? 0,
-                    })}
-              </Text>
-            </View>
-            <Meter
-              ratio={occupancyPercent == null ? null : occupancyPercent / 100}
-              color={occupancyColor}
-              label={t("Gym occupancy")}
-              valueText={occupancyLabel}
-            />
-          </>
+          occupancy.map((gym) => (
+            <GymOccupancy key={gym.gymId} gym={gym} showName />
+          ))
         )}
       </View>
     </ScrollScreen>
@@ -501,6 +533,10 @@ const homeStyles = (theme: Theme) =>
       paddingTop: theme.spacing.md,
       gap: theme.spacing.lg,
     },
+    passGyms: {
+      paddingHorizontal: theme.spacing.lg,
+      paddingBottom: theme.spacing.lg,
+    },
     passDate: { flex: 1, minWidth: 0 },
     passDateLabel: { ...theme.type.label, color: theme.colors.textTertiary },
     passDateValue: {
@@ -520,6 +556,23 @@ const homeStyles = (theme: Theme) =>
       borderTopColor: theme.colors.outline,
     },
     occupancyLoading: { gap: theme.spacing.sm },
+    occupancyEmpty: {
+      ...theme.type.supporting,
+      color: theme.colors.textSecondary,
+    },
+    gymOccupancy: { marginBottom: theme.spacing.lg },
+    gymOccupancyHeader: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+      gap: theme.spacing.sm,
+      marginBottom: theme.spacing.xs,
+    },
+    gymOccupancyName: {
+      ...theme.type.label,
+      color: theme.colors.textSecondary,
+      flex: 1,
+    },
     occupancyRow: {
       flexDirection: "row",
       alignItems: "baseline",

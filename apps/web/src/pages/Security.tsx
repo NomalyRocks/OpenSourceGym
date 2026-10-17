@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
+import { PageHeader } from "../components/PageHeader";
 import QRCode from "qrcode";
 import { authApi } from "../lib/api";
 import { useProfile } from "../lib/profile";
@@ -88,7 +89,10 @@ export function Security() {
 
   return (
     <div className="stagger">
-      <h1>{t("Security")}</h1>
+      <PageHeader
+        title={t("Security")}
+        subtitle={t("Protect your account with two-factor authentication.")}
+      />
       <div className="panel" style={{ maxWidth: 560 }}>
         <h2>{t("Two-factor authentication (MFA)")}</h2>
         <p style={{ marginBottom: 16 }}>
