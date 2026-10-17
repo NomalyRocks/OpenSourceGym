@@ -3,10 +3,10 @@
   "version": "0.1.0",
   "main": "index.ts",
   "dependencies": {
-    "@better-auth/expo": "^1.6.23",
+    "@better-auth/expo": "^1.7.7",
     "@opengym/shared": "workspace:*",
-    "better-auth": "^1.6.23",
-    "expo": "~57.0.2",
+    "better-auth": "^1.7.7",
+    "expo": "~57.0.28",
     "expo-application": "~57.0.0",
     "expo-camera": "~57.0.1",
     "expo-constants": "~57.0.3",
@@ -23,16 +23,16 @@
     "expo-network": "~57.0.0",
     "expo-secure-store": "~57.0.0",
     "expo-status-bar": "~57.0.0",
-    "i18next": "^26.3.6",
-    "react": "19.2.3",
-    "react-i18next": "^17.0.9",
-    "react-native": "0.86.0",
-    "react-native-safe-area-context": "~5.7.0"
+    "i18next": "^26.4.4",
+    "react": "19.3.0",
+    "react-i18next": "^17.0.16",
+    "react-native": "0.87.1",
+    "react-native-safe-area-context": "~5.10.1"
   },
   "devDependencies": {
     "@expo/config-plugins": "^57.0.7",
     "@types/node": "^26.1.1",
-    "@types/react": "~19.2.2",
+    "@types/react": "~19.3.0",
     "tsx": "^4.23.12",
     "typescript": "~6.0.3"
   },
