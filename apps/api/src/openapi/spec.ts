@@ -5,6 +5,7 @@ import {
   type ZodOpenApiRequestBodyObject,
   type ZodOpenApiResponseObject,
 } from "zod-openapi";
+import { userDirectoryQuerySchema } from "../userDirectory.js";
 import {
   adminStatsSchema,
   apiErrorSchema,
@@ -12,6 +13,7 @@ import {
   authErrorSchema,
   createDeviceRequestSchema,
   createSubscriptionRequestSchema,
+  setSubscriptionGymsRequestSchema,
   createSubscriptionResponseSchema,
   deletionRequestSchema,
   deviceCreatedSchema,
@@ -20,8 +22,15 @@ import {
   gateScanRequestSchema,
   gateScanResponseSchema,
   getSessionResponseSchema,
+  chainSettingsRequestSchema,
+  chainSettingsSchema,
+  createGymRequestSchema,
+  gymSchema,
   gymSettingsRequestSchema,
-  gymSettingsSchema,
+  myOccupancySchema,
+  occupancySchema,
+  setUserGymsRequestSchema,
+  updateGymRequestSchema,
   healthSchema,
   initialPasswordRequestSchema,
   legalConfigSchema,
@@ -33,7 +42,6 @@ import {
   myWeightHistorySchema,
   mySubscriptionSchema,
   objectIdSchema,
-  occupancySchema,
   okSchema,
   otpSuccessSchema,
   pageSchema,
@@ -46,6 +54,7 @@ import {
   signUpRequestSchema,
   signUpResponseSchema,
   subscriptionSchema,
+  userDirectoryPageSchema,
   verifyEmailOtpRequestSchema,
   verifyEmailOtpResponseSchema,
 } from "./schemas.js";
@@ -86,6 +95,12 @@ const requiredRole = (
   ...(secured ? { security: [{ sessionCookie: [] }] } : { security: [] }),
 });
 
+const gymPathParams = z.object({
+  gymId: objectIdSchema.meta({ description: "MongoDB ObjectId of the gym" }),
+});
+
+const gymIdPathParams = gymPathParams;
+
 const idPathParams = z.object({
   id: objectIdSchema.meta({
     description: "MongoDB ObjectId of the target record",
@@ -121,6 +136,9 @@ const pageQuerySchema = z.object({
 });
 
 const auditQuerySchema = pageQuerySchema.extend({
+  gymId: z.string().min(1).max(64).optional().meta({
+    description: "Chain audit only: limits records to one gym",
+  }),
   action: z.string().min(1).max(64).optional().meta({
     description: "Action name to filter by exact match (1-64 characters)",
   }),
@@ -417,7 +435,7 @@ export const openApiDocument: OpenApiDocument = createDocument({
         operationId: "changeInitialPassword",
         summary: "Change initial sign-in password",
         ...requiredRole(
-          "admin | staff | member",
+          "owner | admin | staff | member",
           "Completes the mandatory initial password change",
         ),
         requestBody: jsonBody(initialPasswordRequestSchema),
@@ -433,12 +451,28 @@ export const openApiDocument: OpenApiDocument = createDocument({
         operationId: "searchUsers",
         summary: "Search users",
         ...requiredRole(
-          "admin | staff",
+          "owner | admin | staff",
           "Returns up to 20 users by phone, email, first name, or last name",
         ),
         requestParams: { query: userSearchQuery },
         responses: protectedResponses({
           "200": jsonResponse("Matching users", z.array(publicUserSchema)),
+          "400": apiErrorResponse,
+        }),
+      },
+    },
+    "/api/admin/users/directory": {
+      get: {
+        tags: ["admin"],
+        operationId: "listUserDirectory",
+        summary: "User directory",
+        ...requiredRole(
+          "owner | admin | staff",
+          "Chain-wide paged user table with filters and derived subscription status. Roles, status and gym filters accept comma-separated values; a gym outside the caller's scope is refused with GYM_OUT_OF_SCOPE",
+        ),
+        requestParams: { query: userDirectoryQuerySchema },
+        responses: protectedResponses({
+          "200": jsonResponse("Directory page", userDirectoryPageSchema),
           "400": apiErrorResponse,
         }),
       },
@@ -449,7 +483,7 @@ export const openApiDocument: OpenApiDocument = createDocument({
         operationId: "assignUserRole",
         summary: "Change user role",
         ...requiredRole(
-          "admin",
+          "owner",
           "Assigns a role to the target user; mfaCode and mfaMethod are required for an MFA-enabled administrator",
         ),
         requestParams: { path: idPathParams },
@@ -468,7 +502,7 @@ export const openApiDocument: OpenApiDocument = createDocument({
         operationId: "createSubscription",
         summary: "Create or extend subscription",
         ...requiredRole(
-          "admin | staff",
+          "owner | admin | staff (access to every listed gym)",
           "Appends a sequential subscription to the member's current timeline",
         ),
         requestBody: jsonBody(createSubscriptionRequestSchema),
@@ -483,13 +517,35 @@ export const openApiDocument: OpenApiDocument = createDocument({
         }),
       },
     },
+    "/api/admin/subscriptions/{id}/gyms": {
+      put: {
+        tags: ["admin"],
+        operationId: "setSubscriptionGyms",
+        summary: "Change the gyms of a subscription period",
+        ...requiredRole(
+          "owner | admin | staff (only gyms in scope may be added or removed)",
+          "Replaces the gyms of a current or future period without changing its dates",
+        ),
+        requestParams: { path: idPathParams },
+        requestBody: jsonBody(setSubscriptionGymsRequestSchema),
+        responses: protectedResponses({
+          "200": jsonResponse(
+            "Updated subscription period",
+            subscriptionSchema,
+          ),
+          "400": apiErrorResponse,
+          "404": apiErrorResponse,
+          "409": apiErrorResponse,
+        }),
+      },
+    },
     "/api/admin/users/{id}/subscriptions": {
       get: {
         tags: ["admin"],
         operationId: "listUserSubscriptions",
         summary: "List user subscriptions",
         ...requiredRole(
-          "admin | staff",
+          "owner | admin | staff",
           "Returns subscription periods belonging to the target user",
         ),
         requestParams: { path: idPathParams },
@@ -502,11 +558,127 @@ export const openApiDocument: OpenApiDocument = createDocument({
     "/api/admin/settings": {
       get: {
         tags: ["admin"],
+        operationId: "getChainSettings",
+        summary: "Get chain settings",
+        ...requiredRole(
+          "owner | admin",
+          "Returns the chain name and legal documents",
+        ),
+        responses: protectedResponses({
+          "200": jsonResponse("Chain settings", chainSettingsSchema),
+        }),
+      },
+      put: {
+        tags: ["admin"],
+        operationId: "updateChainSettings",
+        summary: "Update chain settings",
+        ...requiredRole("owner", "Updates the chain name and legal documents"),
+        requestBody: jsonBody(chainSettingsRequestSchema),
+        responses: protectedResponses({
+          "200": jsonResponse("Settings updated", okSchema),
+          "400": apiErrorResponse,
+        }),
+      },
+    },
+    "/api/admin/users/{id}/gyms": {
+      put: {
+        tags: ["admin"],
+        operationId: "setUserGyms",
+        summary: "Assign an admin/staff account to gyms",
+        ...requiredRole("owner", "Replaces the account's gym scope"),
+        requestParams: { path: idPathParams },
+        requestBody: jsonBody(setUserGymsRequestSchema),
+        responses: protectedResponses({
+          "200": jsonResponse("Gyms assigned", okSchema),
+          "400": apiErrorResponse,
+          "404": apiErrorResponse,
+        }),
+      },
+    },
+    "/api/admin/gyms": {
+      get: {
+        tags: ["admin"],
+        operationId: "listGyms",
+        summary: "List gyms",
+        ...requiredRole(
+          "owner | admin | staff",
+          "Every gym for the owner, the assigned gyms for admin/staff",
+        ),
+        responses: protectedResponses({
+          "200": jsonResponse("Gyms", z.array(gymSchema)),
+        }),
+      },
+      post: {
+        tags: ["admin"],
+        operationId: "createGym",
+        summary: "Create gym",
+        ...requiredRole("owner", "Creates an active gym"),
+        requestBody: jsonBody(createGymRequestSchema),
+        responses: protectedResponses({
+          "201": jsonResponse("Gym created", gymSchema),
+          "400": apiErrorResponse,
+        }),
+      },
+    },
+    "/api/admin/gyms/{gymId}": {
+      get: {
+        tags: ["admin"],
+        operationId: "getGym",
+        summary: "Get gym",
+        ...requiredRole(
+          "owner | admin | staff (scoped to the gym)",
+          "Returns one gym",
+        ),
+        requestParams: { path: gymIdPathParams },
+        responses: protectedResponses({
+          "200": jsonResponse("Gym", gymSchema),
+          "404": apiErrorResponse,
+        }),
+      },
+      put: {
+        tags: ["admin"],
+        operationId: "updateGym",
+        summary: "Update or deactivate gym",
+        ...requiredRole(
+          "owner",
+          "Partial update: name and/or active. Gyms are deactivated (`active: false`), never deleted; entry scans are refused while inactive",
+        ),
+        requestParams: { path: gymIdPathParams },
+        requestBody: jsonBody(updateGymRequestSchema),
+        responses: protectedResponses({
+          "200": jsonResponse("Updated gym", gymSchema),
+          "400": apiErrorResponse,
+          "404": apiErrorResponse,
+        }),
+      },
+    },
+    "/api/admin/gyms/{gymId}/occupancy": {
+      get: {
+        tags: ["admin"],
+        operationId: "getGymOccupancy",
+        summary: "Get live occupancy of a gym",
+        ...requiredRole(
+          "owner | admin | staff (scoped to the gym)",
+          "Live headcount",
+        ),
+        requestParams: { path: gymIdPathParams },
+        responses: protectedResponses({
+          "200": jsonResponse("Occupancy", occupancySchema),
+        }),
+      },
+    },
+    "/api/admin/gyms/{gymId}/settings": {
+      get: {
+        tags: ["admin"],
         operationId: "getGymSettings",
         summary: "Get gym settings",
-        ...requiredRole("admin", "Returns gym and sharing-detection settings"),
+        ...requiredRole(
+          "owner | admin | staff (scoped to the gym)",
+          "Returns the full Gym",
+        ),
+        requestParams: { path: gymIdPathParams },
         responses: protectedResponses({
-          "200": jsonResponse("Gym settings", gymSettingsSchema),
+          "200": jsonResponse("Gym", gymSchema),
         }),
       },
       put: {
@@ -514,27 +686,30 @@ export const openApiDocument: OpenApiDocument = createDocument({
         operationId: "updateGymSettings",
         summary: "Update gym settings",
         ...requiredRole(
-          "admin",
-          "Updates gym, location, capacity, and optional sharing settings",
+          "owner | admin (scoped to the gym)",
+          "Updates location, capacity, auto-exit, and optional sharing/reminder settings",
         ),
+        requestParams: { path: gymIdPathParams },
         requestBody: jsonBody(gymSettingsRequestSchema),
         responses: protectedResponses({
           "200": jsonResponse("Settings updated", okSchema),
           "400": apiErrorResponse,
+          "404": apiErrorResponse,
         }),
       },
     },
-    "/api/admin/stats": {
+    "/api/admin/gyms/{gymId}/stats": {
       get: {
         tags: ["admin"],
         operationId: "getAdminStats",
-        summary: "Get administration KPI values",
+        summary: "Get gym KPI values",
         ...requiredRole(
-          "admin | staff",
+          "owner | admin | staff (scoped to the gym)",
           "Returns counts of active members and members due for renewal within seven days",
         ),
+        requestParams: { path: gymIdPathParams },
         responses: protectedResponses({
-          "200": jsonResponse("Administration statistics", adminStatsSchema),
+          "200": jsonResponse("Gym statistics", adminStatsSchema),
         }),
       },
     },
@@ -544,8 +719,8 @@ export const openApiDocument: OpenApiDocument = createDocument({
         operationId: "listAuditLogs",
         summary: "List audit records",
         ...requiredRole(
-          "admin",
-          "Returns sensitive operation records from newest to oldest with cursor pagination",
+          "owner | admin",
+          "Returns sensitive operation records from newest to oldest with cursor pagination; optional gymId filter. Admins only see rows of gyms in their scope",
         ),
         requestParams: { query: auditQuerySchema },
         responses: protectedResponses({
@@ -553,16 +728,16 @@ export const openApiDocument: OpenApiDocument = createDocument({
         }),
       },
     },
-    "/api/admin/entry-events": {
+    "/api/admin/gyms/{gymId}/entry-events": {
       get: {
         tags: ["admin"],
         operationId: "listEntryEvents",
-        summary: "List gate events",
+        summary: "List gate events of a gym",
         ...requiredRole(
-          "admin | staff",
+          "owner | admin | staff (scoped to the gym)",
           "Returns allow and deny events from newest to oldest with cursor pagination",
         ),
-        requestParams: { query: entryEventQuerySchema },
+        requestParams: { path: gymIdPathParams, query: entryEventQuerySchema },
         responses: protectedResponses({
           "200": jsonResponse("Gate event page", pageSchema(entryEventSchema)),
         }),
@@ -574,7 +749,7 @@ export const openApiDocument: OpenApiDocument = createDocument({
         operationId: "listDeletionRequests",
         summary: "List account deletion requests",
         ...requiredRole(
-          "admin",
+          "owner",
           "Returns account deletion requests from newest to oldest with cursor pagination",
         ),
         requestParams: { query: deletionRequestQuerySchema },
@@ -592,7 +767,7 @@ export const openApiDocument: OpenApiDocument = createDocument({
         operationId: "approveDeletionRequest",
         summary: "Approve account deletion request",
         ...requiredRole(
-          "admin",
+          "owner",
           "Atomically claims the pending request and permanently deletes user data",
         ),
         requestParams: { path: idPathParams },
@@ -609,7 +784,7 @@ export const openApiDocument: OpenApiDocument = createDocument({
         tags: ["admin"],
         operationId: "rejectDeletionRequest",
         summary: "Reject account deletion request",
-        ...requiredRole("admin", "Rejects a pending account deletion request"),
+        ...requiredRole("owner", "Rejects a pending account deletion request"),
         requestParams: { path: idPathParams },
         responses: protectedResponses({
           "200": jsonResponse("Request rejected", okSchema),
@@ -618,13 +793,14 @@ export const openApiDocument: OpenApiDocument = createDocument({
         }),
       },
     },
-    "/api/admin/devices": {
+    "/api/admin/gyms/{gymId}/devices": {
       get: {
         tags: ["devices"],
         operationId: "listDevices",
         summary: "List gate devices",
+        requestParams: { path: gymPathParams },
         ...requiredRole(
-          "admin",
+          "owner | admin (scoped to the gym)",
           "Returns devices with online status and 24-hour uptime; each row carries qrContent, which is itself the gate credential",
         ),
         responses: protectedResponses({
@@ -635,8 +811,9 @@ export const openApiDocument: OpenApiDocument = createDocument({
         tags: ["devices"],
         operationId: "createDevice",
         summary: "Create gate device",
+        requestParams: { path: gymPathParams },
         ...requiredRole(
-          "admin",
+          "owner | admin (scoped to the gym)",
           "Registers the device; the plaintext device token appears only in this response",
         ),
         requestBody: jsonBody(createDeviceRequestSchema),
@@ -646,16 +823,16 @@ export const openApiDocument: OpenApiDocument = createDocument({
         }),
       },
     },
-    "/api/admin/devices/{id}": {
+    "/api/admin/gyms/{gymId}/devices/{id}": {
       delete: {
         tags: ["devices"],
         operationId: "deleteDevice",
         summary: "Delete gate device",
         ...requiredRole(
-          "admin",
+          "owner | admin (scoped to the gym)",
           "Deletes the device record and active gateway connection",
         ),
-        requestParams: { path: idPathParams },
+        requestParams: { path: gymPathParams.extend(idPathParams.shape) },
         responses: protectedResponses({
           "200": jsonResponse("Device deleted", okSchema),
           "404": apiErrorResponse,
@@ -804,11 +981,11 @@ export const openApiDocument: OpenApiDocument = createDocument({
         operationId: "getOccupancy",
         summary: "Get gym occupancy",
         ...requiredRole(
-          "admin | staff | member",
-          "Returns the live number of people inside and the configured capacity ratio",
+          "owner | admin | staff | member",
+          "Returns the live number of people inside and the capacity ratio of every active gym the caller may enter",
         ),
         responses: protectedResponses({
-          "200": jsonResponse("Gym occupancy", occupancySchema),
+          "200": jsonResponse("Gym occupancy", myOccupancySchema),
         }),
       },
     },

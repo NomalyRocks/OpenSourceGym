@@ -40,6 +40,15 @@ const codeMessages: Record<ApiErrorCode, WebTranslationKey> = {
     "You have just passed through. Please wait a moment before scanning again.",
   NOT_INSIDE:
     "You are not recorded as having entered the gym, so the exit turnstile cannot open. Please contact reception.",
+  NOT_ALLOWED_AT_GYM:
+    "Your subscription does not include this gym. Please contact reception.",
+  GYM_INACTIVE: "This gym is currently closed for entry.",
+  GYM_OUT_OF_SCOPE: "You do not have access to this gym.",
+  LAST_OWNER: "The last owner cannot be demoted.",
+  GYM_NOT_FOUND: "The gym was not found.",
+  INVALID_GYMS: "Select valid gyms within your access.",
+  SUBSCRIPTION_ENDED: "This subscription period has already ended.",
+  SUBSCRIPTION_NOT_FOUND: "Subscription not found.",
   GYM_LOCATION_UNSET:
     "Entry is unavailable because the gym location is not configured. Please contact reception.",
   DELETION_MEMBER_ONLY: "Only member accounts can create a deletion request.",

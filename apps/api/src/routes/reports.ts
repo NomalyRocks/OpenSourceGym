@@ -1,8 +1,9 @@
 import { once } from "node:events";
 import { Router, type Response } from "express";
-import type { Document } from "mongodb";
+import { ObjectId, type Document } from "mongodb";
 import { z } from "zod";
 import type {
+  ChainSummary,
   EntryTrend,
   ExportDataset,
   Page,
@@ -13,10 +14,12 @@ import type {
 import { sendApiError } from "../apiError.js";
 import { logAudit } from "../audit.js";
 import { csvRow, UTF8_BOM } from "../csv.js";
-import { db, findGymSettings, toObjectId } from "../db.js";
-import { authed, requireRole } from "../middleware.js";
+import { db, toObjectId } from "../db.js";
+import { gymScoped, requireGymAccess, requireRole } from "../middleware.js";
+import { listAllGyms } from "../gyms.js";
 import { InvalidCursorError, pageQuerySchema } from "../pagination.js";
 import {
+  buildChainSummary,
   buildEntryTrend,
   buildReportSummary,
   MAX_REPORT_RANGE_DAYS,
@@ -29,7 +32,11 @@ import {
   sendRenewalReminder,
 } from "../renewals.js";
 
-export const reportsRouter: Router = Router();
+/** Mounted at /api/admin/gyms/:gymId/reports — per-gym reports. */
+export const gymReportsRouter: Router = Router({ mergeParams: true });
+
+/** Mounted at /api/admin/reports — chain-level reports, owner only. */
+export const chainReportsRouter: Router = Router();
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const DEFAULT_RANGE_DAYS = 30;
@@ -79,26 +86,46 @@ function parseRange(res: Response, query: unknown): ResolvedRange | null {
   return range;
 }
 
-reportsRouter.get(
-  "/summary",
-  requireRole("admin", "staff"),
+chainReportsRouter.get(
+  "/chain/summary",
+  requireRole("owner"),
   async (req, res) => {
     const range = parseRange(res, req.query);
     if (!range) return;
-    const body: ReportSummary = await buildReportSummary(range);
+    const body: ChainSummary = await buildChainSummary(
+      range,
+      await listAllGyms(),
+    );
     res.json(body);
   },
 );
 
-reportsRouter.get(
-  "/entry-trend",
-  requireRole("admin", "staff"),
-  async (req, res) => {
+gymReportsRouter.get(
+  "/summary",
+  requireGymAccess("owner", "admin", "staff"),
+  gymScoped(async (req, res) => {
     const range = parseRange(res, req.query);
     if (!range) return;
-    const body: EntryTrend = await buildEntryTrend(range);
+    const body: ReportSummary = await buildReportSummary(
+      range,
+      req.gym._id.toHexString(),
+    );
     res.json(body);
-  },
+  }),
+);
+
+gymReportsRouter.get(
+  "/entry-trend",
+  requireGymAccess("owner", "admin", "staff"),
+  gymScoped(async (req, res) => {
+    const range = parseRange(res, req.query);
+    if (!range) return;
+    const body: EntryTrend = await buildEntryTrend(
+      range,
+      req.gym._id.toHexString(),
+    );
+    res.json(body);
+  }),
 );
 
 const renewalsQuerySchema = pageQuerySchema.extend({
@@ -110,10 +137,10 @@ const renewalsQuerySchema = pageQuerySchema.extend({
     .default(7),
 });
 
-reportsRouter.get(
+gymReportsRouter.get(
   "/renewals",
-  requireRole("admin", "staff"),
-  async (req, res) => {
+  requireGymAccess("owner", "admin", "staff"),
+  gymScoped(async (req, res) => {
     const query = renewalsQuerySchema.safeParse(req.query);
     if (!query.success) {
       sendApiError(
@@ -126,7 +153,10 @@ reportsRouter.get(
     }
 
     try {
-      const page = await listRenewalsDue(query.data);
+      const page = await listRenewalsDue({
+        ...query.data,
+        gymId: req.gym._id.toHexString(),
+      });
       const body: Page<RenewalDueMember> = {
         items: page.items,
         nextCursor: page.nextCursor,
@@ -139,21 +169,22 @@ reportsRouter.get(
       }
       throw err;
     }
-  },
+  }),
 );
 
 // Staff manually sends a reminder to one member.
-reportsRouter.post(
+gymReportsRouter.post(
   "/renewals/:userId/remind",
-  requireRole("admin", "staff"),
-  authed(async (req, res) => {
+  requireGymAccess("owner", "admin", "staff"),
+  gymScoped(async (req, res) => {
+    const gymId = req.gym._id.toHexString();
     const userId = toObjectId(String(req.params.userId ?? ""));
     if (!userId) {
       sendApiError(res, 400, "INVALID_USER", "Invalid user id.");
       return;
     }
 
-    const target = await findRenewalTarget(userId);
+    const target = await findRenewalTarget(userId, gymId);
     const now = new Date();
     if (!target || target.endsAt < now) {
       sendApiError(
@@ -165,7 +196,6 @@ reportsRouter.post(
       return;
     }
 
-    const settings = await findGymSettings();
     // The cooldown check runs under the same lock as sending; checking again
     // here would only duplicate work without closing the race.
     const outcome = await sendRenewalReminder({
@@ -174,7 +204,7 @@ reportsRouter.post(
       endsAt: target.endsAt,
       email: target.email,
       firstName: target.firstName,
-      gymName: settings?.gymName?.trim() || "OpenGym",
+      gymName: req.gym.name.trim() || "OpenGym",
       thresholdDays: null,
       automatic: false,
       sentBy: req.user.email,
@@ -200,6 +230,7 @@ reportsRouter.post(
       {
         remainingDays: remainingDays(target.endsAt, now),
       },
+      gymId,
     );
 
     const body: RenewalReminderResult = {
@@ -217,7 +248,7 @@ const exportQuerySchema = rangeQuerySchema.extend({
 interface ExportSpec {
   collection: string;
   header: string[];
-  pipeline: (range: ResolvedRange) => Document[];
+  pipeline: (range: ResolvedRange, gymId: string) => Document[];
   row: (doc: Document) => unknown[];
 }
 
@@ -233,8 +264,27 @@ const EXPORTS: Record<ExportDataset, ExportSpec> = {
       "role",
       "createdAt",
     ],
-    pipeline: ({ from, to }) => [
+    // Accounts are chain-wide; a gym's export holds the members registered in
+    // the range who hold a subscription period for that gym.
+    pipeline: ({ from, to }, gymId) => [
       { $match: { createdAt: { $gte: from, $lte: to } } },
+      {
+        $lookup: {
+          from: "subscriptions",
+          let: { userId: "$_id" },
+          pipeline: [
+            {
+              $match: {
+                gymIds: new ObjectId(gymId),
+                $expr: { $eq: ["$userId", "$$userId"] },
+              },
+            },
+            { $limit: 1 },
+          ],
+          as: "gymSubscriptions",
+        },
+      },
+      { $match: { "gymSubscriptions.0": { $exists: true } } },
       { $sort: { createdAt: 1, _id: 1 } },
     ],
     row: (doc) => [
@@ -253,14 +303,20 @@ const EXPORTS: Record<ExportDataset, ExportSpec> = {
       "id",
       "memberEmail",
       "memberName",
+      "gymIds",
       "startsAt",
       "endsAt",
       "note",
       "createdBy",
       "createdAt",
     ],
-    pipeline: ({ from, to }) => [
-      { $match: { createdAt: { $gte: from, $lte: to } } },
+    pipeline: ({ from, to }, gymId) => [
+      {
+        $match: {
+          gymIds: new ObjectId(gymId),
+          createdAt: { $gte: from, $lte: to },
+        },
+      },
       { $sort: { createdAt: 1, _id: 1 } },
       {
         $lookup: {
@@ -276,6 +332,7 @@ const EXPORTS: Record<ExportDataset, ExportSpec> = {
       doc._id,
       doc.member?.email,
       [doc.member?.firstName, doc.member?.lastName].filter(Boolean).join(" "),
+      ((doc.gymIds as unknown[] | undefined) ?? []).join(" "),
       doc.startsAt,
       doc.endsAt,
       doc.note,
@@ -285,13 +342,22 @@ const EXPORTS: Record<ExportDataset, ExportSpec> = {
   },
   entries: {
     collection: "entry_events",
-    header: ["id", "at", "deviceName", "memberName", "allowed", "reason"],
-    pipeline: ({ from, to }) => [
-      { $match: { at: { $gte: from, $lte: to } } },
+    header: [
+      "id",
+      "gymId",
+      "at",
+      "deviceName",
+      "memberName",
+      "allowed",
+      "reason",
+    ],
+    pipeline: ({ from, to }, gymId) => [
+      { $match: { gymId, at: { $gte: from, $lte: to } } },
       { $sort: { at: 1, _id: 1 } },
     ],
     row: (doc) => [
       doc._id,
+      doc.gymId,
       doc.at,
       doc.deviceName,
       doc.memberName,
@@ -315,10 +381,11 @@ async function writeChunk(
 }
 
 // Exports produce bulk PERSONAL DATA: admin only, with every download audited.
-reportsRouter.get(
+gymReportsRouter.get(
   "/export",
-  requireRole("admin"),
-  authed(async (req, res) => {
+  requireGymAccess("owner", "admin"),
+  gymScoped(async (req, res) => {
+    const gymId = req.gym._id.toHexString();
     const parsed = exportQuerySchema.safeParse(req.query);
     if (!parsed.success) {
       sendApiError(res, 400, "INVALID_REQUEST", "Invalid export parameters.");
@@ -339,16 +406,22 @@ reportsRouter.get(
     const spec = EXPORTS[dataset];
     const stamp = range.to.toISOString().slice(0, 10);
 
-    await logAudit(req.user, "data-exported", undefined, {
-      dataset,
-      from: range.from.toISOString(),
-      to: range.to.toISOString(),
-    });
+    await logAudit(
+      req.user,
+      "data-exported",
+      undefined,
+      {
+        dataset,
+        from: range.from.toISOString(),
+        to: range.to.toISOString(),
+      },
+      gymId,
+    );
 
     res.setHeader("Content-Type", "text/csv; charset=utf-8");
     res.setHeader(
       "Content-Disposition",
-      `attachment; filename="opengym-${dataset}-${stamp}.csv"`,
+      `attachment; filename="opengym-${gymId}-${dataset}-${stamp}.csv"`,
     );
     // An export is a snapshot and must not be cached.
     res.setHeader("Cache-Control", "no-store");
@@ -358,7 +431,7 @@ reportsRouter.get(
 
     const cursor = db
       .collection(spec.collection)
-      .aggregate<Document>(spec.pipeline(range));
+      .aggregate<Document>(spec.pipeline(range, gymId));
 
     try {
       await writeChunk(res, UTF8_BOM + csvRow(spec.header), controller.signal);

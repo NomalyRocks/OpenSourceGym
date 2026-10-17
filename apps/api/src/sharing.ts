@@ -2,8 +2,9 @@ import { ObjectId } from "mongodb";
 import type { SharingConfig, SharingSignalKind } from "@opengym/shared";
 import {
   db,
-  findGymSettings,
+  gymCollection,
   sessionCollection,
+  toObjectId,
   userCollection,
 } from "./db.js";
 import { redis } from "./redis.js";
@@ -26,10 +27,14 @@ export const QR_BLOCK_KEY = (userId: string): string => `og:qr-block:${userId}`;
 export const QR_LOC_KEY = (userId: string): string => `og:qr-loc:${userId}`;
 export const FP_CHURN_KEY = (userId: string): string => `og:fp-churn:${userId}`;
 
-// The optional "sharing" object in the singleton settings._id: "gym" document
-// is shallow-merged over the defaults
-export async function getSharingConfig(): Promise<SharingConfig> {
-  const doc = await findGymSettings();
+// The optional "sharing" object of a gym document is shallow-merged over the
+// defaults. Without a gym (sign-in session policy, which is not tied to any
+// gym) the defaults apply.
+export async function getSharingConfig(
+  gymId: string | null = null,
+): Promise<SharingConfig> {
+  const oid = gymId ? toObjectId(gymId) : null;
+  const doc = oid ? await gymCollection().findOne({ _id: oid }) : null;
   return { ...SHARING_DEFAULTS, ...(doc?.sharing ?? {}) };
 }
 
@@ -58,22 +63,30 @@ export async function recordSharingSignal(
   actor: { id: string; email: string },
   kind: SharingSignalKind,
   meta?: Record<string, unknown>,
+  gymId: string | null = null,
 ): Promise<void> {
   try {
     await db.collection("sharing_signals").insertOne({
       userId: new ObjectId(actor.id),
+      gymId,
       kind,
       meta: meta ?? null,
       at: new Date(),
     });
-    await logAudit(actor, "sharing-signal", actor.id, {
-      kind,
-      ...redactMetaForAudit(meta),
-    });
+    await logAudit(
+      actor,
+      "sharing-signal",
+      actor.id,
+      {
+        kind,
+        ...redactMetaForAudit(meta),
+      },
+      gymId,
+    );
 
     // Escalation: once the threshold number of signals accumulates in the window,
     // QR generation is blocked automatically and all sessions are revoked
-    const cfg = await getSharingConfig();
+    const cfg = await getSharingConfig(gymId);
     const since = new Date(Date.now() - cfg.signalWindowHours * 3600_000);
     const signalCount = await db.collection("sharing_signals").countDocuments({
       userId: new ObjectId(actor.id),
@@ -89,11 +102,17 @@ export async function recordSharingSignal(
       // the same window would trigger it repeatedly
       if (acquired === "OK") {
         await revokeUserSessions(actor.id);
-        await logAudit(actor, "account-sharing-blocked", actor.id, {
-          signalCount,
-          windowHours: cfg.signalWindowHours,
-          blockHours: cfg.qrBlockHours,
-        });
+        await logAudit(
+          actor,
+          "account-sharing-blocked",
+          actor.id,
+          {
+            signalCount,
+            windowHours: cfg.signalWindowHours,
+            blockHours: cfg.qrBlockHours,
+          },
+          gymId,
+        );
       }
     }
   } catch (err) {

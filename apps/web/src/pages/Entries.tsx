@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
+import { PageHeader } from "../components/PageHeader";
 import type {
   EntryEvent,
   GateRejectCode,
@@ -12,12 +13,15 @@ import { errorMessage } from "../i18n/errors";
 import { dateLocale } from "../i18n/format";
 import { dayEndIso, dayStartIso } from "../lib/dateRange";
 import type { WebTranslationKey } from "../i18n/resources";
+import { useGymApi } from "../lib/gyms";
 
 const reasonLabels: Record<GateRejectCode, WebTranslationKey> = {
   INVALID_QR: "Invalid code",
   UNKNOWN_DEVICE: "Unknown device",
   DEVICE_OFFLINE: "Turnstile offline",
   NO_ACTIVE_SUBSCRIPTION: "No active subscription",
+  NOT_ALLOWED_AT_GYM: "Not allowed at this gym",
+  GYM_INACTIVE: "Gym inactive",
   LOCATION_REQUIRED: "Location unavailable",
   OUT_OF_RANGE: "Outside gym location",
   MOCK_LOCATION: "Mock location",
@@ -33,6 +37,7 @@ const reasonLabels: Record<GateRejectCode, WebTranslationKey> = {
 export function Entries() {
   const { t, i18n } = useTranslation();
   const locale = dateLocale(i18n.resolvedLanguage);
+  const gymApi = useGymApi();
   const reasonLabel = (reason: string | null) => {
     if (!reason) return "—";
     const key = (reasonLabels as Partial<Record<string, WebTranslationKey>>)[
@@ -69,7 +74,7 @@ export function Entries() {
   // occupancy counter.
   async function refresh(signal: AbortSignal) {
     try {
-      const occupancyRequest = api<OccupancyResponse>("/api/me/occupancy", {
+      const occupancyRequest = api<OccupancyResponse>(gymApi("/occupancy"), {
         signal,
       });
       if (pagedBack) {
@@ -78,7 +83,7 @@ export function Entries() {
         return;
       }
       const [page, occ] = await Promise.all([
-        api<Page<EntryEvent>>(`/api/admin/entry-events?${buildQuery(null)}`, {
+        api<Page<EntryEvent>>(gymApi(`/entry-events?${buildQuery(null)}`), {
           signal,
         }),
         occupancyRequest,
@@ -108,7 +113,7 @@ export function Entries() {
     setLoadingMore(true);
     try {
       const page = await api<Page<EntryEvent>>(
-        `/api/admin/entry-events?${buildQuery(nextCursor)}`,
+        gymApi(`/entry-events?${buildQuery(nextCursor)}`),
       );
       setEntries((prev) => [...prev, ...page.items]);
       setNextCursor(page.nextCursor);
@@ -125,7 +130,10 @@ export function Entries() {
 
   return (
     <div className="stagger">
-      <h1>{t("Entries")}</h1>
+      <PageHeader
+        title={t("Entries")}
+        subtitle={t("Turnstile scans at this gym, including refused attempts.")}
+      />
       {occupancy && (
         <p className="hint" style={{ marginBottom: 16 }}>
           {t("Inside: {{count}}", { count: occupancy.inside })}
