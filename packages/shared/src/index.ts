@@ -37,7 +37,11 @@ export interface Page<T> {
   nextCursor: string | null;
 }
 
-export type Role = "admin" | "staff" | "member";
+/**
+ * `owner` is chain-wide; `admin` and `staff` are scoped to the gyms in their
+ * `gymIds`; `member` accounts are chain-wide and carry no gym scope.
+ */
+export type Role = "owner" | "admin" | "staff" | "member";
 
 export interface PublicUser {
   id: string;
@@ -47,6 +51,8 @@ export interface PublicUser {
   lastName: string;
   phone: string;
   role: Role;
+  /** Gyms an admin/staff account is scoped to; empty for owner and member */
+  gymIds: string[];
   emailVerified: boolean;
   /** Whether MFA (two-factor authentication) is enabled — Phase 5 */
   twoFactorEnabled: boolean;
@@ -54,11 +60,36 @@ export interface PublicUser {
   createdAt: string;
 }
 
+/** Membership state of a member, derived from their subscription periods. */
+export type SubscriptionStatus = "active" | "expired" | "none";
+
+/** One row of the admin user directory. */
+export interface UserDirectoryRow extends PublicUser {
+  subscriptionStatus: SubscriptionStatus;
+  /**
+   * End of the current period when `active`, end of the latest past period
+   * when `expired`, null when `none`.
+   */
+  subscriptionEndsAt: string | null;
+  /** Gyms of the member's currently active subscription periods; empty when none */
+  subscriptionGymIds: string[];
+}
+
+/** Offset page (1-based) used by the admin user directory table. */
+export interface UserDirectoryPage {
+  total: number;
+  page: number;
+  pageSize: number;
+  items: UserDirectoryRow[];
+}
+
 export interface MyProfile {
   id: string;
   email: string;
   name: string;
   role: Role;
+  /** Gyms an admin/staff account is scoped to; empty for owner and member */
+  gymIds: string[];
   mustChangePassword: boolean;
   twoFactorEnabled: boolean;
   profilePhotoUrl: string | null;
@@ -80,6 +111,8 @@ export interface Subscription {
   startsAt: string;
   endsAt: string;
   note?: string;
+  /** Gyms the member may enter during this period */
+  gymIds: string[];
   createdBy: string;
   createdAt: string;
 }
@@ -89,7 +122,18 @@ export type SubscriptionMonths = 1 | 3 | 6 | 12;
 export interface CreateSubscriptionRequest {
   userId: string;
   months: SubscriptionMonths;
+  /** Non-empty; every id must be an active gym the caller has access to */
+  gymIds: string[];
   note?: string;
+}
+
+/**
+ * PUT /api/admin/subscriptions/:id/gyms — replaces the gyms of a current or
+ * future period without changing its dates. Non-owners may only add or remove
+ * gyms in their own scope; gyms outside it stay on the period.
+ */
+export interface SetSubscriptionGymsRequest {
+  gymIds: string[];
 }
 
 export interface MySubscription {
@@ -97,24 +141,81 @@ export interface MySubscription {
   startsAt: string | null;
   endsAt: string | null;
   remainingDays: number;
+  /** Gyms the active period allows (empty when not active) */
+  gymIds: string[];
+  /** Same gyms with display names */
+  gyms: GymRef[];
 }
 
-export interface GymSettings {
-  gymName: string;
-  location: {
-    lat: number;
-    lng: number;
-    radiusM: number;
-  } | null;
+/** Minimal gym reference embedded in member-facing payloads */
+export interface GymRef {
+  id: string;
+  name: string;
+  active: boolean;
+}
+
+/** Geofence centre and radius of a gym */
+export interface GymLocation {
+  lat: number;
+  lng: number;
+  radiusM: number;
+}
+
+/** One gym of the chain (`/api/admin/gyms*`) */
+export interface Gym {
+  id: string;
+  name: string;
+  location: GymLocation | null;
   capacity: number | null;
-  /** Maximum time (hours) a member is considered "inside" without an exit turnstile — Phase 5 occupancy */
+  /** Maximum time (hours) a member is considered "inside" without an exit turnstile */
   autoExitHours: number;
-  /** Account-sharing detection settings — Phase 6 */
   sharing: SharingConfig;
-  /** Automatic renewal reminders — Phase E */
   reminders: ReminderConfig;
-  /** Legal documents published by the operator for their jurisdiction */
+  /** Gyms are deactivated, never deleted; an inactive gym refuses every entry scan */
+  active: boolean;
+  createdAt: string;
+}
+
+/** POST /api/admin/gyms (owner) */
+export interface GymCreateInput {
+  name: string;
+  location?: GymLocation | null;
+  capacity?: number | null;
+  autoExitHours?: number;
+}
+
+/**
+ * PUT /api/admin/gyms/:gymId (owner) — partial. Deactivation is
+ * `active: false`; gyms are never deleted.
+ */
+export interface GymUpdateInput {
+  name?: string;
+  active?: boolean;
+}
+
+/**
+ * Gym-specific settings. `GET /api/admin/gyms/:gymId/settings` returns the full
+ * `Gym` (a superset); `PUT` (owner, or admin of the gym) takes this shape, with
+ * `sharing` and `reminders` left unchanged when omitted.
+ */
+export interface GymSettings {
+  location: GymLocation | null;
+  capacity: number | null;
+  autoExitHours: number;
+  sharing?: SharingConfig;
+  reminders?: ReminderConfig;
+}
+
+/** Chain-wide settings singleton (`settings._id: "chain"`), owner only */
+export interface ChainSettings {
+  chainName: string;
+  /** Legal documents published by the operator — one data controller for the whole chain */
   legal: LegalConfig;
+}
+
+/** PUT /api/admin/users/:id/gyms (owner) — replaces an admin/staff account's gym scope */
+export interface SetUserGymsRequest {
+  gymIds: string[];
 }
 
 /**
@@ -140,6 +241,8 @@ export interface AuditLogEntry {
   targetId?: string;
   details?: Record<string, unknown>;
   at: string;
+  /** Gym the action was scoped to; null for chain-level actions (gym CRUD, chain settings…) */
+  gymId: string | null;
 }
 
 // ---- Phase 4 (revised): Static turnstile QR + Device Gateway ----
@@ -156,6 +259,10 @@ export type GateRejectCode =
   | "UNKNOWN_DEVICE"
   | "DEVICE_OFFLINE"
   | "NO_ACTIVE_SUBSCRIPTION"
+  /** The member has an active subscription, but not for the gym this device belongs to */
+  | "NOT_ALLOWED_AT_GYM"
+  /** The gym this device belongs to has been deactivated (entry only) */
+  | "GYM_INACTIVE"
   | "LOCATION_REQUIRED"
   | "OUT_OF_RANGE"
   | "MOCK_LOCATION"
@@ -223,6 +330,16 @@ export type ApiErrorCode =
   | "SUBSCRIPTION_BUSY"
   | "INVALID_USER"
   | "GYM_NAME_REQUIRED"
+  | "GYM_NOT_FOUND"
+  /** gymIds missing, empty or malformed */
+  | "INVALID_GYMS"
+  /** The subscription period has already ended and can no longer be changed */
+  | "SUBSCRIPTION_ENDED"
+  | "SUBSCRIPTION_NOT_FOUND"
+  /** The path's gym (or a gym in gymIds) is outside the caller's gym scope */
+  | "GYM_OUT_OF_SCOPE"
+  /** Demoting the only remaining owner is refused */
+  | "LAST_OWNER"
   | "INVALID_LOCATION"
   | "INVALID_CAPACITY"
   | "INVALID_AUTO_EXIT"
@@ -257,6 +374,7 @@ export type DeviceDirection = "in" | "out";
 
 export interface Device {
   id: string;
+  gymId: string;
   name: string;
   direction: DeviceDirection;
   online: boolean;
@@ -271,6 +389,7 @@ export interface Device {
 /** Device creation response — the token appears only once in this response */
 export interface DeviceCreated {
   id: string;
+  gymId: string;
   name: string;
   direction: DeviceDirection;
   token: string;
@@ -279,6 +398,7 @@ export interface DeviceCreated {
 
 export interface EntryEvent {
   id: string;
+  gymId: string | null;
   deviceId: string;
   deviceName: string;
   userId: string | null;
@@ -356,8 +476,10 @@ export type DeviceServerMessage =
 /** MFA verification method for a sensitive operation (role assignment) */
 export type MfaMethod = "totp" | "otp";
 
-/** Current gym occupancy (US-4) */
+/** Current occupancy of one gym (US-4) */
 export interface OccupancyResponse {
+  gymId: string;
+  gymName: string;
   /** Number of members inside (entry turnstile count, excluding entries expired by autoExitHours) */
   inside: number;
   capacity: number | null;
@@ -365,7 +487,16 @@ export interface OccupancyResponse {
   ratio: number | null;
 }
 
-/** Admin panel overview KPIs */
+/**
+ * GET /api/me/occupancy — occupancy of every active gym the caller may enter:
+ * the gyms on a member's active subscription, or an admin/staff account's
+ * gyms (owner: all active gyms).
+ */
+export interface MyOccupancyResponse {
+  gyms: OccupancyResponse[];
+}
+
+/** Admin panel overview KPIs (per gym) */
 export interface AdminStats {
   /** Number of unique members with an active subscription */
   activeMembers: number;
@@ -500,6 +631,27 @@ export interface RenewalReminderResult {
   sent: boolean;
   /** Time the reminder was recorded */
   sentAt: string | null;
+}
+
+/** One gym's row in the owner's chain summary */
+export interface ChainGymSummary {
+  gymId: string;
+  gymName: string;
+  active: boolean;
+  activeMembers: number;
+  renewalsDue: number;
+  /** Members currently counted inside */
+  inside: number;
+  entries: ReportSummary["entries"];
+}
+
+/** GET /api/admin/reports/chain/summary (owner) */
+export interface ChainSummary {
+  range: ReportRange;
+  timeZone: string;
+  /** Unique members with an active subscription anywhere in the chain */
+  activeMembers: number;
+  gyms: ChainGymSummary[];
 }
 
 /** CSV export datasets */

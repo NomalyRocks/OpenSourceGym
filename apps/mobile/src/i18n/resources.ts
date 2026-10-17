@@ -72,8 +72,10 @@ const tr = {
     "Şifre sıfırlanamadı. Lütfen tekrar deneyin.",
   "Your password was updated": "Şifreniz güncellendi",
   "Sign in with your new password.": "Yeni şifrenizle giriş yapın.",
-  "Enter the code sent to {{email}} and your new password.":
-    "{{email}} adresine gönderilen kodu ve yeni şifrenizi girin.",
+  "Choose a new password for {{email}}.":
+    "{{email}} hesabı için yeni bir şifre belirleyin.",
+  "The code is no longer valid. Go back for a new one.":
+    "Kod artık geçerli değil. Geri dönüp yeni kod isteyin.",
   "Reset password": "Şifreyi sıfırla",
   "Sending code...": "Kod gönderiliyor...",
   "Could not load data.": "Yüklenemedi.",
@@ -212,6 +214,13 @@ const tr = {
   "Check occupancy, view your membership, and pass through the turnstile.":
     "Doluluğu kontrol et, üyeliğini gör ve turnikeden geç.",
   "Gym occupancy": "Salon doluluğu",
+  "No gym occupancy to show. Occupancy appears once you have an active membership.":
+    "Gösterilecek salon doluluğu yok. Aktif üyeliğin olduğunda doluluk burada görünür.",
+  Gyms: "Salonlar",
+  "Your membership does not include this gym. Please contact reception.":
+    "Üyeliğin bu salonu kapsamıyor. Lütfen resepsiyonla iletişime geç.",
+  "This gym is currently closed for entry. Please contact reception.":
+    "Bu salon şu anda girişe kapalı. Lütfen resepsiyonla iletişime geç.",
   "Try again": "Tekrar dene",
   "{{inside}} of {{capacity}} people inside":
     "{{inside}} / {{capacity}} kişi içeride",

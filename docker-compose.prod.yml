@@ -59,7 +59,6 @@ services:
       INITIAL_ADMIN_PASSWORD: ${INITIAL_ADMIN_PASSWORD:-}
       BETTER_AUTH_URL: https://${DOMAIN}
       TRUSTED_ORIGINS: https://${DOMAIN}
-      ENABLE_API_DOCS: ${ENABLE_API_DOCS:-false}
       # So that report days are cut according to the gym's local day.
       REPORTS_TIME_ZONE: ${REPORTS_TIME_ZONE:-Europe/Istanbul}
       # R2 is REQUIRED in production: the API validates the configuration at

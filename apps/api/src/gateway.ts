@@ -17,6 +17,7 @@ const PING_INTERVAL_MS = 30_000;
 interface DeviceSocket extends WebSocket {
   deviceId?: string;
   deviceName?: string;
+  gymId?: string | null;
   // Turnstile direction: "in" means entry (occupancy +1, subscription checked),
   // "out" means exit (occupancy -1, no subscription check)
   direction?: DeviceDirection;
@@ -53,7 +54,7 @@ function registerDevice(id: string, ws: DeviceSocket): void {
 function unregisterDevice(id: string, ws: DeviceSocket): void {
   if (devices.get(id) === ws) {
     devices.delete(id);
-    logDeviceStatus(id, false);
+    logDeviceStatus(id, ws.gymId ?? null, false);
   }
 }
 
@@ -66,7 +67,7 @@ export function disconnectDevice(id: string): void {
   if (ws) {
     ws.close(4001, "device removed");
     devices.delete(id);
-    logDeviceStatus(id, false);
+    logDeviceStatus(id, ws.gymId ?? null, false);
   }
 }
 
@@ -128,12 +129,13 @@ async function authenticate(
 
     ws.deviceId = msg.deviceId;
     ws.deviceName = device.name as string;
+    ws.gymId = typeof device.gymId === "string" ? device.gymId : null;
     ws.direction = (device.direction as DeviceDirection | undefined) ?? "in";
     ws.isAlive = true;
     registerDevice(msg.deviceId, ws);
     send(ws, { type: "auth_ok", deviceName: ws.deviceName });
     touchLastSeen(msg.deviceId);
-    logDeviceStatus(msg.deviceId, true);
+    logDeviceStatus(msg.deviceId, ws.gymId ?? null, true);
     // The device is now a dumb client: after auth it only listens for "open"
     // commands; incoming messages are ignored to avoid crashing old firmware.
     // Old firmware sends "scan" for every QR read—warn only once per connection
@@ -184,6 +186,9 @@ export function attachDeviceGateway(server: Server): void {
       ws.ping();
     }
   }, PING_INTERVAL_MS);
+
+  // The HTTP server keeps the process alive; this timer must not.
+  pingInterval.unref();
 
   wss.on("close", () => {
     clearInterval(pingInterval);

@@ -66,6 +66,15 @@ export async function ensureIndexes(database: Db = db): Promise<void> {
     { name: "subscriptions_user_ends_at" },
   );
 
+  // Per-gym reports and the entry check: subscription periods listing a gym
+  // (multikey on gymIds), by end date.
+  await ensureIndex(
+    database,
+    "subscriptions",
+    { gymIds: 1, endsAt: -1 },
+    { name: "subscriptions_gym_ends_at" },
+  );
+
   // weight_history: both recording (reading the latest value) and calendar
   // listing use the find({ userId }).sort({ at: -1 }) pattern.
   await ensureIndex(
@@ -83,8 +92,18 @@ export async function ensureIndexes(database: Db = db): Promise<void> {
     { expireAfterSeconds: 30 * 24 * 3600 },
   );
   await ensureIndex(database, "sharing_signals", { userId: 1, at: -1 });
+  await ensureIndex(database, "sharing_signals", { gymId: 1, at: -1 });
   // session: for enforceSessionPolicy session-count and eviction queries
   await ensureIndex(database, "session", { userId: 1 });
+
+  // Gym-scoped audit viewer: gymId leads so a gym's entries are one range scan.
+  await ensureIndex(database, "audit_logs", { gymId: 1, at: -1, _id: -1 });
+  await ensureIndex(database, "audit_logs", {
+    gymId: 1,
+    action: 1,
+    at: -1,
+    _id: -1,
+  });
 
   // For sorting the audit list newest first.
   // _id is part of the sort key: cursor pagination breaks equal timestamps with
@@ -95,6 +114,20 @@ export async function ensureIndexes(database: Db = db): Promise<void> {
   // When action filtering and time sorting are used together.
   await ensureIndex(database, "audit_logs", { action: 1, at: -1, _id: -1 });
 
+  // Per-gym entry list and reports (gymId leads every gym-scoped query).
+  await ensureIndex(database, "entry_events", { gymId: 1, at: -1, _id: -1 });
+  await ensureIndex(database, "entry_events", {
+    gymId: 1,
+    userId: 1,
+    at: -1,
+    _id: -1,
+  });
+  await ensureIndex(database, "entry_events", {
+    gymId: 1,
+    deviceId: 1,
+    at: -1,
+    _id: -1,
+  });
   // For sorting the turnstile event list newest first.
   await ensureIndex(database, "entry_events", { at: -1, _id: -1 });
   // To find a user's turnstile events during account deletion; also supports
@@ -144,8 +177,10 @@ export async function ensureIndexes(database: Db = db): Promise<void> {
     },
   );
 
-  // For sorting the device list newest first.
-  await ensureIndex(database, "devices", { createdAt: -1 });
+  // Per-gym device list, newest first.
+  await ensureIndex(database, "devices", { gymId: 1, createdAt: -1 });
+  // Gym deactivation filter and listing.
+  await ensureIndex(database, "gyms", { active: 1, createdAt: 1 });
 
   // Phase E—reporting: range counts and CSV exports filter and sort by createdAt.
   await ensureIndex(database, "subscriptions", { createdAt: 1 });
