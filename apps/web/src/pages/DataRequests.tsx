@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { PageHeader } from "../components/PageHeader";
 import type { DeletionRequest, Page } from "@opengym/shared";
 import { api, isAbortError } from "../lib/api";
 import { errorMessage } from "../i18n/errors";
@@ -98,7 +99,10 @@ export function DataRequests() {
 
   return (
     <div className="stagger">
-      <h1>{t("Data deletion requests")}</h1>
+      <PageHeader
+        title={t("Data deletion requests")}
+        subtitle={t("Review member requests to delete their account data.")}
+      />
       <div className="row" style={{ marginBottom: 16 }}>
         <div className="field">
           <label htmlFor="deletion-status">{t("Status")}</label>

@@ -30,8 +30,9 @@ OpenGym: modern, self-hosted, açık kaynak bir spor salonu otomasyon sistemi (m
 
 ### 2.1 Personalar
 
-- **Salon Sahibi / Admin:** Sistemi kurar, personel ekler, tüm yetkilere sahiptir.
-- **Personel:** Üye aboneliklerini tanımlar/uzatır, üye kayıtlarını yönetir.
+- **Zincir Sahibi (Owner):** Sistemi kurar, salonları açar/kapatır, personeli salonlara atar; tüm salonlarda tüm yetkilere sahiptir.
+- **Salon Admini:** Atandığı salon(lar)da personel, cihaz ve ayar yönetimi yapar.
+- **Personel:** Atandığı salon(lar)da üye aboneliklerini tanımlar/uzatır, üye kayıtlarını yönetir.
 - **Üye:** Mobil uygulamadan kayıt olur, aboneliğini takip eder, QR ile salona girer.
 
 ### 2.2 User Story'ler ve Kabul Kriterleri
@@ -112,10 +113,24 @@ OpenGym: modern, self-hosted, açık kaynak bir spor salonu otomasyon sistemi (m
 - Sonuç hedef kaloriyi, bakım kalorisini ve hedefe göre protein/karbonhidrat/yağ gramlarını gösterir; genel yetişkinlere yönelik bir tahmin olduğu açıkça belirtilir.
 - Araç 18–80 yaş, 120–230 cm ve 35–300 kg aralıklarını doğrular. Tüm girdiler cihazda (SecureStore) oturum açan üyeye özel bir anahtar altında saklanarak hesaplayıcı yeniden açılışında otomatik doldurulmaya olanak tanır ve çıkışta silinir; yaş, boy (cm) ve kilo (kg) ayrıca üyenin sunucu profiline yazılır ve Profil sayfasından da güncellenebilir. Bu alanların tek yazma yolu rol denetiminden geçen `PATCH /api/me/body-metrics` ucudur; kilo geçmişi üyenin hesabı silindiğinde birlikte silinir. Takvim, hesaplanmış günlük kalori hedefini seçili günün detay kartında gösterir.
 
+#### US-8: Çoklu Salon (Zincir)
+
+> Zincir sahibi olarak, tek kurulumla birden fazla salonu yönetmek; üye olarak aboneliğimin kapsadığı salonlara girebilmek istiyorum.
+
+**Kabul Kriterleri:**
+
+- Tek sunucu ve tek veritabanı birden fazla salona hizmet eder; salonlar `gymId` ile ayrılır.
+- Konum (geofence), kapasite, otomatik çıkış süresi, turnike cihazları, paylaşım tespiti ve hatırlatma ayarları salon bazındadır.
+- Abonelik, üyenin girebileceği salonların listesini taşır; listede olmayan salonda giriş reddedilir ve üyeye neden anlaşılır şekilde gösterilir.
+- Owner tüm salonları yönetir; admin/personel yalnızca atandığı salonların giriş, cihaz ve rapor verisini görür. Üye arama zincir genelidir.
+- Salonlar silinmez, pasife alınır; pasif salonda giriş reddedilir, çıkış hiçbir zaman reddedilmez.
+- Doluluk salon bazında sayılır; üye aynı anda yalnızca bir salonun içinde sayılır.
+- Tasarım: [docs/multi-gym.md](docs/multi-gym.md).
+
 ### 2.3 Non-Goals (Kapsam Dışı)
 
 - **Online ödeme entegrasyonu yok.** Ödeme salonda alınır; abonelik personel tarafından manuel tanımlanır.
-- **Multi-tenant / çoklu şube yok.** Her kurulum tek salona hizmet eder (single-tenant, self-hosted).
+- **Multi-tenant (birbirinden bağımsız işletmeler) yok.** Bir kurulum tek bir işletmeye (tek salon veya zincir) hizmet eder; farklı işletmeler aynı kurulumu paylaşmaz. Aynı işletmenin çoklu salonu US-8 kapsamındadır.
 - **Ders/rezervasyon, antrenman programı, diyet takibi, öğün planlama veya beslenme koçluğu yok.** Genel yetişkinler için tahmin üreten bilgilendirici kalori/makro hesaplayıcısı bu sınırın istisnasıdır (girdileri cihazda saklar, boy/kiloyu ayrıca üyenin sunucu profiline yazar — bkz. US-7).
 - **Path obfuscation ve custom cipher katmanı bu sürümde uygulanmayacak** (bkz. §3.4 ve Ek A).
 
@@ -203,8 +218,9 @@ OpenGym Backend
 | **v1.1** | QR + turnike WebSocket entegrasyonu (US-5), konum doğrulama, doluluk oranı, MFA                                                                 |
 | **v2.0** | Hesap paylaşımı tespiti, anti-debugging sertleştirme; gerekirse deneysel güvenlik katmanı (Ek A) değerlendirmesi                                |
 | **v2.1** | Üye profil fotoğrafı, Türkçe/İngilizce deneyim ve cihazda çalışan bilgilendirici üye araçları (US-7)                                            |
+| **v3.0** | Çoklu salon / zincir desteği (US-8)                                                                                                             |
 
-> Geliştirme adımlarına bölünmüş detaylı faz planı için bkz. [ROADMAP.md](ROADMAP.md) (MVP = Faz 0–3, v1.1 = Faz 4–5, v2.0 = Faz 6).
+> Geliştirme adımlarına bölünmüş detaylı faz planı için bkz. [ROADMAP.md](ROADMAP.md) (MVP = Faz 0–3, v1.1 = Faz 4–5, v2.0 = Faz 6, v2.1 = Faz 7–9, v3.0 = Faz 11).
 
 ### 4.2 Teknik Riskler
 

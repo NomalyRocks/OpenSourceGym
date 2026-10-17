@@ -1,10 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { PageHeader } from "../components/PageHeader";
 import type { AuditLogEntry, Page } from "@opengym/shared";
 import { api, isAbortError } from "../lib/api";
 import { errorMessage } from "../i18n/errors";
 import { dateLocale } from "../i18n/format";
 import type { WebTranslationKey } from "../i18n/resources";
+import { useGyms } from "../lib/gyms";
 
 const actionLabels: Partial<Record<string, WebTranslationKey>> = {
   "sharing-signal": "Sharing signal",
@@ -31,8 +33,14 @@ const actionLabels: Partial<Record<string, WebTranslationKey>> = {
   "data-exported": "Data exported",
 };
 
+/**
+ * Chain audit log with a gym filter. The server limits admins to the rows of
+ * their own gyms, so the dropdown only lists gyms in the caller's scope.
+ */
 export function Audit() {
   const { t, i18n } = useTranslation();
+  const { gyms } = useGyms();
+  const [gymFilter, setGymFilter] = useState("");
   const [entries, setEntries] = useState<AuditLogEntry[]>([]);
   const [nextCursor, setNextCursor] = useState<string | null>(null);
   const [action, setAction] = useState("");
@@ -58,6 +66,7 @@ export function Audit() {
       const params = new URLSearchParams();
       if (cursor) params.set("cursor", cursor);
       if (action) params.set("action", action);
+      if (gymFilter) params.set("gymId", gymFilter);
       try {
         const page = await api<Page<AuditLogEntry>>(
           `/api/admin/audit?${params.toString()}`,
@@ -74,7 +83,7 @@ export function Audit() {
         if (forGeneration === generation.current) setLoading(false);
       }
     },
-    [action, t],
+    [action, gymFilter, t],
   );
 
   useEffect(() => {
@@ -99,7 +108,10 @@ export function Audit() {
 
   return (
     <div className="stagger">
-      <h1>{t("Audit log")}</h1>
+      <PageHeader
+        title={t("Audit log")}
+        subtitle={t("A record of sensitive actions taken in the panel.")}
+      />
       <div className="row" style={{ marginBottom: 16 }}>
         <div className="field">
           <label htmlFor="audit-action">{t("Action")}</label>
@@ -116,6 +128,23 @@ export function Audit() {
             ))}
           </select>
         </div>
+        {
+          <div className="field">
+            <label htmlFor="audit-gym">{t("Gym")}</label>
+            <select
+              id="audit-gym"
+              value={gymFilter}
+              onChange={(e) => setGymFilter(e.target.value)}
+            >
+              <option value="">{t("All gyms")}</option>
+              {gyms.map((g) => (
+                <option key={g.id} value={g.id}>
+                  {g.name}
+                </option>
+              ))}
+            </select>
+          </div>
+        }
       </div>
       {error && <div className="msg error">{error}</div>}
       <div className="panel">

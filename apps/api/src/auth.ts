@@ -426,6 +426,7 @@ export const auth = betterAuth({
       "/email-otp/send-verification-otp": bypassableRateLimit(60, 3),
       "/email-otp/verify-email": bypassableRateLimit(60, 5),
       "/email-otp/request-password-reset": bypassableRateLimit(60, 3),
+      "/email-otp/check-verification-otp": bypassableRateLimit(60, 5),
       "/email-otp/reset-password": bypassableRateLimit(60, 5),
       "/two-factor/send-otp": { window: 60, max: 3 },
       "/two-factor/verify-totp": { window: 60, max: 5 },

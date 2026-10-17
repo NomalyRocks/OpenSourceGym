@@ -17,7 +17,10 @@ type SwaggerUi = {
 const require = createRequire(import.meta.url);
 const swaggerUi = require("swagger-ui-express") as SwaggerUi;
 
-export const apiDocsEnabled = env.nodeEnv !== "production" || env.enableApiDocs;
+// The docs endpoints are a development testing aid, never a product surface:
+// the printed turnstile QR is public and the panel shares this origin, so the
+// spec must not be reachable on a production install under any configuration.
+export const apiDocsEnabled = env.nodeEnv !== "production";
 
 export const openApiRouter: Router = Router();
 

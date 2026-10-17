@@ -22,6 +22,7 @@ import {
   type Theme,
 } from "../theme";
 import { CheckGlyph } from "../components/icons";
+import { useKeyboardReveal } from "./keyboardAware";
 import { easing, useReducedMotion } from "./motion";
 
 export type Tone = "neutral" | "accent" | "success" | "warning" | "error";
@@ -195,10 +196,12 @@ export function Field({
   const theme = useTheme();
   const styles = useThemedStyles(primitiveStyles);
   const [focused, setFocused] = useState(false);
+  const reveal = useKeyboardReveal();
+  const fieldRef = useRef<View>(null);
   const disabled = inputProps.editable === false;
 
   return (
-    <View style={styles.field}>
+    <View ref={fieldRef} style={styles.field}>
       <Text style={styles.fieldLabel}>{label}</Text>
       <View
         style={[
@@ -218,6 +221,7 @@ export function Field({
           {...inputProps}
           onFocus={(event) => {
             setFocused(true);
+            reveal(fieldRef.current);
             onFocus?.(event);
           }}
           onBlur={(event) => {

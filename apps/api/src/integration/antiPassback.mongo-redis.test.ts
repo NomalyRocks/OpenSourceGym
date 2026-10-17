@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import test from "node:test";
+import { ObjectId } from "mongodb";
 
 const mongoUri = process.env.TEST_MONGODB_URI;
 const redisUri = process.env.TEST_REDIS_URL;
@@ -41,31 +42,40 @@ test("isInside honours the autoExitHours expiry", { skip }, async () => {
 
   const userId = `test-${randomUUID()}`;
   const staleUserId = `test-${randomUUID()}`;
-  const INSIDE_KEY = "og:inside";
+  const gymOid = new ObjectId();
+  const gymId = gymOid.toHexString();
+  const INSIDE_KEY = `og:inside:${gymId}`;
 
   try {
     await redis.connect();
     await mongoClient.connect();
-    await db
-      .collection("settings")
-      .updateOne(
-        { _id: "gym" as unknown as never },
-        { $set: { autoExitHours: 4 } },
-        { upsert: true },
-      );
+    await db.collection("gyms").insertOne({
+      _id: gymOid,
+      name: "Test gym",
+      location: null,
+      capacity: null,
+      autoExitHours: 4,
+      active: true,
+      createdBy: "test",
+      createdAt: new Date(),
+    });
 
-    assert.equal(await isInside(userId), false, "unknown member is not inside");
-
-    await markInside(userId);
     assert.equal(
-      await isInside(userId),
+      await isInside(gymId, userId),
+      false,
+      "unknown member is not inside",
+    );
+
+    await markInside(gymId, userId);
+    assert.equal(
+      await isInside(gymId, userId),
       true,
       "a fresh entry counts as inside",
     );
 
-    await markOutside(userId);
+    await markOutside(gymId, userId);
     assert.equal(
-      await isInside(userId),
+      await isInside(gymId, userId),
       false,
       "an exit scan clears the inside flag",
     );
@@ -77,7 +87,7 @@ test("isInside honours the autoExitHours expiry", { skip }, async () => {
       String(Date.now() - 5 * 60 * 60 * 1000),
     );
     assert.equal(
-      await isInside(staleUserId),
+      await isInside(gymId, staleUserId),
       false,
       "an entry older than autoExitHours must not lock the member out",
     );
@@ -85,13 +95,13 @@ test("isInside honours the autoExitHours expiry", { skip }, async () => {
     // ...but the record itself must survive: that member may still be in the
     // building and has to be able to scan their way OUT.
     assert.equal(
-      await hasInsideRecord(staleUserId),
+      await hasInsideRecord(gymId, staleUserId),
       true,
       "a lapsed occupancy window must not revoke the right to exit",
     );
-    await getOccupancy();
+    await getOccupancy(gymId);
     assert.equal(
-      await hasInsideRecord(staleUserId),
+      await hasInsideRecord(gymId, staleUserId),
       true,
       "getOccupancy must not reap a record that is merely uncounted",
     );
@@ -102,8 +112,8 @@ test("isInside honours the autoExitHours expiry", { skip }, async () => {
       staleUserId,
       String(Date.now() - 25 * 60 * 60 * 1000),
     );
-    assert.equal(await hasInsideRecord(staleUserId), false);
-    await getOccupancy();
+    assert.equal(await hasInsideRecord(gymId, staleUserId), false);
+    await getOccupancy(gymId);
     assert.equal(
       await redis.hGet(INSIDE_KEY, staleUserId),
       null,
@@ -111,41 +121,37 @@ test("isInside honours the autoExitHours expiry", { skip }, async () => {
     );
 
     // Someone who never entered has no claim on the exit turnstile.
-    assert.equal(await hasInsideRecord(`test-${randomUUID()}`), false);
+    assert.equal(await hasInsideRecord(gymId, `test-${randomUUID()}`), false);
 
     // A non-numeric value must read as "outside" rather than throwing.
     await redis.hSet(INSIDE_KEY, staleUserId, "not-a-number");
-    assert.equal(await isInside(staleUserId), false);
-    assert.equal(await hasInsideRecord(staleUserId), false);
+    assert.equal(await isInside(gymId, staleUserId), false);
+    assert.equal(await hasInsideRecord(gymId, staleUserId), false);
 
     // An autoExitHours longer than the 24-hour retention floor must stretch the
     // retention with it. Otherwise the reap deletes a record the occupancy
     // window still counts, and the member — genuinely inside — is refused at the
     // EXIT turnstile.
     await db
-      .collection("settings")
-      .updateOne(
-        { _id: "gym" as unknown as never },
-        { $set: { autoExitHours: 36 } },
-        { upsert: true },
-      );
+      .collection("gyms")
+      .updateOne({ _id: gymOid }, { $set: { autoExitHours: 36 } });
     await redis.hSet(
       INSIDE_KEY,
       staleUserId,
       String(Date.now() - 30 * 60 * 60 * 1000),
     );
     assert.equal(
-      await isInside(staleUserId),
+      await isInside(gymId, staleUserId),
       true,
       "30 hours in is still counted when autoExitHours is 36",
     );
     assert.equal(
-      await hasInsideRecord(staleUserId),
+      await hasInsideRecord(gymId, staleUserId),
       true,
       "a counted record must never be past its retention window",
     );
     assert.equal(
-      await reapExpiredInsideRecords(),
+      await reapExpiredInsideRecords(gymId),
       0,
       "the reap must not delete a record the occupancy window still counts",
     );
@@ -156,7 +162,7 @@ test("isInside honours the autoExitHours expiry", { skip }, async () => {
       staleUserId,
       String(Date.now() - 37 * 60 * 60 * 1000),
     );
-    assert.equal(await reapExpiredInsideRecords(), 1);
+    assert.equal(await reapExpiredInsideRecords(gymId), 1);
     assert.equal(await redis.hGet(INSIDE_KEY, staleUserId), null);
 
     // The scheduler wrapper is the same sweep; it must also survive being
