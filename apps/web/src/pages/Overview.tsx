@@ -1,6 +1,7 @@
 import { useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { useTranslation } from "react-i18next";
+import { PageHeader } from "../components/PageHeader";
 import type {
   AdminStats,
   EntryEvent,
@@ -132,7 +133,10 @@ export function Overview() {
 
   return (
     <div className="stagger">
-      <h1>{t("Overview")}</h1>
+      <PageHeader
+        title={t("Overview")}
+        subtitle={t("Live numbers and the latest entries at this gym.")}
+      />
       {error && <div className="msg error">{error}</div>}
 
       <div className="kpi-grid">

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { PageHeader } from "../components/PageHeader";
 import type { AuditLogEntry, Page } from "@opengym/shared";
 import { api, isAbortError } from "../lib/api";
 import { errorMessage } from "../i18n/errors";
@@ -107,7 +108,10 @@ export function Audit() {
 
   return (
     <div className="stagger">
-      <h1>{t("Audit log")}</h1>
+      <PageHeader
+        title={t("Audit log")}
+        subtitle={t("A record of sensitive actions taken in the panel.")}
+      />
       <div className="row" style={{ marginBottom: 16 }}>
         <div className="field">
           <label htmlFor="audit-action">{t("Action")}</label>

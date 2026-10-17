@@ -60,6 +60,29 @@ export interface PublicUser {
   createdAt: string;
 }
 
+/** Membership state of a member, derived from their subscription periods. */
+export type SubscriptionStatus = "active" | "expired" | "none";
+
+/** One row of the admin user directory. */
+export interface UserDirectoryRow extends PublicUser {
+  subscriptionStatus: SubscriptionStatus;
+  /**
+   * End of the current period when `active`, end of the latest past period
+   * when `expired`, null when `none`.
+   */
+  subscriptionEndsAt: string | null;
+  /** Gyms of the member's currently active subscription periods; empty when none */
+  subscriptionGymIds: string[];
+}
+
+/** Offset page (1-based) used by the admin user directory table. */
+export interface UserDirectoryPage {
+  total: number;
+  page: number;
+  pageSize: number;
+  items: UserDirectoryRow[];
+}
+
 export interface MyProfile {
   id: string;
   email: string;

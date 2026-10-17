@@ -30,6 +30,9 @@ pnpm --filter @opengym/api dev        # one workspace
 pnpm --filter @opengym/mobile start   # Expo dev server (also: android / ios)
 
 docker compose up                     # infra: mongo + redis (API runs on host via pnpm dev)
+
+# demo data (refuses any database whose name does not end in -demo; wipes it first)
+MONGODB_URI=mongodb://127.0.0.1:27018/opengym-ui-demo REDIS_URL=redis://127.0.0.1:6380/7 SMTP_HOST= pnpm --filter @opengym/api seed:demo
 ```
 
 - API needs Mongo and Redis running. In development, Docker provides only Mongo and Redis; the API always runs on the host. Env: copy `.env.example` to `.env`; with SMTP unset, OTP emails print to the api console. Production uses a separate `.env.production.example` (see `docker-compose.prod.yml`) — never merge the two profiles into one file, because both `docker compose` and Node's `--env-file` take the last value of a duplicated key.
@@ -81,7 +84,7 @@ Profile photos live in a public R2 bucket with no signature and no expiry, so th
 ### API surface
 
 - `/api/auth/*` — BetterAuth
-- `/api/admin/*` (`apps/api/src/routes/admin.ts`) — chain-level: chain-wide unified user search (`q`: phone/e-mail/name), sequential subscriptions (`gymIds` must be active and in the caller's scope), owner-only role assignment and `PUT /users/:id/gyms`, chain settings, audit list (`?gymId=`; admins see only their gyms' rows), owner-only deletion-request approve/reject
+- `/api/admin/*` (`apps/api/src/routes/admin.ts`) — chain-level: chain-wide unified user search (`q`: phone/e-mail/name), paged user directory `GET /users/directory` (role/2FA/subscription-status/gym filters, backs the panel's Users page), sequential subscriptions (`gymIds` must be active and in the caller's scope), owner-only role assignment and `PUT /users/:id/gyms`, chain settings, audit list (`?gymId=`; admins see only their gyms' rows), owner-only deletion-request approve/reject
 - `/api/admin/gyms*` (`apps/api/src/routes/gyms.ts`) — gym list (scoped for non-owners) and owner-only create/update/deactivate; under `/api/admin/gyms/:gymId/` the gym-scoped `stats`, `entry-events`, `occupancy` and `settings`
 - `/api/admin/gyms/:gymId/devices*` (`apps/api/src/routes/devices.ts`) — **owner/admin only, never staff**: every row carries `qrContent`, and that string _is_ the gate credential — anyone holding it can present it to `/api/me/gate-scan`.
 - `/api/admin/gyms/:gymId/reports/*` (`apps/api/src/routes/reports.ts`) — gym-scoped summary report, daily entry trend, renewals-due list plus `POST /renewals/:userId/remind`, and CSV export (owner/admin, with a gym column); owner-only chain summary at `GET /api/admin/reports/chain/summary` (see `docs/reports-and-reminders.md`; `REPORTS_TIME_ZONE` decides where day buckets are cut)

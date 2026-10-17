@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
+import { PageHeader } from "../components/PageHeader";
 import type {
   EntryEvent,
   GateRejectCode,
@@ -129,7 +130,10 @@ export function Entries() {
 
   return (
     <div className="stagger">
-      <h1>{t("Entries")}</h1>
+      <PageHeader
+        title={t("Entries")}
+        subtitle={t("Turnstile scans at this gym, including refused attempts.")}
+      />
       {occupancy && (
         <p className="hint" style={{ marginBottom: 16 }}>
           {t("Inside: {{count}}", { count: occupancy.inside })}

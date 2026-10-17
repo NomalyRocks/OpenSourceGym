@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
+import { PageHeader } from "../components/PageHeader";
 import type { PublicUser, SetUserGymsRequest } from "@opengym/shared";
 import { api } from "../lib/api";
 import { useGyms } from "../lib/gyms";
@@ -78,7 +79,12 @@ export function StaffGyms() {
 
   return (
     <div className="stagger">
-      <h1>{t("Staff assignment")}</h1>
+      <PageHeader
+        title={t("Staff assignment")}
+        subtitle={t(
+          "Choose which gyms each administrator or staff member can work in.",
+        )}
+      />
       <form className="panel" onSubmit={search}>
         {msg && <div className={`msg ${msg.kind}`}>{msg.text}</div>}
         <p className="hint" style={{ marginBottom: 14 }}>

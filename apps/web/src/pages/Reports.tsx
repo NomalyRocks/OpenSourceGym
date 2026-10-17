@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { PageHeader } from "../components/PageHeader";
 import type { EntryTrend, ReportSummary } from "@opengym/shared";
 import { api, isAbortError } from "../lib/api";
 import { errorMessage } from "../i18n/errors";
@@ -152,7 +153,10 @@ export function Reports() {
 
   return (
     <div className="stagger">
-      <h1>{t("Reports")}</h1>
+      <PageHeader
+        title={t("Reports")}
+        subtitle={t("Membership and entry statistics for a date range.")}
+      />
 
       <div className="panel">
         <div className="row" style={{ alignItems: "flex-end", gap: 16 }}>

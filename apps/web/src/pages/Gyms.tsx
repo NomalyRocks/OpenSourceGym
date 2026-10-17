@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
+import { PageHeader } from "../components/PageHeader";
 import { Link } from "react-router-dom";
 import type { GymCreateInput, Gym, GymUpdateInput } from "@opengym/shared";
 import { api } from "../lib/api";
@@ -79,7 +80,10 @@ export function Gyms() {
 
   return (
     <div className="stagger">
-      <h1>{t("Gyms")}</h1>
+      <PageHeader
+        title={t("Gyms")}
+        subtitle={t("Create gyms, rename them or switch them off.")}
+      />
       <form className="panel" onSubmit={create} style={{ maxWidth: 560 }}>
         {msg && <div className={`msg ${msg.kind}`}>{msg.text}</div>}
         <div className="row">

@@ -9,6 +9,8 @@ import type {
   DeletionRequest,
   Page,
   PublicUser,
+  SubscriptionStatus,
+  UserDirectoryPage,
 } from "@opengym/shared";
 import { auth } from "../auth.js";
 import { sendApiError } from "../apiError.js";
@@ -59,6 +61,11 @@ import {
   parseUserSearchQuery,
   USER_SEARCH_LIMIT,
 } from "../userSearch.js";
+import {
+  buildDirectoryPlan,
+  buildDirectoryUserMatch,
+  userDirectoryQuerySchema,
+} from "../userDirectory.js";
 import {
   findActivePhoneConflictUserIds,
   reconcilePhoneConflictsAfterUserChange,
@@ -170,6 +177,91 @@ adminRouter.get(
       .toArray();
     res.json(docs.map(toPublicUser));
   },
+);
+
+// Paged, filterable user directory for the admin panel (chain-wide, like search)
+adminRouter.get(
+  "/users/directory",
+  requireRole("owner", "admin", "staff"),
+  authed(async (req, res) => {
+    const parsed = userDirectoryQuerySchema.safeParse(req.query);
+    if (!parsed.success) {
+      sendApiError(
+        res,
+        400,
+        "INVALID_REQUEST",
+        "Invalid user directory query parameters.",
+      );
+      return;
+    }
+    const query = parsed.data;
+
+    // An empty `q` means "no search"; a single character is too short to
+    // match meaningfully, same as the search endpoint.
+    const rawQuery = (query.q ?? "").trim();
+    const searchText = parseUserSearchQuery(rawQuery);
+    if (rawQuery && !searchText) {
+      sendApiError(
+        res,
+        400,
+        "SEARCH_QUERY_TOO_SHORT",
+        "Enter at least two characters to search.",
+      );
+      return;
+    }
+
+    if (
+      query.gymId &&
+      req.user.role !== "owner" &&
+      !req.user.gymIds.includes(query.gymId)
+    ) {
+      sendApiError(
+        res,
+        403,
+        "GYM_OUT_OF_SCOPE",
+        "This gym is outside your scope.",
+      );
+      return;
+    }
+
+    let searchFilter = null;
+    if (searchText) {
+      const phoneE164 = tryNormalizePhoneToE164(searchText);
+      const conflictUserIds = phoneE164
+        ? await findActivePhoneConflictUserIds(phoneE164)
+        : [];
+      searchFilter = buildUserSearchFilter(searchText, conflictUserIds);
+    }
+
+    const plan = buildDirectoryPlan(
+      query,
+      buildDirectoryUserMatch(query, searchFilter),
+      new Date(),
+    );
+    const [result] = await userCollection()
+      .aggregate<{
+        total: { n: number }[];
+        items: (UserDocument & {
+          subscriptionStatus: SubscriptionStatus;
+          subscriptionEndsAt: Date | null;
+          subscriptionGymIds: string[];
+        })[];
+      }>(plan.pipeline, plan.collation ? { collation: plan.collation } : {})
+      .toArray();
+
+    const body: UserDirectoryPage = {
+      total: result?.total[0]?.n ?? 0,
+      page: query.page,
+      pageSize: query.pageSize,
+      items: (result?.items ?? []).map((doc) => ({
+        ...toPublicUser(doc),
+        subscriptionStatus: doc.subscriptionStatus,
+        subscriptionEndsAt: doc.subscriptionEndsAt?.toISOString() ?? null,
+        subscriptionGymIds: doc.subscriptionGymIds ?? [],
+      })),
+    };
+    res.json(body);
+  }),
 );
 
 const OWNER_ROLE_LOCK_KEY = "og:lock:owner-role";

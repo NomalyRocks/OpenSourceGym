@@ -5,6 +5,7 @@ import type {
   LegalConfig,
 } from "@opengym/shared";
 import { api, isAbortError } from "../lib/api";
+import { PageHeader } from "../components/PageHeader";
 import { errorMessage } from "../i18n/errors";
 import { useProfile } from "../lib/profile";
 
@@ -59,7 +60,10 @@ export function ChainSettings() {
 
   return (
     <div className="stagger">
-      <h1>{t("Chain settings")}</h1>
+      <PageHeader
+        title={t("Chain settings")}
+        subtitle={t("Chain name and the legal documents shared by every gym.")}
+      />
       <form className="panel" onSubmit={save} style={{ maxWidth: 560 }}>
         {msg && <div className={`msg ${msg.kind}`}>{msg.text}</div>}
         <fieldset disabled={!canEdit} style={{ border: 0, padding: 0 }}>
