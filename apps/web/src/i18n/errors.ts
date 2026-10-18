@@ -49,6 +49,18 @@ const codeMessages: Record<ApiErrorCode, WebTranslationKey> = {
   INVALID_GYMS: "Select valid gyms within your access.",
   SUBSCRIPTION_ENDED: "This subscription period has already ended.",
   SUBSCRIPTION_NOT_FOUND: "Subscription not found.",
+  MEMBER_ONLY: "This action applies to member accounts only.",
+  INVALID_BAN_REASON: "Enter a ban reason of 3 to 500 characters.",
+  BANNED: "This member is banned.",
+  NOT_BANNED: "This member is not banned.",
+  FREEZE_DISABLED: "Subscription freezing is turned off.",
+  FREEZE_LIMIT_REACHED: "The yearly freeze limit has been reached.",
+  ALREADY_FROZEN: "This membership is already frozen.",
+  NOT_FROZEN: "This membership is not frozen.",
+  NO_ACTIVE_PERIOD: "The member has no subscription period running right now.",
+  INVALID_FREEZE_SETTINGS: "Invalid subscription freeze settings.",
+  SUBSCRIPTION_STARTED:
+    "This subscription period has already started and cannot be cancelled.",
   GYM_LOCATION_UNSET:
     "Entry is unavailable because the gym location is not configured. Please contact reception.",
   DELETION_MEMBER_ONLY: "Only member accounts can create a deletion request.",

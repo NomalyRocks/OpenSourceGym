@@ -259,10 +259,114 @@ const tr = {
     "Otomatik engelin ne kadar süreceği.",
   Save: "Kaydet",
   "Edit gyms": "Salonları düzenle",
+  "Member banned": "Üye yasaklı",
+  "Member controls": "Üye işlemleri",
+  Ban: "Yasakla",
+  "Ban member": "Üyeyi yasakla",
+  Unban: "Yasağı kaldır",
+  "Unknown member": "Bilinmeyen üye",
+  "This member is banned.": "Bu üye yasaklanmış.",
+  "Banned on {{date}} by {{name}}": "{{date}} tarihinde {{name}} yasakladı",
+  "A banned member cannot enter any gym.":
+    "Yasaklı üye hiçbir salona giriş yapamaz.",
+  "The member will be refused at every gym and will see this reason in the mobile app.":
+    "Üyenin girişi tüm salonlarda reddedilir ve bu nedeni mobil uygulamada görür.",
+  "{{min}}–{{max}} characters": "{{min}}–{{max}} karakter",
+  "The member will be able to enter the gyms again.":
+    "Üye salonlara yeniden giriş yapabilecek.",
+  "Ban reason": "Yasaklama sebebi",
+  "Member banned.": "Üye yasaklandı.",
+  "Member unbanned.": "Üyenin yasağı kaldırıldı.",
+  "Could not ban the member.": "Üye yasaklanamadı.",
+  "Could not unban the member.": "Üyenin yasağı kaldırılamadı.",
+  "Subscription freeze": "Abonelik dondurma",
+  "Frozen since {{date}}": "{{date}} tarihinden beri donduruldu",
+  Resume: "Devam ettir",
+  "Freeze subscription": "Aboneliği dondur",
+  "Freezing is turned off in the chain settings.":
+    "Dondurma zincir ayarlarında kapalı.",
+  "The yearly freeze limit has been reached.": "Yıllık dondurma hakkı doldu.",
+  "The member has no active subscription period.":
+    "Üyenin aktif bir abonelik dönemi yok.",
+  "{{used}} of {{max}} freezes used in the last 365 days.":
+    "Son 365 günde {{max}} dondurma hakkından {{used}} tanesi kullanıldı.",
+  "At most {{days}} days are credited back to the member.":
+    "Üyeye en fazla {{days}} gün geri eklenir.",
+  "The member's next entry scan resumes the freeze automatically.":
+    "Üyenin bir sonraki giriş okutması dondurmayı otomatik olarak sonlandırır.",
+  "Subscription frozen.": "Abonelik donduruldu.",
+  "Subscription resumed.": "Abonelik yeniden başlatıldı.",
+  "Could not freeze the subscription.": "Abonelik dondurulamadı.",
+  "Could not resume the subscription.": "Abonelik yeniden başlatılamadı.",
+  "Account deletion": "Hesap silme",
+  "Deletion requested on {{date}} by {{name}}":
+    "{{date}} tarihinde {{name}} silme talebi açtı",
+  "Deletion requested on {{date}} by the member":
+    "{{date}} tarihinde üye silme talebi açtı",
+  "Open a deletion request on the member's behalf.":
+    "Üye adına bir silme talebi açın.",
+  "Request deletion": "Silme talebi aç",
+  "This opens a data deletion request for the member. Nothing is deleted until the owner approves it.":
+    "Bu işlem üye için bir veri silme talebi açar. Sahip onaylayana kadar hiçbir şey silinmez.",
+  "Reason (optional)": "Neden (isteğe bağlı)",
+  "Deletion request opened.": "Silme talebi açıldı.",
+  "Could not request the deletion.": "Silme talebi açılamadı.",
+  "Allow freezing subscriptions": "Abonelik dondurmaya izin ver",
+  "Members can freeze from the app": "Üyeler uygulamadan dondurabilsin",
+  "Staff can freeze a member's subscription. The frozen time is credited back when the freeze ends.":
+    "Personel üyenin aboneliğini dondurabilir. Dondurma bitince geçen süre üyeye geri eklenir.",
+  "Freezes per member per year": "Üye başına yıllık dondurma",
+  "Longest freeze credited (days)": "Geri eklenen en uzun dondurma (gün)",
+  "Requested by {{name}}": "Talep eden: {{name}}",
+  "Requested by the member": "Talep eden: üye",
+  "Reason: {{reason}}": "Neden: {{reason}}",
+  "Cancel period": "Dönemi iptal et",
+  "Cancel this period": "Bu dönemi iptal et",
+  "Edit subscriptions": "Abonelikleri düzenle",
+  "Change gyms": "Salonları değiştir",
+  "There is no active or scheduled period to edit.":
+    "Düzenlenecek aktif veya planlı bir dönem yok.",
+  "The later scheduled periods ({{count}}) will move earlier by the same length:":
+    "Sonraki planlı dönemler ({{count}}) aynı süre kadar öne alınacak:",
+  "Subscription period cancelled.": "Abonelik dönemi iptal edildi.",
+  "Could not cancel the period.": "Dönem iptal edilemedi.",
+  "New subscription period": "Yeni abonelik dönemi",
+  Continue: "Devam",
+  "Confirm — grant {{plan}}": "Onayla — {{plan}} tanımla",
+  "Starts {{start}} – Ends {{end}}": "Başlangıç {{start}} – Bitiş {{end}}",
+  "Subscription granted: {{start}} – {{end}}.":
+    "Abonelik tanımlandı: {{start}} – {{end}}.",
+  "This adds a NEW {{months}}-month period after {{date}}, and the member will be charged for an extra period.":
+    "Bu işlem {{date}} tarihinden sonra YENİ bir {{months}} aylık dönem ekler; üyeye fazladan bir dönem tanımlanmış olur.",
+  "To give access to another gym on an existing period, change that period's gyms instead.":
+    "Mevcut bir döneme başka bir salon eklemek için bunun yerine o dönemin salonlarını düzenleyin.",
+  "Edit gyms of the current period": "Mevcut dönemin salonlarını düzenle",
+  "Period: {{start}} – {{end}}": "Dönem: {{start}} – {{end}}",
+  "Gyms added": "Eklenen salonlar",
+  "Gyms removed": "Çıkarılan salonlar",
+  "Also apply to later scheduled periods ({{count}})":
+    "Sonraki planlı dönemlere de uygula ({{count}})",
+  "Some periods could not be updated:": "Bazı dönemler güncellenemedi:",
+  "Subscription gyms updated on {{count}} periods.":
+    "{{count}} dönemin salonları güncellendi.",
   "Subscription gyms updated.": "Aboneliğin salonları güncellendi.",
   "Could not update the gyms.": "Salonlar güncellenemedi.",
   "This subscription period has already ended.":
     "Bu abonelik dönemi sona ermiş.",
+  "This subscription period has already started and cannot be cancelled.":
+    "Bu abonelik dönemi başlamış, iptal edilemez.",
+  "This action applies to member accounts only.":
+    "Bu işlem yalnızca üye hesapları için geçerli.",
+  "Enter a ban reason of 3 to 500 characters.":
+    "3 ile 500 karakter arasında bir yasaklama sebebi girin.",
+  "This member is not banned.": "Bu üye yasaklı değil.",
+  "Subscription freezing is turned off.": "Abonelik dondurma kapalı.",
+  "This membership is already frozen.": "Bu üyelik zaten dondurulmuş.",
+  "This membership is not frozen.": "Bu üyelik dondurulmamış.",
+  "The member has no subscription period running right now.":
+    "Üyenin şu anda devam eden bir abonelik dönemi yok.",
+  "Invalid subscription freeze settings.":
+    "Geçersiz abonelik dondurma ayarları.",
   "Subscription not found.": "Abonelik bulunamadı.",
   "Settings saved.": "Ayarlar kaydedildi.",
   Actor: "Kim",

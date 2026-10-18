@@ -5,6 +5,7 @@ import { fromNodeHeaders } from "better-auth/node";
 import { z } from "zod";
 import type {
   AuditLogEntry,
+  CancelSubscriptionResponse,
   ChainSettings,
   DeletionRequest,
   Page,
@@ -43,12 +44,14 @@ import {
   validateSubscriptionGymIds,
 } from "../gyms.js";
 import {
+  cancelScheduledSubscription,
   createSequentialSubscription,
   findSubscription,
   listUserSubscriptions,
   setSubscriptionGymIds,
   SubscriptionLockTimeoutError,
 } from "../subscriptions.js";
+import { freezeConfigSchema, getFreezeConfig } from "../freeze.js";
 import { tryNormalizePhoneToE164 } from "../phone.js";
 import {
   dateRangeFilter,
@@ -688,6 +691,101 @@ adminRouter.put(
   }),
 );
 
+// Undo for a period granted by mistake. Only periods that have not started can
+// be cancelled; later periods move earlier so the timeline keeps no gap.
+adminRouter.delete(
+  "/subscriptions/:id",
+  requireRole("owner", "admin", "staff"),
+  authed(async (req, res) => {
+    const subscriptionId = toObjectId(String(req.params.id ?? ""));
+    if (!subscriptionId) {
+      sendApiError(
+        res,
+        404,
+        "SUBSCRIPTION_NOT_FOUND",
+        "Subscription not found.",
+      );
+      return;
+    }
+    try {
+      const result = await cancelScheduledSubscription(
+        subscriptionId,
+        (gymIds) => gymIds.every((gymId) => canAccessGym(req.user, gymId)),
+      );
+      switch (result.status) {
+        case "not-found":
+          sendApiError(
+            res,
+            404,
+            "SUBSCRIPTION_NOT_FOUND",
+            "Subscription not found.",
+          );
+          return;
+        case "started":
+          sendApiError(
+            res,
+            409,
+            "SUBSCRIPTION_STARTED",
+            "This subscription period has already started and cannot be cancelled.",
+          );
+          return;
+        case "out-of-scope":
+          sendApiError(
+            res,
+            403,
+            "GYM_OUT_OF_SCOPE",
+            "A gym on this subscription is outside your scope.",
+          );
+          return;
+      }
+      const { cancelled, shifted } = result;
+      const gymHexIds = (cancelled.gymIds ?? []).map((id) => id.toHexString());
+      await logAudit(
+        req.user,
+        "subscription-cancelled",
+        cancelled.userId.toHexString(),
+        {
+          subscriptionId: cancelled._id.toHexString(),
+          startsAt: cancelled.startsAt.toISOString(),
+          endsAt: cancelled.endsAt.toISOString(),
+          gymIds: gymHexIds,
+          shifted: shifted.map((doc) => ({
+            id: doc._id.toHexString(),
+            startsAt: doc.startsAt.toISOString(),
+            endsAt: doc.endsAt.toISOString(),
+          })),
+        },
+        gymHexIds.length === 1 ? (gymHexIds[0] ?? null) : null,
+      );
+      const body: CancelSubscriptionResponse = {
+        ok: true,
+        shifted: shifted.map((doc) => ({
+          id: doc._id.toHexString(),
+          userId: doc.userId.toHexString(),
+          startsAt: doc.startsAt.toISOString(),
+          endsAt: doc.endsAt.toISOString(),
+          note: doc.note ?? undefined,
+          gymIds: (doc.gymIds ?? []).map((id) => id.toHexString()),
+          createdBy: doc.createdBy,
+          createdAt: doc.createdAt.toISOString(),
+        })),
+      };
+      res.json(body);
+    } catch (error) {
+      if (error instanceof SubscriptionLockTimeoutError) {
+        sendApiError(
+          res,
+          503,
+          "SUBSCRIPTION_BUSY",
+          "A subscription operation is in progress. Please try again.",
+        );
+        return;
+      }
+      throw error;
+    }
+  }),
+);
+
 adminRouter.get(
   "/users/:id/subscriptions",
   requireRole("owner", "admin", "staff"),
@@ -723,6 +821,7 @@ adminRouter.get(
     const settings: ChainSettings = {
       chainName: doc?.chainName ?? "",
       legal: { ...LEGAL_DEFAULTS, ...(doc?.legal ?? {}) },
+      freeze: await getFreezeConfig(),
     };
     res.json(settings);
   },
@@ -745,6 +844,8 @@ const chainSettingsSchema = z.object({
   chainName: z.string().trim().min(1),
   // Preserve the existing legal document URLs when absent.
   legal: legalSchema.optional(),
+  // Preserve the existing freeze rules when absent.
+  freeze: freezeConfigSchema.optional(),
 });
 
 adminRouter.put(
@@ -754,7 +855,14 @@ adminRouter.put(
     const parsed = chainSettingsSchema.safeParse(req.body ?? {});
     if (!parsed.success) {
       const field = String(parsed.error.issues[0]?.path[0] ?? "");
-      if (field === "legal") {
+      if (field === "freeze") {
+        sendApiError(
+          res,
+          400,
+          "INVALID_FREEZE_SETTINGS",
+          "Invalid subscription freeze settings.",
+        );
+      } else if (field === "legal") {
         sendApiError(
           res,
           400,
@@ -766,9 +874,10 @@ adminRouter.put(
       }
       return;
     }
-    const { chainName, legal } = parsed.data;
+    const { chainName, legal, freeze } = parsed.data;
     const setDoc: Partial<Omit<ChainSettingsDocument, "_id">> = { chainName };
     if (legal !== undefined) setDoc.legal = legal;
+    if (freeze !== undefined) setDoc.freeze = freeze;
 
     await chainSettingsCollection().updateOne(
       { _id: CHAIN_SETTINGS_ID },
@@ -780,6 +889,7 @@ adminRouter.put(
       // The consent-text version presented is evidence in a legal dispute, so
       // changes must be recorded in the audit log.
       ...(legal !== undefined ? { legal } : {}),
+      ...(freeze !== undefined ? { freeze } : {}),
     });
     res.json({ ok: true });
   }),
@@ -903,6 +1013,8 @@ adminRouter.get(
         status: d.status,
         resolvedAt: d.resolvedAt ? new Date(d.resolvedAt).toISOString() : null,
         resolvedBy: d.resolvedBy ?? null,
+        requestedBy: d.requestedBy ?? null,
+        reason: d.reason ?? null,
       })),
       nextCursor: page.nextCursor,
     };
@@ -988,6 +1100,9 @@ adminRouter.post(
     await userCollection().deleteOne({ _id: targetId });
     await db.collection("account").deleteMany({ userId: targetId });
     await db.collection("subscriptions").deleteMany({ userId: targetId });
+    await db
+      .collection("subscription_freezes")
+      .deleteMany({ userId: targetId });
     await db.collection("twoFactor").deleteMany({ userId: targetId });
     // Reminder records reveal that an email was sent to this member on a date
     // and cannot remain tied to a member whose subscriptions were deleted under
@@ -1025,9 +1140,28 @@ adminRouter.post(
     // ALL of the user's requests, including earlier rejected ones, must lose
     // PII. This request's status/resolvedAt/resolvedBy fields were already set
     // during the atomic claim; only PII is cleared here.
-    await db
-      .collection("deletion_requests")
-      .updateMany({ userId: targetId }, { $set: { email: null, name: null } });
+    await db.collection("deletion_requests").updateMany(
+      { userId: targetId },
+      // `reason` is free text typed by staff about this member.
+      { $set: { email: null, name: null, reason: null } },
+    );
+    // Ban and deletion-request reasons are free text about the member and sit
+    // in audit rows targeting them; the rows stay (who did what, when) but the
+    // text goes. The `ban` field itself lives on the user document, deleted
+    // above.
+    await db.collection("audit_logs").updateMany(
+      {
+        targetId: targetIdStr,
+        action: {
+          $in: [
+            "member-banned",
+            "member-unbanned",
+            "account-deletion-requested",
+          ],
+        },
+      },
+      { $unset: { "details.reason": "", "details.previousReason": "" } },
+    );
 
     // Remove the deleted user's PII from duplicate-phone conflict records; if
     // one account remains, migrate it to E.164 and delete the conflict record.

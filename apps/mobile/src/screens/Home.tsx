@@ -1,6 +1,13 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { AppState, Pressable, StyleSheet, Text, View } from "react-native";
+import {
+  Alert,
+  AppState,
+  Pressable,
+  StyleSheet,
+  Text,
+  View,
+} from "react-native";
 import type {
   MyProfile,
   MyOccupancyResponse,
@@ -182,6 +189,10 @@ export function Home({
   const [attendance, setAttendance] = useState<AttendanceDay[]>([]);
   const [attendanceLoaded, setAttendanceLoaded] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  const [freezeBusy, setFreezeBusy] = useState(false);
+  const [freezeError, setFreezeError] = useState<string | null>(null);
+  // A ref guards double taps: state updates land after the second press.
+  const freezeBusyRef = useRef(false);
 
   const todayKey = useCurrentDayKey();
   const week = useMemo(() => {
@@ -258,6 +269,74 @@ export function Home({
     setRefreshing(false);
   }
 
+  // An older API may omit these fields during rollout: no freeze, no button.
+  const freeze = subscription?.freeze ?? null;
+  const freezeAllowance = subscription?.freezeAllowance ?? null;
+
+  async function changeFreeze(method: "POST" | "DELETE") {
+    if (freezeBusyRef.current) return;
+    freezeBusyRef.current = true;
+    setFreezeBusy(true);
+    setFreezeError(null);
+    try {
+      await api("/api/me/freeze", { method });
+      await load();
+    } catch (error) {
+      setFreezeError(
+        errorMessage(
+          error,
+          t,
+          method === "POST"
+            ? "The membership could not be frozen. Please try again."
+            : "The membership could not be resumed. Please try again.",
+        ),
+      );
+      // The state may have changed server-side (e.g. already frozen).
+      void load();
+    } finally {
+      freezeBusyRef.current = false;
+      setFreezeBusy(false);
+    }
+  }
+
+  function confirmFreeze() {
+    if (!freezeAllowance) return;
+    const { usedInLastYear, maxPerYear, maxDays } = freezeAllowance;
+    Alert.alert(
+      t("Freeze membership"),
+      [
+        t("{{used}} of {{max}} freezes used this year.", {
+          used: usedInLastYear,
+          max: maxPerYear,
+        }),
+        t(
+          "At most {{days}} days of the freeze are added back to your end date.",
+          { days: maxDays },
+        ),
+        t(
+          "Your next turnstile entry ends the freeze automatically, or you can resume it here at any time.",
+        ),
+      ].join("\n\n"),
+      [
+        { text: t("Cancel"), style: "cancel" },
+        { text: t("Freeze"), onPress: () => void changeFreeze("POST") },
+      ],
+    );
+  }
+
+  function confirmResume() {
+    Alert.alert(
+      t("Resume membership"),
+      t(
+        "Your freeze will end now and the frozen days will be added back to your end date.",
+      ),
+      [
+        { text: t("Cancel"), style: "cancel" },
+        { text: t("Resume"), onPress: () => void changeFreeze("DELETE") },
+      ],
+    );
+  }
+
   const firstName = userName.trim().split(/\s+/)[0] || t("Member");
   const formatDate = (value?: string | null) =>
     value
@@ -278,7 +357,9 @@ export function Home({
   const remainingDays = subscription?.remainingDays ?? 0;
   // During the final week, the membership plate switches to a warning tone:
   // the information stays in place and only its color changes.
-  const expiringSoon = active && remainingDays <= 7;
+  // A frozen membership is paused, not running out: stay calm and neutral.
+  const frozen = freeze != null;
+  const expiringSoon = active && !frozen && remainingDays <= 7;
 
   return (
     <ScrollScreen refreshing={refreshing} onRefresh={refresh}>
@@ -356,8 +437,18 @@ export function Home({
             <View style={styles.passTopRow}>
               <Text style={styles.passKind}>{t("Membership")}</Text>
               <Badge
-                label={active ? t("Active") : t("Inactive")}
-                tone={active ? (expiringSoon ? "warning" : "success") : "error"}
+                label={
+                  frozen ? t("Frozen") : active ? t("Active") : t("Inactive")
+                }
+                tone={
+                  frozen
+                    ? "neutral"
+                    : active
+                      ? expiringSoon
+                        ? "warning"
+                        : "success"
+                      : "error"
+                }
               />
             </View>
             <Text style={styles.passName} numberOfLines={2}>
@@ -403,6 +494,45 @@ export function Home({
           ) : null}
         </Plate>
       )}
+
+      {freeze ? (
+        <StatusMessage
+          tone="neutral"
+          style={styles.expiryNote}
+          text={t(
+            "Your membership is frozen since {{date}}. Scanning in at the turnstile resumes it.",
+            { date: formatDate(freeze.startedAt) },
+          )}
+        />
+      ) : null}
+
+      {subscriptionLoaded && subscription ? (
+        <View style={styles.freezeActions}>
+          <StatusMessage text={freezeError} />
+          {freeze ? (
+            <Button
+              title={t("Resume membership")}
+              variant="secondary"
+              busy={freezeBusy}
+              onPress={confirmResume}
+            />
+          ) : freezeAllowance?.canFreeze === true ? (
+            <Button
+              title={t("Freeze membership")}
+              variant="secondary"
+              busy={freezeBusy}
+              onPress={confirmFreeze}
+            />
+          ) : active &&
+            freezeAllowance &&
+            freezeAllowance.maxPerYear > 0 &&
+            freezeAllowance.usedInLastYear >= freezeAllowance.maxPerYear ? (
+            <Text style={styles.freezeHint}>
+              {t("No freezes left this year.")}
+            </Text>
+          ) : null}
+        </View>
+      ) : null}
 
       {expiringSoon ? (
         <StatusMessage
@@ -547,6 +677,12 @@ const homeStyles = (theme: Theme) =>
     },
 
     expiryNote: { marginTop: theme.spacing.sm },
+    freezeActions: { marginTop: theme.spacing.sm, gap: theme.spacing.sm },
+    freezeHint: {
+      ...theme.type.supporting,
+      color: theme.colors.textTertiary,
+      textAlign: "center",
+    },
     primaryAction: { marginTop: theme.spacing.lg },
 
     occupancy: {

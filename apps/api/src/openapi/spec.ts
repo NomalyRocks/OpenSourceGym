@@ -15,6 +15,10 @@ import {
   createSubscriptionRequestSchema,
   setSubscriptionGymsRequestSchema,
   createSubscriptionResponseSchema,
+  cancelSubscriptionResponseSchema,
+  banMemberRequestSchema,
+  createMemberDeletionRequestSchema,
+  memberDetailSchema,
   deletionRequestSchema,
   deviceCreatedSchema,
   deviceSchema,
@@ -477,6 +481,112 @@ export const openApiDocument: OpenApiDocument = createDocument({
         }),
       },
     },
+    "/api/admin/users/{id}": {
+      get: {
+        tags: ["admin"],
+        operationId: "getMemberDetail",
+        summary: "Member detail",
+        ...requiredRole(
+          "owner | admin | staff",
+          "Directory row, ban, freeze state and pending deletion request in one call",
+        ),
+        requestParams: { path: idPathParams },
+        responses: protectedResponses({
+          "200": jsonResponse("Member detail", memberDetailSchema),
+          "400": apiErrorResponse,
+          "404": apiErrorResponse,
+        }),
+      },
+    },
+    "/api/admin/users/{id}/ban": {
+      post: {
+        tags: ["admin"],
+        operationId: "banMember",
+        summary: "Ban a member",
+        ...requiredRole(
+          "owner | admin",
+          "Refuses the member's entry scans (exits are never refused); re-banning updates the reason. Members only",
+        ),
+        requestParams: { path: idPathParams },
+        requestBody: jsonBody(banMemberRequestSchema),
+        responses: protectedResponses({
+          "200": jsonResponse("Member banned", okSchema),
+          "400": apiErrorResponse,
+          "404": apiErrorResponse,
+        }),
+      },
+      delete: {
+        tags: ["admin"],
+        operationId: "unbanMember",
+        summary: "Lift a member ban",
+        ...requiredRole(
+          "owner | admin",
+          "Clears the ban; NOT_BANNED when none",
+        ),
+        requestParams: { path: idPathParams },
+        responses: protectedResponses({
+          "200": jsonResponse("Ban lifted", okSchema),
+          "400": apiErrorResponse,
+          "404": apiErrorResponse,
+          "409": apiErrorResponse,
+        }),
+      },
+    },
+    "/api/admin/users/{id}/freeze": {
+      post: {
+        tags: ["admin"],
+        operationId: "freezeMember",
+        summary: "Freeze a member's subscription",
+        ...requiredRole(
+          "owner | admin | staff",
+          "Freezes the running period. Refused with FREEZE_DISABLED, ALREADY_FROZEN, NO_ACTIVE_PERIOD or FREEZE_LIMIT_REACHED",
+        ),
+        requestParams: { path: idPathParams },
+        responses: protectedResponses({
+          "200": jsonResponse("Membership frozen", okSchema),
+          "400": apiErrorResponse,
+          "404": apiErrorResponse,
+          "409": apiErrorResponse,
+          "503": apiErrorResponse,
+        }),
+      },
+      delete: {
+        tags: ["admin"],
+        operationId: "unfreezeMember",
+        summary: "Resume a frozen subscription",
+        ...requiredRole(
+          "owner | admin | staff",
+          "Ends the freeze and credits min(frozen time, maxDays) back to the member's periods",
+        ),
+        requestParams: { path: idPathParams },
+        responses: protectedResponses({
+          "200": jsonResponse("Membership resumed", okSchema),
+          "400": apiErrorResponse,
+          "404": apiErrorResponse,
+          "409": apiErrorResponse,
+          "503": apiErrorResponse,
+        }),
+      },
+    },
+    "/api/admin/users/{id}/deletion-request": {
+      post: {
+        tags: ["admin"],
+        operationId: "requestMemberDeletion",
+        summary: "Open a deletion request on a member's behalf",
+        ...requiredRole(
+          "owner | admin | staff",
+          "Creates a pending request recording who asked and why; only an owner can approve it",
+        ),
+        requestParams: { path: idPathParams },
+        requestBody: jsonBody(createMemberDeletionRequestSchema),
+        responses: protectedResponses({
+          "200": jsonResponse("Request created", okSchema),
+          "400": apiErrorResponse,
+          "404": apiErrorResponse,
+          "409": apiErrorResponse,
+        }),
+      },
+    },
     "/api/admin/users/{id}/role": {
       post: {
         tags: ["admin"],
@@ -513,6 +623,27 @@ export const openApiDocument: OpenApiDocument = createDocument({
           ),
           "400": apiErrorResponse,
           "404": apiErrorResponse,
+          "503": apiErrorResponse,
+        }),
+      },
+    },
+    "/api/admin/subscriptions/{id}": {
+      delete: {
+        tags: ["admin"],
+        operationId: "cancelSubscription",
+        summary: "Cancel a subscription period that has not started",
+        ...requiredRole(
+          "owner | admin | staff (access to every gym on the period)",
+          "Deletes a not-yet-started period and moves the member's later periods earlier by its duration; refused with SUBSCRIPTION_STARTED once it has begun",
+        ),
+        requestParams: { path: idPathParams },
+        responses: protectedResponses({
+          "200": jsonResponse(
+            "Period cancelled; later periods with their new dates",
+            cancelSubscriptionResponseSchema,
+          ),
+          "404": apiErrorResponse,
+          "409": apiErrorResponse,
           "503": apiErrorResponse,
         }),
       },
@@ -972,6 +1103,37 @@ export const openApiDocument: OpenApiDocument = createDocument({
           "200": jsonResponse("Gate opened", gateScanResponseSchema),
           "400": apiErrorResponse,
           "429": apiErrorResponse,
+        }),
+      },
+    },
+    "/api/me/freeze": {
+      post: {
+        tags: ["me"],
+        operationId: "freezeMySubscription",
+        summary: "Freeze my subscription",
+        ...requiredRole(
+          "member",
+          "Self-service freeze of the running period. FREEZE_DISABLED when freezing or member self-service is off; BANNED for a banned member",
+        ),
+        responses: protectedResponses({
+          "200": jsonResponse("Membership frozen", okSchema),
+          "403": apiErrorResponse,
+          "409": apiErrorResponse,
+          "503": apiErrorResponse,
+        }),
+      },
+      delete: {
+        tags: ["me"],
+        operationId: "resumeMySubscription",
+        summary: "Resume my frozen subscription",
+        ...requiredRole(
+          "member",
+          "Always allowed, so a member is never stuck frozen; credits min(frozen time, maxDays) back",
+        ),
+        responses: protectedResponses({
+          "200": jsonResponse("Membership resumed", okSchema),
+          "409": apiErrorResponse,
+          "503": apiErrorResponse,
         }),
       },
     },

@@ -99,6 +99,8 @@ export interface MyProfile {
   heightCm: number | null;
   /** Member-entered weight (kg) used to prefill the mobile calorie calculator */
   weightKg: number | null;
+  /** Set while the member is banned; the mobile app shows a ban screen instead of its tabs */
+  ban: MemberBan | null;
 }
 
 export interface ProfilePhotoResponse {
@@ -136,6 +138,16 @@ export interface SetSubscriptionGymsRequest {
   gymIds: string[];
 }
 
+/**
+ * DELETE /api/admin/subscriptions/:id — cancels a period that has not started
+ * yet. Every later period of the same member moves earlier by the cancelled
+ * period's duration so no gap is left; `shifted` lists them with their new dates.
+ */
+export interface CancelSubscriptionResponse {
+  ok: true;
+  shifted: Subscription[];
+}
+
 export interface MySubscription {
   active: boolean;
   startsAt: string | null;
@@ -145,6 +157,22 @@ export interface MySubscription {
   gymIds: string[];
   /** Same gyms with display names */
   gyms: GymRef[];
+  /** Set while the membership is frozen; the next entry scan ends the freeze */
+  freeze: { startedAt: string } | null;
+  /** What the member may do from the app (POST/DELETE /api/me/freeze) */
+  freezeAllowance: MyFreezeAllowance;
+}
+
+/**
+ * Self-service freeze state for the member app. `canFreeze` is false when the
+ * chain disabled freezing or member self-service, the yearly limit is used up,
+ * there is no running period, or the member is already frozen.
+ */
+export interface MyFreezeAllowance {
+  canFreeze: boolean;
+  usedInLastYear: number;
+  maxPerYear: number;
+  maxDays: number;
 }
 
 /** Minimal gym reference embedded in member-facing payloads */
@@ -211,6 +239,71 @@ export interface ChainSettings {
   chainName: string;
   /** Legal documents published by the operator — one data controller for the whole chain */
   legal: LegalConfig;
+  /** Subscription freeze rules; omitted on PUT leaves them unchanged */
+  freeze: FreezeConfig;
+}
+
+/** Chain-wide subscription freeze rules (owner-editable, `settings._id: "chain"`) */
+export interface FreezeConfig {
+  enabled: boolean;
+  /** Members may freeze/resume from the app themselves (default true) */
+  memberSelfService: boolean;
+  /** Freezes a member may start in any rolling 365-day window (0-12, default 4) */
+  maxPerYear: number;
+  /**
+   * Longest freeze credited back to the member, in days (1-180, default 30).
+   * A freeze still open after this is ended by the reaper and credits exactly
+   * this many days.
+   */
+  maxDays: number;
+}
+
+/** A member ban (chain-wide). Entry scans are refused; exit scans never are. */
+export interface MemberBan {
+  reason: string;
+  bannedAt: string;
+}
+
+/** POST /api/admin/users/:id/ban (owner/admin) — members only; re-banning updates the reason */
+export interface BanMemberRequest {
+  /** 3-500 characters, shown to the member on the mobile ban screen */
+  reason: string;
+}
+
+/** Freeze state of a member, as shown in the panel */
+export interface MemberFreezeState {
+  /** Open freeze, or null */
+  active: { startedAt: string; maxDays: number; startedBy: string } | null;
+  /** Freezes started in the last 365 days */
+  usedInLastYear: number;
+  /** Copy of the chain FreezeConfig, so the panel can explain a refusal */
+  config: FreezeConfig;
+}
+
+/**
+ * GET /api/admin/users/:id (owner/admin/staff) — everything the member drawer
+ * needs in one call, e.g. when opened from the Entries page.
+ */
+export interface MemberDetail {
+  user: UserDirectoryRow;
+  ban: (MemberBan & { bannedBy: string }) | null;
+  freeze: MemberFreezeState;
+  /** Pending deletion request, if any */
+  pendingDeletion: {
+    id: string;
+    requestedAt: string;
+    /** null when the member requested it from the app */
+    requestedBy: { id: string; name: string } | null;
+  } | null;
+}
+
+/**
+ * POST /api/admin/users/:id/deletion-request (owner/admin/staff) — opens a
+ * deletion request on a member's behalf; only an owner can approve it.
+ */
+export interface CreateMemberDeletionRequest {
+  /** Optional, up to 500 characters; shown to the owner on the Data Requests page */
+  reason?: string;
 }
 
 /** PUT /api/admin/users/:id/gyms (owner) — replaces an admin/staff account's gym scope */
@@ -295,7 +388,9 @@ export type GateRejectCode =
    * refusal that leaves no record is not reviewable, and a burst of throttled
    * attempts is the signature the log most needs to show.
    */
-  | "RATE_LIMITED";
+  | "RATE_LIMITED"
+  /** The member is banned (entry only; see MemberBan) */
+  | "BANNED";
 
 /** Stable error codes clients can translate without parsing the server message. */
 export type ApiErrorCode =
@@ -336,6 +431,8 @@ export type ApiErrorCode =
   /** The subscription period has already ended and can no longer be changed */
   | "SUBSCRIPTION_ENDED"
   | "SUBSCRIPTION_NOT_FOUND"
+  /** The period has already started and can no longer be cancelled */
+  | "SUBSCRIPTION_STARTED"
   /** The path's gym (or a gym in gymIds) is outside the caller's gym scope */
   | "GYM_OUT_OF_SCOPE"
   /** Demoting the only remaining owner is refused */
@@ -353,7 +450,19 @@ export type ApiErrorCode =
   | "DELETION_REQUEST_RESOLVED"
   | "DELETION_CLEANUP_FAILED"
   | "INVALID_PHONE_NUMBER"
-  | "PHONE_ALREADY_EXISTS";
+  | "PHONE_ALREADY_EXISTS"
+  /** Ban/freeze/deletion-on-behalf target is not a member account */
+  | "MEMBER_ONLY"
+  | "INVALID_BAN_REASON"
+  | "NOT_BANNED"
+  | "FREEZE_DISABLED"
+  /** maxPerYear freezes already started in the last 365 days */
+  | "FREEZE_LIMIT_REACHED"
+  | "ALREADY_FROZEN"
+  | "NOT_FROZEN"
+  /** Freezing needs a period that is running right now */
+  | "NO_ACTIVE_PERIOD"
+  | "INVALID_FREEZE_SETTINGS";
 
 export interface ApiErrorResponse {
   code: ApiErrorCode;
@@ -367,6 +476,8 @@ export interface GateScanResponse {
   direction: DeviceDirection;
   /** Relay activation duration (ms) — informational only */
   openMs: number;
+  /** True when this entry scan ended the member's freeze */
+  unfrozen?: boolean;
 }
 
 /** Turnstile direction: "in" for entry (occupancy +1), "out" for exit (occupancy -1, subscription check skipped) */
@@ -514,6 +625,10 @@ export interface DeletionRequest {
   status: "pending" | "approved" | "rejected";
   resolvedAt: string | null;
   resolvedBy: string | null;
+  /** Staff member who opened it on the member's behalf; null when the member did */
+  requestedBy: { id: string; name: string } | null;
+  /** Optional note from requestedBy */
+  reason: string | null;
 }
 
 /** Status of the member's own deletion request (mobile) */

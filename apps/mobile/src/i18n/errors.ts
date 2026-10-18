@@ -44,6 +44,15 @@ const codeMessages = {
     "Your membership does not include this gym. Please contact reception.",
   GYM_INACTIVE:
     "This gym is currently closed for entry. Please contact reception.",
+  FREEZE_DISABLED: "Membership freezing is not available right now.",
+  FREEZE_LIMIT_REACHED: "You have no freezes left this year.",
+  ALREADY_FROZEN: "Your membership is already frozen.",
+  NOT_FROZEN: "Your membership is not frozen.",
+  NO_ACTIVE_PERIOD:
+    "You need a running membership period to freeze your membership.",
+  SUBSCRIPTION_BUSY:
+    "Your membership is being updated. Please try again in a moment.",
+  BANNED: "Your membership is banned. Please contact reception.",
   LOCAL_FILE_READ_FAILED: "The selected photo could not be read.",
   DELETION_MEMBER_ONLY: "Only member accounts can create a deletion request.",
   DELETION_ALREADY_PENDING: "You already have a pending deletion request.",

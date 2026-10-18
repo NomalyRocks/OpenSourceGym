@@ -116,6 +116,154 @@ export function planLegacySubscriptionRepairs(
   return repairs;
 }
 
+/**
+ * Plans the timeline change for cancelling a not-yet-started period: every
+ * other period that starts at or after the cancelled period's end moves earlier
+ * by the cancelled duration (keeping its own duration), so no gap is left.
+ * Periods before the cancelled one are untouched. Returned in start order.
+ */
+export function planSubscriptionCancellation(
+  cancelled: SubscriptionPeriod,
+  others: readonly (SubscriptionPeriod & { id: string })[],
+): SubscriptionTimelineRepair[] {
+  const durationMs = cancelled.endsAt.getTime() - cancelled.startsAt.getTime();
+  if (!Number.isFinite(durationMs) || durationMs <= 0) {
+    throw new RangeError("Invalid cancelled subscription duration");
+  }
+  return others
+    .filter((record) => record.startsAt.getTime() >= cancelled.endsAt.getTime())
+    .sort(
+      (left, right) =>
+        left.startsAt.getTime() - right.startsAt.getTime() ||
+        left.endsAt.getTime() - right.endsAt.getTime(),
+    )
+    .map((record) => ({
+      id: record.id,
+      startsAt: new Date(record.startsAt.getTime() - durationMs),
+      endsAt: new Date(record.endsAt.getTime() - durationMs),
+    }));
+}
+
+/**
+ * Credit a finished freeze gives back, in ms: the time actually frozen, capped
+ * at `maxDays`. Never negative, so a clock hiccup cannot pull periods earlier.
+ */
+export function calculateFreezeCreditMs(
+  startedAt: Date,
+  endedAt: Date,
+  maxDays: number,
+): number {
+  const frozenMs = endedAt.getTime() - startedAt.getTime();
+  return Math.max(0, Math.min(frozenMs, maxDays * DAY_MS));
+}
+
+/**
+ * Plans the timeline change when a freeze that began at `startedAt` ends with
+ * `creditMs` to give back. Only periods with `endsAt > startedAt` are touched,
+ * in start order, and the timeline is repacked:
+ *
+ * - the period running at `startedAt` keeps its start and gets a later end;
+ * - every later period keeps its own duration and starts at the later of its
+ *   original start and the previous period's new end.
+ *
+ * Repacking (instead of sliding everything by the credit) matters when a period
+ * was added during the freeze: it already starts right after the old end, so a
+ * blind slide would leave the member uncovered between the extended period and
+ * the pushed one. Returns every affected period, changed or not.
+ */
+export function planFreezeCredit(
+  periods: readonly (SubscriptionPeriod & { id: string })[],
+  startedAt: Date,
+  creditMs: number,
+): SubscriptionTimelineRepair[] {
+  if (!Number.isFinite(creditMs) || creditMs <= 0) return [];
+  const affected = periods
+    .filter((period) => period.endsAt.getTime() > startedAt.getTime())
+    .sort(
+      (left, right) =>
+        left.startsAt.getTime() - right.startsAt.getTime() ||
+        left.endsAt.getTime() - right.endsAt.getTime(),
+    );
+
+  const plan: SubscriptionTimelineRepair[] = [];
+  let previousEnd: number | null = null;
+  for (const period of affected) {
+    const durationMs = period.endsAt.getTime() - period.startsAt.getTime();
+    let startMs = period.startsAt.getTime();
+    let endMs: number;
+    if (startMs <= startedAt.getTime()) {
+      endMs = period.endsAt.getTime() + creditMs;
+    } else {
+      if (previousEnd !== null) startMs = Math.max(startMs, previousEnd);
+      endMs = startMs + durationMs;
+    }
+    previousEnd = endMs;
+    plan.push({
+      id: period.id,
+      startsAt: new Date(startMs),
+      endsAt: new Date(endMs),
+    });
+  }
+  return plan;
+}
+
+export type EntryAccess = "ok" | "none" | "other-gym";
+
+/** Entry decision against a set of periods: covering now, and listing the gym. */
+export function evaluateEntryAccess(
+  periods: readonly (SubscriptionPeriod & { gymIds: readonly string[] })[],
+  now: Date,
+  gymId: string,
+): EntryAccess {
+  const covering = periods.filter(
+    (period) =>
+      period.startsAt.getTime() <= now.getTime() &&
+      period.endsAt.getTime() >= now.getTime(),
+  );
+  if (covering.length === 0) return "none";
+  return covering.some((period) => period.gymIds.includes(gymId))
+    ? "ok"
+    : "other-gym";
+}
+
+/**
+ * Dry run of ending a freeze right now: would the member be let in at `gymId`
+ * once the credit is applied? The gate uses this to decide an entry scan
+ * without ending the freeze, which happens only after the turnstile opened, so
+ * a refused scan never unfreezes anyone.
+ */
+export function evaluateEntryWithFreezeCredit(
+  periods: readonly (SubscriptionPeriod & {
+    id: string;
+    gymIds: readonly string[];
+  })[],
+  freeze: { startedAt: Date; maxDays: number },
+  now: Date,
+  gymId: string,
+): EntryAccess {
+  const creditMs = calculateFreezeCreditMs(
+    freeze.startedAt,
+    now,
+    freeze.maxDays,
+  );
+  const planned = new Map(
+    planFreezeCredit(periods, freeze.startedAt, creditMs).map((change) => [
+      change.id,
+      change,
+    ]),
+  );
+  return evaluateEntryAccess(
+    periods.map((period) => {
+      const change = planned.get(period.id);
+      return change
+        ? { ...period, startsAt: change.startsAt, endsAt: change.endsAt }
+        : period;
+    }),
+    now,
+    gymId,
+  );
+}
+
 /** Combines the active interval and contiguous future packages into one end. */
 export function summarizeSubscriptionTimeline(
   records: readonly Pick<SubscriptionTimelineRecord, "startsAt" | "endsAt">[],
