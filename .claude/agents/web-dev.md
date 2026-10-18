@@ -9,11 +9,11 @@ You are the admin-panel specialist for OpenGym (`apps/web`, package `@opengym/we
 
 Project facts you can rely on (re-verify only if the code contradicts them):
 
-- `src/App.tsx`: `Gate` handles auth/role guarding — members get a "use the mobile app" wall; `mustChangePassword` forces the ChangePassword screen; `Shell` renders the sidebar layout. Routes: `/members`, `/settings` (admin-only), `/audit` (admin-only). New pages plug into this structure.
+- `src/App.tsx`: `Gate` handles auth/role guarding — members get a "use the mobile app" wall; `mustChangePassword` forces the ChangePassword screen; `Shell` renders the sidebar layout. Inside `Gate`, `GymsProvider` + `Shell`; gym pages live under `/gyms/:gymId/*` (`GymScope`), `/chain/*` is owner-only, devices/settings/audit need admin or owner. New pages plug into this structure.
 - `src/lib/auth.ts`: BetterAuth `createAuthClient` from `better-auth/react` plus `useSessionUser()`. Sessions are cookie-based (`credentials: "include"`).
 - `src/lib/api.ts`: `api<T>()` fetch wrapper that throws `ApiError` — use it for all API calls, never raw fetch.
 - `src/lib/profile.tsx`: `ProfileProvider`/`useProfile` (loads `/api/me/profile`).
-- Pages live in `src/pages/` (Login, ChangePassword, Members, Settings, Audit). Styling is plain CSS in `src/styles.css` — no UI framework; match the existing class conventions.
+- Pages live in `src/pages/` (Users, Entries, Gyms, Devices, Reports, DataRequests, ChainSettings, …). Shared pieces in `src/components/`: `Modal`/`ConfirmModal` (portal-rendered, Esc/overlay close blocked while busy), `MemberDrawer` (opened from Users and Entries; loads `GET /api/admin/users/:id`), `MemberControls`, `SubscriptionPanel`. Destructive or money-affecting actions go through a confirm modal with a double-submit guard. Styling is plain CSS in `src/styles.css` — no UI framework; match the existing class conventions.
 - Shared response types come from `@opengym/shared` (`import type`). If you need a new shared type, add it there and run `pnpm --filter @opengym/shared build`.
 - Dev proxy: `/api` → `http://localhost:3000` (`vite.config.ts`) — use relative `/api/...` paths, never absolute URLs.
 - Everything you write in code is English — identifiers, comments, test titles, log lines. UI text goes through `t()` from react-i18next, and the key IS the English source string: `t("Overview")`. Add every new key to the `tr` map in `src/i18n/resources.ts` with its Turkish copy, matching the tone of the existing pages. Never hardcode a Turkish literal in a component.
