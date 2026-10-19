@@ -13,26 +13,26 @@
     "seed:demo": "tsx --env-file-if-exists=../../.env scripts/seed-demo.ts"
   },
   "dependencies": {
-    "@aws-sdk/client-s3": "^3.1085.0",
-    "@better-auth/expo": "^1.6.23",
+    "@aws-sdk/client-s3": "^3.1152.0",
+    "@better-auth/expo": "^1.7.10",
     "@opengym/shared": "workspace:*",
-    "better-auth": "^1.6.23",
-    "express": "^5.1.0",
-    "libphonenumber-js": "^1.13.8",
-    "mongodb": "^7.4.0",
-    "nodemailer": "^10.0.9",
-    "redis": "^6.1.0",
-    "sharp": "^0.35.4",
+    "better-auth": "^1.7.10",
+    "express": "^5.3.0",
+    "libphonenumber-js": "^1.13.15",
+    "mongodb": "^7.7.0",
+    "nodemailer": "^10.1.1",
+    "redis": "^6.3.0",
+    "sharp": "^0.35.5",
     "swagger-ui-express": "^5.0.1",
-    "ws": "^8.18.0",
-    "zod": "^4.4.3",
-    "zod-openapi": "^6.0.0"
+    "ws": "^8.22.0",
+    "zod": "^4.6.7",
+    "zod-openapi": "^6.0.2"
   },
   "devDependencies": {
     "@types/express": "^5.0.0",
     "@types/node": "^24.0.0",
     "@types/nodemailer": "^8.0.1",
-    "@types/ws": "^8.18.1",
+    "@types/ws": "^8.18.2",
     "tsx": "^4.23.12"
   }
 }
