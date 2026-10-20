@@ -260,6 +260,9 @@ export function Profile({
           : current,
       );
     } catch (error) {
+      // The fallback message hides client-side failures (native module,
+      // network); surface the real cause in the Metro log during development.
+      if (__DEV__) console.warn("Profile photo upload failed:", error);
       setPhotoError(
         errorMessage(
           error,
