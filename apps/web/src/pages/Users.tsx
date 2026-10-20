@@ -27,6 +27,7 @@ import { api, isAbortError } from "../lib/api";
 import { PageHeader } from "../components/PageHeader";
 import { Avatar } from "../components/Avatar";
 import { MemberDrawer } from "../components/MemberDrawer";
+import { PresenceBadge } from "../components/PresenceBadge";
 import { StatusBadge, statusMeta } from "../components/StatusBadge";
 import { useGyms } from "../lib/gyms";
 import { dateLocale } from "../i18n/format";
@@ -38,7 +39,7 @@ type View = "table" | "board" | "list";
 type SortKey = "name" | "createdAt";
 
 const ROLES: PublicUser["role"][] = ["owner", "admin", "staff", "member"];
-const STATUSES: SubscriptionStatus[] = ["active", "expired", "none"];
+const STATUSES: SubscriptionStatus[] = ["active", "frozen", "expired", "none"];
 const PAGE_SIZE_TABLE = 25;
 const PAGE_SIZE_CARDS = 100;
 
@@ -425,6 +426,7 @@ export function Users() {
                     <Activity size={13} /> {t("Status")}
                   </span>
                 </th>
+                <th>{t("Presence")}</th>
                 <th>
                   <button
                     type="button"
@@ -481,18 +483,21 @@ export function Users() {
                   <td>
                     <StatusBadge status={u.subscriptionStatus} />
                   </td>
+                  <td>
+                    <PresenceBadge presence={u.presence ?? null} />
+                  </td>
                   <td className="muted">{joined(u)}</td>
                   <td className="muted">{userGyms(u)}</td>
                 </tr>
               ))}
               {loading && items.length === 0 && (
                 <tr>
-                  <td colSpan={7}>{t("Loading…")}</td>
+                  <td colSpan={8}>{t("Loading…")}</td>
                 </tr>
               )}
               {!loading && items.length === 0 && (
                 <tr>
-                  <td colSpan={7}>{t("No matching member found.")}</td>
+                  <td colSpan={8}>{t("No matching member found.")}</td>
                 </tr>
               )}
             </tbody>

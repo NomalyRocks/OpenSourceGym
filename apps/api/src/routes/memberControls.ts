@@ -16,6 +16,7 @@ import {
   listMemberGymIds,
 } from "../memberScope.js";
 import { authed, requireRole } from "../middleware.js";
+import { loadMemberPresence } from "../occupancy.js";
 import { buildProfilePhotoUrl } from "../profilePhoto.js";
 import { tryNormalizePhoneToE164 } from "../phone.js";
 import { SubscriptionLockTimeoutError } from "../subscriptions.js";
@@ -95,6 +96,7 @@ function sendBusy(res: Response): void {
 /** The directory row of one user (same shape as GET /users/directory items). */
 async function loadDirectoryRow(
   id: ObjectId,
+  caller: { role: Role; gymIds: readonly string[] },
 ): Promise<UserDirectoryRow | null> {
   const plan = buildDirectoryPlan(
     userDirectoryQuerySchema.parse({}),
@@ -112,6 +114,9 @@ async function loadDirectoryRow(
     .toArray();
   const doc = result?.items[0];
   if (!doc) return null;
+  const presence = (await loadMemberPresence([doc._id.toString()], caller)).get(
+    doc._id.toString(),
+  );
   return {
     id: doc._id.toString(),
     name: doc.name ?? "",
@@ -132,6 +137,7 @@ async function loadDirectoryRow(
     subscriptionStatus: doc.subscriptionStatus,
     subscriptionEndsAt: doc.subscriptionEndsAt?.toISOString() ?? null,
     subscriptionGymIds: doc.subscriptionGymIds ?? [],
+    presence: presence ?? null,
   };
 }
 
@@ -148,7 +154,7 @@ memberControlsRouter.get(
       return;
     }
     const [user, doc, freeze, pending] = await Promise.all([
-      loadDirectoryRow(id),
+      loadDirectoryRow(id, req.user),
       userCollection().findOne({ _id: id }, { projection: { ban: 1 } }),
       getMemberFreezeState(id),
       db

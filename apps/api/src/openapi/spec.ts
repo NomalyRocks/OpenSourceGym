@@ -33,6 +33,7 @@ import {
   gymSettingsRequestSchema,
   myOccupancySchema,
   occupancySchema,
+  gymInsideSchema,
   setUserGymsRequestSchema,
   updateGymRequestSchema,
   healthSchema,
@@ -795,6 +796,21 @@ export const openApiDocument: OpenApiDocument = createDocument({
         requestParams: { path: gymIdPathParams },
         responses: protectedResponses({
           "200": jsonResponse("Occupancy", occupancySchema),
+        }),
+      },
+    },
+    "/api/admin/gyms/{gymId}/inside": {
+      get: {
+        tags: ["admin"],
+        operationId: "getGymInside",
+        summary: "List members counted inside a gym right now",
+        ...requiredRole(
+          "owner | admin | staff (scoped to the gym)",
+          "Longest-staying first; length equals the occupancy figure",
+        ),
+        requestParams: { path: gymIdPathParams },
+        responses: protectedResponses({
+          "200": jsonResponse("Members inside", gymInsideSchema),
         }),
       },
     },

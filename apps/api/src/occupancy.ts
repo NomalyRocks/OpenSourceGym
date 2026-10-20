@@ -1,3 +1,4 @@
+import type { MemberPresence } from "@opengym/shared";
 import { gymCollection, toObjectId } from "./db.js";
 import { redis } from "./redis.js";
 
@@ -317,4 +318,96 @@ export async function getOccupancy(gymId: string): Promise<number> {
     await redis.hDel(insideKey(gymId), expired);
   }
   return count;
+}
+
+export interface InsideRecord {
+  gymId: string;
+  /** Epoch ms of the entry */
+  enteredAt: number;
+}
+
+/**
+ * Picks the one record that says where a member is right now: records past
+ * their gym's count cutoff (the {@link getOccupancy} rule) are dropped, and of
+ * the rest the latest entry wins, since a member is inside at most one gym and
+ * several records can only be stale leftovers. The scope filter runs AFTER the
+ * pick, so a member whose latest entry is at a gym the caller cannot see yields
+ * null rather than an older in-scope record.
+ */
+export function selectPresence(
+  records: readonly InsideRecord[],
+  countCutoffs: ReadonlyMap<string, number>,
+  canSee: (gymId: string) => boolean,
+): InsideRecord | null {
+  let latest: InsideRecord | null = null;
+  for (const record of records) {
+    const cutoff = countCutoffs.get(record.gymId);
+    if (cutoff === undefined || !Number.isFinite(record.enteredAt)) continue;
+    if (record.enteredAt < cutoff) continue;
+    if (latest === null || record.enteredAt > latest.enteredAt) latest = record;
+  }
+  return latest !== null && canSee(latest.gymId) ? latest : null;
+}
+
+/**
+ * Live presence for a batch of users: one HMGET per gym, however many users.
+ * Users who are not counted inside anywhere (or whose gym the caller cannot
+ * see) are absent from the map.
+ */
+export async function loadMemberPresence(
+  userIds: readonly string[],
+  caller: { role: string; gymIds: readonly string[] },
+  now = Date.now(),
+): Promise<Map<string, MemberPresence>> {
+  const result = new Map<string, MemberPresence>();
+  if (userIds.length === 0) return result;
+  const gyms = await gymCollection()
+    .find({}, { projection: { name: 1, autoExitHours: 1 } })
+    .toArray();
+  const cutoffs = new Map<string, number>();
+  const names = new Map<string, string>();
+  const byUser = new Map<string, InsideRecord[]>();
+  await Promise.all(
+    gyms.map(async (gym) => {
+      const gymId = gym._id.toHexString();
+      cutoffs.set(gymId, insideCutoffs(gym.autoExitHours, now).count);
+      names.set(gymId, gym.name);
+      const values = await redis.hmGet(insideKey(gymId), [...userIds]);
+      values.forEach((raw, index) => {
+        const userId = userIds[index];
+        if (userId === undefined || raw === null || raw === undefined) return;
+        const list = byUser.get(userId) ?? [];
+        list.push({ gymId, enteredAt: Number(raw) });
+        byUser.set(userId, list);
+      });
+    }),
+  );
+  const canSee = (gymId: string): boolean =>
+    caller.role === "owner" || caller.gymIds.includes(gymId);
+  for (const [userId, records] of byUser) {
+    const picked = selectPresence(records, cutoffs, canSee);
+    if (picked) {
+      result.set(userId, {
+        gymId: picked.gymId,
+        gymName: names.get(picked.gymId) ?? "",
+        enteredAt: new Date(picked.enteredAt).toISOString(),
+      });
+    }
+  }
+  return result;
+}
+
+/**
+ * Members counted inside one gym, longest-staying first. Same count cutoff as
+ * {@link getOccupancy}, so the length matches its figure.
+ */
+export async function listInside(
+  gymId: string,
+): Promise<{ userId: string; enteredAt: number }[]> {
+  const entries = await redis.hGetAll(insideKey(gymId));
+  const { count } = await loadCutoffs(gymId);
+  return Object.entries(entries)
+    .map(([userId, raw]) => ({ userId, enteredAt: Number(raw) }))
+    .filter((e) => Number.isFinite(e.enteredAt) && e.enteredAt >= count)
+    .sort((a, b) => a.enteredAt - b.enteredAt);
 }

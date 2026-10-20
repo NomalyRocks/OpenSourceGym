@@ -61,18 +61,30 @@ export interface PublicUser {
 }
 
 /** Membership state of a member, derived from their subscription periods. */
-export type SubscriptionStatus = "active" | "expired" | "none";
+/**
+ * `frozen` wins over `active` and `expired`: the member has an open freeze, so
+ * their periods are paused (a period's nominal end may pass during the freeze
+ * and is credited back when it ends).
+ */
+export type SubscriptionStatus = "active" | "frozen" | "expired" | "none";
 
 /** One row of the admin user directory. */
 export interface UserDirectoryRow extends PublicUser {
   subscriptionStatus: SubscriptionStatus;
   /**
    * End of the current period when `active`, end of the latest past period
-   * when `expired`, null when `none`.
+   * when `expired`, the nominal end of the latest started period when `frozen`
+   * (moves later once the freeze ends), null when `none`.
    */
   subscriptionEndsAt: string | null;
   /** Gyms of the member's currently active subscription periods; empty when none */
   subscriptionGymIds: string[];
+  /**
+   * Where the user currently counts as inside (same autoExitHours expiry as the
+   * occupancy figure). null when outside, or when that gym is outside a
+   * non-owner caller's scope.
+   */
+  presence: MemberPresence | null;
 }
 
 /** Offset page (1-based) used by the admin user directory table. */
@@ -607,11 +619,39 @@ export interface MyOccupancyResponse {
   gyms: OccupancyResponse[];
 }
 
+/** A member counted inside a gym right now */
+export interface MemberPresence {
+  gymId: string;
+  gymName: string;
+  /** Entry turnstile time (ISO); the panel derives "minutes inside" from it */
+  enteredAt: string;
+}
+
+/** One row of GET /api/admin/gyms/:gymId/inside */
+export interface InsideMember {
+  userId: string;
+  name: string;
+  profilePhotoUrl: string | null;
+  enteredAt: string;
+}
+
+/**
+ * GET /api/admin/gyms/:gymId/inside (owner/admin/staff, gym-scoped) — members
+ * counted inside the gym right now, longest-staying first. Its length equals
+ * OccupancyResponse.inside.
+ */
+export interface GymInsideResponse {
+  gymId: string;
+  members: InsideMember[];
+}
+
 /** Admin panel overview KPIs (per gym) */
 export interface AdminStats {
-  /** Number of unique members with an active subscription */
+  /** Number of unique members with an active subscription, frozen members excluded */
   activeMembers: number;
-  /** Number of unique members whose subscriptions expire within the next 7 days */
+  /** Number of unique members with an open membership freeze */
+  frozenMembers: number;
+  /** Number of unique members whose subscriptions expire within the next 7 days, frozen members excluded */
   renewalsDue: number;
 }
 
@@ -684,8 +724,10 @@ export interface ReportSummary {
   range: ReportRange;
   /** IANA time zone used to calculate daily bucket boundaries */
   timeZone: string;
-  /** Number of unique members with an active subscription (independent of the range) */
+  /** Number of unique members with an active subscription, frozen members excluded (independent of the range) */
   activeMembers: number;
+  /** Number of unique members with an open membership freeze (independent of the range) */
+  frozenMembers: number;
   /** Number of members registered within the range */
   newMembers: number;
   /** Number of subscriptions created within the range */
@@ -695,7 +737,7 @@ export interface ReportSummary {
    * not renew by the end of the range (their latest subscription ended in this range).
    */
   lapsedMembers: number;
-  /** Number of members whose subscriptions expire within the next 7 days (independent of the range) */
+  /** Number of members whose subscriptions expire within the next 7 days, frozen members excluded (independent of the range) */
   renewalsDue: number;
   entries: {
     total: number;
@@ -753,7 +795,10 @@ export interface ChainGymSummary {
   gymId: string;
   gymName: string;
   active: boolean;
+  /** Frozen members excluded */
   activeMembers: number;
+  frozenMembers: number;
+  /** Frozen members excluded */
   renewalsDue: number;
   /** Members currently counted inside */
   inside: number;
@@ -764,8 +809,10 @@ export interface ChainGymSummary {
 export interface ChainSummary {
   range: ReportRange;
   timeZone: string;
-  /** Unique members with an active subscription anywhere in the chain */
+  /** Unique members with an active subscription anywhere in the chain, frozen members excluded */
   activeMembers: number;
+  /** Unique members with an open membership freeze anywhere in the chain */
+  frozenMembers: number;
   gyms: ChainGymSummary[];
 }
 

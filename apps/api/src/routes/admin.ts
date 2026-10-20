@@ -29,7 +29,7 @@ import {
 import { acquireLock, redis, releaseLock } from "../redis.js";
 import { logAudit } from "../audit.js";
 import { authed, requireRole } from "../middleware.js";
-import { markOutsideEverywhere } from "../occupancy.js";
+import { loadMemberPresence, markOutsideEverywhere } from "../occupancy.js";
 import { revokeUserSessions } from "../sessions.js";
 import {
   buildProfilePhotoUrl,
@@ -252,6 +252,10 @@ adminRouter.get(
       }>(plan.pipeline, plan.collation ? { collation: plan.collation } : {})
       .toArray();
 
+    const presence = await loadMemberPresence(
+      (result?.items ?? []).map((doc) => doc._id.toString()),
+      req.user,
+    );
     const body: UserDirectoryPage = {
       total: result?.total[0]?.n ?? 0,
       page: query.page,
@@ -261,6 +265,7 @@ adminRouter.get(
         subscriptionStatus: doc.subscriptionStatus,
         subscriptionEndsAt: doc.subscriptionEndsAt?.toISOString() ?? null,
         subscriptionGymIds: doc.subscriptionGymIds ?? [],
+        presence: presence.get(doc._id.toString()) ?? null,
       })),
     };
     res.json(body);

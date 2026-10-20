@@ -1,20 +1,71 @@
 import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { X } from "lucide-react";
-import type { MemberDetail, MfaMethod, PublicUser } from "@opengym/shared";
+import type {
+  Gym,
+  MemberDetail,
+  MfaMethod,
+  PublicUser,
+  SetUserGymsRequest,
+} from "@opengym/shared";
 import { ApiError, api, authApi, isAbortError } from "../lib/api";
 import { useProfile } from "../lib/profile";
+import { useGyms } from "../lib/gyms";
 import { errorMessage } from "../i18n/errors";
 import { roleKey } from "../lib/roleKey";
+import { usePresenceFormat } from "../lib/presence";
 import { Avatar } from "./Avatar";
 import { MemberControls } from "./MemberControls";
-import { Modal } from "./Modal";
+import { ConfirmModal, Modal } from "./Modal";
 import { StatusBadge } from "./StatusBadge";
 import { SubscriptionPanel } from "./SubscriptionPanel";
 
 interface MfaPrompt {
   target: PublicUser;
   role: string;
+  /** Gyms to save after the role change; null when the role needs none. */
+  gymIds: string[] | null;
+}
+
+/** Roles that only see the gyms listed on the account. */
+function needsGyms(role: string): boolean {
+  return role === "admin" || role === "staff";
+}
+
+/** Multi-select of gyms; inactive gyms only show when already selected. */
+function GymChecklist({
+  gyms,
+  value,
+  onChange,
+}: {
+  gyms: Gym[];
+  value: string[];
+  onChange: (next: string[]) => void;
+}) {
+  const { t } = useTranslation();
+  return (
+    <div className="field">
+      {gyms
+        .filter((g) => g.active || value.includes(g.id))
+        .map((g) => (
+          <label key={g.id} className="check">
+            <input
+              type="checkbox"
+              checked={value.includes(g.id)}
+              onChange={() =>
+                onChange(
+                  value.includes(g.id)
+                    ? value.filter((id) => id !== g.id)
+                    : [...value, g.id],
+                )
+              }
+            />{" "}
+            {g.name}
+            {!g.active && ` (${t("Inactive")})`}
+          </label>
+        ))}
+    </div>
+  );
 }
 
 /**
@@ -33,6 +84,19 @@ export function MemberDrawer({
 }) {
   const { t } = useTranslation();
   const { profile: user } = useProfile();
+  const { duration, time } = usePresenceFormat();
+  const { gyms, refresh: refreshGyms } = useGyms();
+  // Gym choice shown before an admin/staff role is applied.
+  const [gymPick, setGymPick] = useState<{
+    target: PublicUser;
+    role: string;
+    gymIds: string[];
+  } | null>(null);
+  // Role changed but the gym assignment failed; offered again for a retry.
+  const [gymRetry, setGymRetry] = useState<{
+    target: PublicUser;
+    gymIds: string[];
+  } | null>(null);
   const [detail, setDetail] = useState<MemberDetail | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [msg, setMsg] = useState<{ kind: string; text: string } | null>(null);
@@ -96,23 +160,81 @@ export function MemberDrawer({
     await refresh();
   }
 
+  async function saveGyms(targetId: string, gymIds: string[]) {
+    const body: SetUserGymsRequest = { gymIds };
+    await api(`/api/admin/users/${targetId}/gyms`, { method: "PUT", body });
+    await refresh();
+    void refreshGyms();
+  }
+
+  /**
+   * Sets the role, then the gym scope. A role failure throws; a gym failure
+   * after the role changed opens the retry modal instead, so it is never silent.
+   */
+  async function finishRole(
+    target: PublicUser,
+    role: string,
+    gymIds: string[] | null,
+    mfa?: { mfaCode: string; mfaMethod: MfaMethod },
+  ) {
+    await applyRole(target, role, mfa);
+    if (!gymIds) return;
+    try {
+      await saveGyms(target.id, gymIds);
+    } catch {
+      setGymRetry({ target, gymIds });
+    }
+  }
+
+  function openMfa(prompt: MfaPrompt) {
+    setMfaPrompt(prompt);
+    setMfaMethod("totp");
+    setMfaCode("");
+    setMfaError(null);
+    setMfaInfo(null);
+  }
+
+  /** Entry point of the role select: admin/staff first ask for gyms. */
   async function setRole(target: PublicUser, role: string) {
     setMsg(null);
+    if (needsGyms(role)) {
+      const active = new Set(gyms.filter((g) => g.active).map((g) => g.id));
+      setGymPick({
+        target,
+        role,
+        gymIds: needsGyms(target.role)
+          ? target.gymIds.filter((id) => active.has(id))
+          : [],
+      });
+      return;
+    }
     try {
-      await applyRole(target, role);
+      await finishRole(target, role, null);
     } catch (err) {
       if (err instanceof ApiError && err.code === "MFA_REQUIRED") {
-        setMfaPrompt({ target, role });
-        setMfaMethod("totp");
-        setMfaCode("");
-        setMfaError(null);
-        setMfaInfo(null);
+        openMfa({ target, role, gymIds: null });
         return;
       }
       setMsg({
         kind: "error",
         text: errorMessage(err, t, "Could not assign the role."),
       });
+    }
+  }
+
+  async function confirmGymPick() {
+    if (!gymPick) return;
+    const { target, role, gymIds } = gymPick;
+    try {
+      await finishRole(target, role, gymIds);
+      setGymPick(null);
+    } catch (err) {
+      if (err instanceof ApiError && err.code === "MFA_REQUIRED") {
+        setGymPick(null);
+        openMfa({ target, role, gymIds });
+        return;
+      }
+      throw err;
     }
   }
 
@@ -136,7 +258,7 @@ export function MemberDrawer({
     setMfaBusy(true);
     setMfaError(null);
     try {
-      await applyRole(mfaPrompt.target, mfaPrompt.role, {
+      await finishRole(mfaPrompt.target, mfaPrompt.role, mfaPrompt.gymIds, {
         mfaCode,
         mfaMethod,
       });
@@ -209,6 +331,22 @@ export function MemberDrawer({
                   </select>
                 )}
               </div>
+              {target.role === "member" && (
+                <div className="row" style={{ marginTop: 10 }}>
+                  {target.presence ? (
+                    <span className="presence">
+                      <span className="presence-dot" aria-hidden="true" />
+                      {t("Inside at {{gym}} since {{time}} ({{duration}})", {
+                        gym: target.presence.gymName,
+                        time: time(target.presence.enteredAt),
+                        duration: duration(target.presence.enteredAt),
+                      })}
+                    </span>
+                  ) : (
+                    <span className="hint">{t("Not in a gym")}</span>
+                  )}
+                </div>
+              )}
             </div>
             {target.role === "member" && (
               <MemberControls
@@ -230,6 +368,55 @@ export function MemberDrawer({
           </>
         )}
       </aside>
+      {gymPick && (
+        <ConfirmModal
+          title={t("Assign gyms")}
+          confirmLabel={t("Update role")}
+          errorFallback="Could not assign the role."
+          disabled={gymPick.gymIds.length === 0}
+          onClose={() => setGymPick(null)}
+          onConfirm={confirmGymPick}
+        >
+          <p className="hint" style={{ marginBottom: 12 }}>
+            {t(
+              "{{email}} will become {{role}}. Choose the gyms this account can work in (at least one).",
+              {
+                email: gymPick.target.email,
+                role: t(roleKey(gymPick.role as PublicUser["role"])),
+              },
+            )}
+          </p>
+          <GymChecklist
+            gyms={gyms}
+            value={gymPick.gymIds}
+            onChange={(gymIds) => setGymPick({ ...gymPick, gymIds })}
+          />
+        </ConfirmModal>
+      )}
+      {gymRetry && (
+        <ConfirmModal
+          title={t("Gyms were not saved")}
+          confirmLabel={t("Retry")}
+          errorFallback="Could not save changes."
+          disabled={gymRetry.gymIds.length === 0}
+          onClose={() => setGymRetry(null)}
+          onConfirm={async () => {
+            await saveGyms(gymRetry.target.id, gymRetry.gymIds);
+            setGymRetry(null);
+          }}
+        >
+          <div className="msg warn">
+            {t(
+              "The role was changed, but the gyms could not be saved. Until gyms are assigned this account sees no gym. Try again, or assign them later from Staff assignment.",
+            )}
+          </div>
+          <GymChecklist
+            gyms={gyms}
+            value={gymRetry.gymIds}
+            onChange={(gymIds) => setGymRetry({ ...gymRetry, gymIds })}
+          />
+        </ConfirmModal>
+      )}
       {mfaPrompt && (
         <Modal
           title={t("MFA verification required")}

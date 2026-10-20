@@ -60,9 +60,18 @@ export const publicUserSchema = withId(
   "PublicUser",
 );
 
+export const memberPresenceSchema = withId(
+  z.object({
+    gymId: objectIdSchema,
+    gymName: z.string(),
+    enteredAt: isoDateTimeSchema,
+  }),
+  "MemberPresence",
+);
+
 export const userDirectoryRowSchema = withId(
   publicUserSchema.extend({
-    subscriptionStatus: z.enum(["active", "expired", "none"]),
+    subscriptionStatus: z.enum(["active", "frozen", "expired", "none"]),
     subscriptionGymIds: z.array(objectIdSchema).meta({
       description:
         "Gyms of the member's currently active subscription periods; empty when there is none",
@@ -70,6 +79,10 @@ export const userDirectoryRowSchema = withId(
     subscriptionEndsAt: isoDateTimeSchema.nullable().meta({
       description:
         "End of the current period when active, of the latest past period when expired, null when none",
+    }),
+    presence: memberPresenceSchema.nullable().meta({
+      description:
+        "Gym the user is counted inside right now; null when outside or when that gym is outside the caller's scope",
     }),
   }),
   "UserDirectoryRow",
@@ -255,7 +268,10 @@ export const chainSettingsSchema = withId(
 
 export const adminStatsSchema = withId(
   z.object({
-    activeMembers: z.number().int().nonnegative(),
+    activeMembers: z.number().int().nonnegative().meta({
+      description: "Frozen members excluded",
+    }),
+    frozenMembers: z.number().int().nonnegative(),
     renewalsDue: z.number().int().nonnegative(),
   }),
   "AdminStats",
@@ -442,6 +458,21 @@ export const occupancySchema = withId(
     ratio: z.number().nonnegative().nullable(),
   }),
   "Occupancy",
+);
+
+export const gymInsideSchema = withId(
+  z.object({
+    gymId: objectIdSchema,
+    members: z.array(
+      z.object({
+        userId: objectIdSchema,
+        name: z.string(),
+        profilePhotoUrl: z.string().nullable(),
+        enteredAt: isoDateTimeSchema,
+      }),
+    ),
+  }),
+  "GymInside",
 );
 
 export const myOccupancySchema = withId(

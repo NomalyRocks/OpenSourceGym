@@ -82,6 +82,13 @@ const tr = {
   "Could not save changes.": "Kaydedilemedi.",
   "Could not add the device.": "Cihaz eklenemedi.",
   "Could not delete the device.": "Cihaz silinemedi.",
+  "Assign gyms": "Salon ata",
+  Retry: "Tekrar dene",
+  "{{email}} will become {{role}}. Choose the gyms this account can work in (at least one).":
+    "{{email}} hesabı {{role}} olacak. Hesabın çalışabileceği salonları seçin (en az bir tane).",
+  "Gyms were not saved": "Salonlar kaydedilmedi",
+  "The role was changed, but the gyms could not be saved. Until gyms are assigned this account sees no gym. Try again, or assign them later from Staff assignment.":
+    "Rol değişti ama salonlar kaydedilemedi. Salon atanana kadar bu hesap hiçbir salonu göremez. Tekrar deneyin veya sonra Personel atama sayfasından atayın.",
   "Could not assign the role.": "Rol atanamadı.",
   "Could not grant the subscription.": "Abonelik tanımlanamadı.",
   "Subscription granted.": "Abonelik tanımlandı.",
@@ -106,6 +113,7 @@ const tr = {
   End: "Bitiş",
   Status: "Durum",
   Active: "Aktif",
+  Frozen: "Donduruldu",
   Inactive: "Pasif",
   Upcoming: "Gelecek",
   "Grant subscription": "Abonelik tanımla",
@@ -132,7 +140,10 @@ const tr = {
   "Today's revenue": "Bugünkü Gelir",
   "Payment tracking coming soon": "Ödeme takibi yakında",
   "Active members": "Aktif Üye",
-  "active subscriptions": "aktif abonelik",
+  "active subscriptions, frozen excluded":
+    "aktif abonelik, dondurulanlar hariç",
+  "Frozen members": "Dondurulan üyeler",
+  "membership freeze open": "açık abonelik dondurma",
   "Gym occupancy": "Salon Doluluk Oranı",
   "Renewals due": "Yenileme Bekleyen",
   "within 7 days": "7 gün içinde",
@@ -266,7 +277,7 @@ const tr = {
   Unban: "Yasağı kaldır",
   "Unknown member": "Bilinmeyen üye",
   "This member is banned.": "Bu üye yasaklanmış.",
-  "Banned on {{date}} by {{name}}": "{{date}} tarihinde {{name}} yasakladı",
+  "Banned on {{date}}": "{{date}} tarihinde yasaklandı",
   "A banned member cannot enter any gym.":
     "Yasaklı üye hiçbir salona giriş yapamaz.",
   "The member will be refused at every gym and will see this reason in the mobile app.":
@@ -295,7 +306,20 @@ const tr = {
   "The member's next entry scan resumes the freeze automatically.":
     "Üyenin bir sonraki giriş okutması dondurmayı otomatik olarak sonlandırır.",
   "Subscription frozen.": "Abonelik donduruldu.",
+  "{{n}} min": "{{n}} dk",
+  "{{h}} h": "{{h}} sa",
+  "{{h}} h {{m}} min": "{{h}} sa {{m}} dk",
+  "In {{gym}} · {{duration}}": "{{gym}} içinde · {{duration}}",
+  "Inside at {{gym}} since {{time}} ({{duration}})":
+    "{{gym}} salonunda, {{time}} saatinden beri ({{duration}})",
+  "Not in a gym": "Şu an salonda değil",
+  Presence: "Salonda",
+  "Entered at {{time}}": "Giriş: {{time}}",
+  "No one is inside right now.": "Şu an içeride kimse yok.",
   "Subscription resumed.": "Abonelik yeniden başlatıldı.",
+  "Resume subscription": "Aboneliği yeniden başlat",
+  "Ending the freeze credits the frozen time back to the member and moves their later periods.":
+    "Dondurmayı bitirmek, dondurulan süreyi üyeye geri verir ve sonraki dönemlerini kaydırır.",
   "Could not freeze the subscription.": "Abonelik dondurulamadı.",
   "Could not resume the subscription.": "Abonelik yeniden başlatılamadı.",
   "Account deletion": "Hesap silme",
@@ -557,8 +581,9 @@ const tr = {
   "across the chain": "zincir genelinde",
   "Inside now": "Şu an içeride",
   "No gym assigned": "Atanmış salon yok",
-  "Ask the chain owner to assign you to a gym.":
-    "Zincir sahibinden sizi bir salona atamasını isteyin.",
+  "You are not assigned to any gym yet. Ask the owner to assign one.":
+    "Henüz bir salona atanmadınız. Sahipten bir salon atamasını isteyin.",
+  "No gym assigned yet": "Henüz salon atanmadı",
   "Not allowed at this gym": "Bu salona giriş yetkisi yok",
   "Gym inactive": "Salon pasif",
   "Your subscription does not include this gym. Please contact reception.":

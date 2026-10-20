@@ -20,6 +20,7 @@
   --ok: oklch(0.72 0.16 155);
   --warn: oklch(0.78 0.15 80);
   --danger: oklch(0.67 0.2 25);
+  --info: oklch(0.74 0.12 235);
   --radius: 8px;
   --radius-lg: 12px;
   --sidebar-w: 264px;
@@ -799,6 +800,10 @@ tr:hover td {
   color: var(--danger);
 }
 
+.badge.info {
+  color: var(--info);
+}
+
 .badge.warn {
   color: var(--warn);
 }
@@ -1108,7 +1113,7 @@ tr:hover td {
 
 .board {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 14px;
 }
 
@@ -1456,7 +1461,12 @@ tr:hover td {
   grid-template-columns: repeat(3, 1fr);
 }
 
+.kpi-grid.cols-5 {
+  grid-template-columns: repeat(5, 1fr);
+}
+
 @media (max-width: 900px) {
+  .kpi-grid.cols-5,
   .kpi-grid.cols-3 {
     grid-template-columns: repeat(2, 1fr);
   }
@@ -1662,5 +1672,30 @@ textarea:focus {
   display: flex;
   flex-direction: column;
   gap: 4px;
+  min-width: 0;
+}
+
+/* ---- live presence ---- */
+.presence {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+}
+
+.presence-dot {
+  flex: none;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--ok);
+}
+
+.inside-list {
+  max-height: 360px;
+  overflow-y: auto;
+}
+
+.inside-list .member-identity {
   min-width: 0;
 }

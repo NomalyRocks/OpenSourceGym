@@ -7,6 +7,7 @@ export const statusMeta: Record<
   { cls: string; label: WebTranslationKey }
 > = {
   active: { cls: "ok", label: "Active" },
+  frozen: { cls: "info", label: "Frozen" },
   expired: { cls: "danger", label: "Expired" },
   none: { cls: "none", label: "None" },
 };

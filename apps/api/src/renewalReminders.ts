@@ -3,6 +3,7 @@ import type { ReminderConfig } from "@opengym/shared";
 import { ObjectId } from "mongodb";
 import type { Db } from "mongodb";
 import { db, gymCollection } from "./db.js";
+import { excludeFrozenStages, listFrozenUserIds } from "./frozenMembers.js";
 import { reminderConfigOf, type GymDoc } from "./gyms.js";
 import { acquireLock, releaseLock } from "./redis.js";
 import {
@@ -96,6 +97,8 @@ async function sweepGym(
   // Do not collect results with toArray: as member count grows, so does the list
   // loaded into memory at once; streaming through the cursor uses constant memory.
   const cursor = database.collection("subscriptions").aggregate<DueRow>([
+    // Frozen members are paused: no reminder while a freeze is open.
+    ...excludeFrozenStages(await listFrozenUserIds(database)),
     { $match: { gymIds: gym._id } },
     { $sort: { userId: 1, endsAt: -1, _id: -1 } },
     {

@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import type {
   BanMemberRequest,
@@ -6,11 +6,10 @@ import type {
   MemberDetail,
 } from "@opengym/shared";
 import { api } from "../lib/api";
-import { errorMessage } from "../i18n/errors";
 import type { WebTranslationKey } from "../i18n/resources";
 import { ConfirmModal, useDateFormatter } from "./Modal";
 
-type ControlModal = "ban" | "unban" | "freeze" | "deletion";
+type ControlModal = "ban" | "unban" | "freeze" | "resume" | "deletion";
 
 const BAN_REASON_MIN = 3;
 const BAN_REASON_MAX = 500;
@@ -37,8 +36,6 @@ export function MemberControls({
   const formatDate = useDateFormatter();
   const [modal, setModal] = useState<ControlModal | null>(null);
   const [reason, setReason] = useState("");
-  const [resuming, setResuming] = useState(false);
-  const resumingRef = useRef(false);
   const userId = detail.user.id;
   const { ban, freeze, pendingDeletion } = detail;
   const cfg = freeze.config;
@@ -55,30 +52,12 @@ export function MemberControls({
     onChanged();
   }
 
-  async function resume() {
-    if (resumingRef.current) return;
-    resumingRef.current = true;
-    setResuming(true);
-    try {
-      await api(`/api/admin/users/${userId}/freeze`, { method: "DELETE" });
-      notify("success", t("Subscription resumed."));
-      onChanged();
-    } catch (err) {
-      notify(
-        "error",
-        errorMessage(err, t, "Could not resume the subscription."),
-      );
-    } finally {
-      resumingRef.current = false;
-      setResuming(false);
-    }
-  }
-
   const freezeBlocked: WebTranslationKey | null = !cfg.enabled
     ? "Freezing is turned off in the chain settings."
     : freeze.usedInLastYear >= cfg.maxPerYear
       ? "The yearly freeze limit has been reached."
-      : detail.user.subscriptionStatus !== "active"
+      : detail.user.subscriptionStatus === "expired" ||
+          detail.user.subscriptionStatus === "none"
         ? "The member has no active subscription period."
         : null;
 
@@ -100,10 +79,7 @@ export function MemberControls({
                 <strong>{t("This member is banned.")}</strong>
                 <div>{ban.reason}</div>
                 <div className="hint">
-                  {t("Banned on {{date}} by {{name}}", {
-                    date: formatDate(ban.bannedAt),
-                    name: ban.bannedBy,
-                  })}
+                  {t("Banned on {{date}}", { date: formatDate(ban.bannedAt) })}
                 </div>
               </div>
             ) : (
@@ -156,10 +132,9 @@ export function MemberControls({
           <button
             type="button"
             className="ghost"
-            disabled={resuming}
-            onClick={() => void resume()}
+            onClick={() => open("resume")}
           >
-            {resuming ? t("Processing…") : t("Resume")}
+            {t("Resume")}
           </button>
         ) : (
           <button
@@ -299,6 +274,28 @@ export function MemberControls({
               )}
             </li>
           </ul>
+        </ConfirmModal>
+      )}
+
+      {modal === "resume" && (
+        <ConfirmModal
+          title={t("Resume subscription")}
+          confirmLabel={t("Resume")}
+          errorFallback="Could not resume the subscription."
+          onClose={() => setModal(null)}
+          onConfirm={() =>
+            run(
+              () =>
+                api(`/api/admin/users/${userId}/freeze`, { method: "DELETE" }),
+              t("Subscription resumed."),
+            )
+          }
+        >
+          <p className="hint" style={{ marginBottom: 12 }}>
+            {t(
+              "Ending the freeze credits the frozen time back to the member and moves their later periods.",
+            )}
+          </p>
         </ConfirmModal>
       )}
 

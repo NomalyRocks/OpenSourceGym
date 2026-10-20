@@ -10,6 +10,11 @@ import { db } from "./db.js";
 import { getOccupancy } from "./occupancy.js";
 import type { GymDoc } from "./gyms.js";
 import { env } from "./env.js";
+import {
+  countFrozenMembers,
+  excludeFrozenStages,
+  listFrozenUserIds,
+} from "./frozenMembers.js";
 
 /** Maximum report range—limits the number of chart buckets. */
 export const MAX_REPORT_RANGE_DAYS = 366;
@@ -97,6 +102,7 @@ export async function countRenewalsDue(
   gymId?: string,
 ): Promise<number> {
   return countFrom(database, "subscriptions", [
+    ...excludeFrozenStages(await listFrozenUserIds(database)),
     ...gymScopeStages(gymId),
     ...latestEndPipeline({
       $gte: now,
@@ -105,13 +111,17 @@ export async function countRenewalsDue(
   ]);
 }
 
-/** Number of unique members with an active subscription now. */
+/**
+ * Number of unique members with an active subscription now. Frozen members
+ * are excluded - they are counted by {@link countFrozenMembers} instead.
+ */
 export async function countActiveMembers(
   database: Db = db,
   now = new Date(),
   gymId?: string,
 ): Promise<number> {
   return countFrom(database, "subscriptions", [
+    ...excludeFrozenStages(await listFrozenUserIds(database)),
     ...gymScopeStages(gymId),
     { $match: { startsAt: { $lte: now }, endsAt: { $gte: now } } },
     { $group: { _id: "$userId" } },
@@ -135,6 +145,7 @@ export async function buildReportSummary(
     newMembers,
     newSubscriptions,
     lapsedMembers,
+    frozen,
     entries,
   ] = await Promise.all([
     countActiveMembers(database, now, gymId),
@@ -165,10 +176,16 @@ export async function buildReportSummary(
     }),
     // Members ending in the range AND not renewed by range end: if the latest
     // end remains within the range, the member is unsubscribed at range end.
-    countFrom(database, "subscriptions", [
-      ...gymScopeStages(gymId),
-      ...latestEndPipeline({ $gte: from, $lte: to }),
-    ]),
+    // A frozen member whose nominal end passed during the freeze is paused,
+    // not lapsed.
+    listFrozenUserIds(database).then((frozenIds) =>
+      countFrom(database, "subscriptions", [
+        ...excludeFrozenStages(frozenIds),
+        ...gymScopeStages(gymId),
+        ...latestEndPipeline({ $gte: from, $lte: to }),
+      ]),
+    ),
+    countFrozenMembers(database, now),
     aggregateEntryTotals(database, from, to, gymId),
   ]);
 
@@ -176,6 +193,7 @@ export async function buildReportSummary(
     range: { from: from.toISOString(), to: to.toISOString() },
     timeZone: env.reportsTimeZone,
     activeMembers,
+    frozenMembers: frozen.byGym.get(gymId) ?? 0,
     newMembers,
     newSubscriptions,
     lapsedMembers,
@@ -296,6 +314,7 @@ export async function buildChainSummary(
   database: Db = db,
   now = new Date(),
 ): Promise<ChainSummary> {
+  const frozen = await countFrozenMembers(database, now);
   const rows: ChainGymSummary[] = await Promise.all(
     gyms.map(async (gym) => {
       const gymId = gym._id.toHexString();
@@ -310,6 +329,7 @@ export async function buildChainSummary(
         gymName: gym.name,
         active: gym.active,
         activeMembers,
+        frozenMembers: frozen.byGym.get(gymId) ?? 0,
         renewalsDue,
         inside,
         entries,
@@ -320,6 +340,7 @@ export async function buildChainSummary(
     range: { from: from.toISOString(), to: to.toISOString() },
     timeZone: env.reportsTimeZone,
     activeMembers: await countActiveMembers(database, now),
+    frozenMembers: frozen.chain,
     gyms: rows,
   };
 }

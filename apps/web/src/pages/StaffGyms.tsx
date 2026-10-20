@@ -139,6 +139,11 @@ export function StaffGyms() {
                         </label>
                       ))}
                     </div>
+                    {current(u).length === 0 && (
+                      <div className="hint" style={{ color: "var(--warn)" }}>
+                        {t("No gym assigned yet")}
+                      </div>
+                    )}
                   </td>
                   <td>
                     <button
