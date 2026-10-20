@@ -300,7 +300,7 @@ yasaklama, dondurma ve owner denetiminde silme talebi araçları vermek. Tasarı
 - [x] Güvenlik incelemesi bulgularının kapatılması, entegrasyon testleri dahil
       tüm kontroller yeşil
 - [ ] Panel ve mobil akışların tarayıcı/cihaz üzerinde smoke testi
-- [ ] Self-servis ve turnike kaynaklı dondurma audit kayıtlarının salon bazlı
+- [x] Self-servis ve turnike kaynaklı dondurma audit kayıtlarının salon bazlı
       yazılması
 
 **Definition of Done:** Personel yanlışlıkla ek dönem veremez, verdiyse iptal

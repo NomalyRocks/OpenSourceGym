@@ -71,6 +71,7 @@ import {
 } from "../occupancy.js";
 import { enqueueEntryEvent } from "../eventQueue.js";
 import { logAudit } from "../audit.js";
+import { logMemberAudit } from "../memberScope.js";
 import { isQrBlocked, recordSharingSignal, QR_LOC_KEY } from "../sharing.js";
 import {
   ProfilePhotoBusyError,
@@ -936,13 +937,18 @@ meRouter.post(
         });
         if (ended.status === "ended") {
           unfrozen = true;
-          await logAudit(req.user, "subscription-unfrozen", req.user.id, {
-            freezeId: ended.freeze._id.toHexString(),
-            startedAt: ended.freeze.startedAt.toISOString(),
-            endedAt: ended.freeze.endedAt?.toISOString() ?? null,
-            creditedMs: ended.creditedMs,
-            reason: "gate-scan",
-          });
+          await logMemberAudit(
+            req.user,
+            "subscription-unfrozen",
+            new ObjectId(req.user.id),
+            {
+              freezeId: ended.freeze._id.toHexString(),
+              startedAt: ended.freeze.startedAt.toISOString(),
+              endedAt: ended.freeze.endedAt?.toISOString() ?? null,
+              creditedMs: ended.creditedMs,
+              reason: "gate-scan",
+            },
+          );
         }
       } catch (error) {
         console.error("freeze end failed after the gate opened:", error);
@@ -1054,12 +1060,17 @@ meRouter.post(
         sendFreezeRefusal(res, result.status);
         return;
       }
-      await logAudit(req.user, "subscription-frozen", req.user.id, {
-        freezeId: result.freeze._id.toHexString(),
-        startedAt: result.freeze.startedAt.toISOString(),
-        maxDays: result.freeze.maxDays,
-        selfService: true,
-      });
+      await logMemberAudit(
+        req.user,
+        "subscription-frozen",
+        new ObjectId(req.user.id),
+        {
+          freezeId: result.freeze._id.toHexString(),
+          startedAt: result.freeze.startedAt.toISOString(),
+          maxDays: result.freeze.maxDays,
+          selfService: true,
+        },
+      );
       res.json({ ok: true });
     } catch (error) {
       if (error instanceof SubscriptionLockTimeoutError) {
@@ -1087,14 +1098,19 @@ meRouter.delete(
         sendApiError(res, 409, "NOT_FROZEN", "This membership is not frozen.");
         return;
       }
-      await logAudit(req.user, "subscription-unfrozen", req.user.id, {
-        freezeId: result.freeze._id.toHexString(),
-        startedAt: result.freeze.startedAt.toISOString(),
-        endedAt: result.freeze.endedAt?.toISOString() ?? null,
-        creditedMs: result.creditedMs,
-        reason: "resumed",
-        selfService: true,
-      });
+      await logMemberAudit(
+        req.user,
+        "subscription-unfrozen",
+        new ObjectId(req.user.id),
+        {
+          freezeId: result.freeze._id.toHexString(),
+          startedAt: result.freeze.startedAt.toISOString(),
+          endedAt: result.freeze.endedAt?.toISOString() ?? null,
+          creditedMs: result.creditedMs,
+          reason: "resumed",
+          selfService: true,
+        },
+      );
       res.json({ ok: true });
     } catch (error) {
       if (error instanceof SubscriptionLockTimeoutError) {
