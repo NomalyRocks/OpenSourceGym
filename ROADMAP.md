@@ -299,7 +299,8 @@ yasaklama, dondurma ve owner denetiminde silme talebi araçları vermek. Tasarı
 - [x] Entries sayfasından açılan ortak üye çekmecesi (`GET /api/admin/users/:id`)
 - [x] Güvenlik incelemesi bulgularının kapatılması, entegrasyon testleri dahil
       tüm kontroller yeşil
-- [ ] Panel ve mobil akışların tarayıcı/cihaz üzerinde smoke testi
+- [x] Panel ve mobil akışların tarayıcı/cihaz üzerinde smoke testi (admin için
+      audit sayfası kapsam kontrolü atlandı)
 - [x] Self-servis ve turnike kaynaklı dondurma audit kayıtlarının salon bazlı
       yazılması
 
