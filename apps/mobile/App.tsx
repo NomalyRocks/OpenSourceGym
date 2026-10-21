@@ -291,6 +291,7 @@ function SignedInApp({
               onOpenQr={() => setActiveTab("scan")}
               onOpenNotifications={() => setOverlay("notifications")}
               onOpenProfile={() => setActiveTab("profile")}
+              onRefreshed={onBanned}
               unreadCount={center.unreadCount}
             />
           </View>

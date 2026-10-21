@@ -165,12 +165,15 @@ export function Home({
   onOpenQr,
   onOpenNotifications,
   onOpenProfile,
+  onRefreshed,
   unreadCount = 0,
 }: {
   userName: string;
   onOpenQr: () => void;
   onOpenNotifications: () => void;
   onOpenProfile: () => void;
+  /** Called after a pull-to-refresh so the shell can re-check the ban */
+  onRefreshed?: () => void;
   unreadCount?: number;
 }) {
   const { t, i18n } = useTranslation();
@@ -266,6 +269,7 @@ export function Home({
   async function refresh() {
     setRefreshing(true);
     await load();
+    onRefreshed?.();
     setRefreshing(false);
   }
 
