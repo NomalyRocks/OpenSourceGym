@@ -29,7 +29,7 @@ export type {
   FreezeDocument,
   FreezeEndReason,
 } from "./freezeCredit.js";
-import { listMemberGymIds } from "./memberScope.js";
+import { listMemberGymIds, logMemberAudit } from "./memberScope.js";
 import {
   calculateFreezeCreditMs,
   evaluateEntryWithFreezeCredit,
@@ -275,12 +275,14 @@ export async function endFreeze(
     endedBy: string | null;
     /** Scope check run under the lock against the gyms on all of the member's periods */
     canManage?: (memberGymIds: string[]) => boolean;
+    /** How long to wait for the user lock; defaults to USER_LOCK_WAIT_MS */
+    lockWaitMs?: number;
   },
 ): Promise<EndFreezeResult> {
   return withRedisLock(
     subscriptionUserLockKey(userId.toHexString()),
     USER_LOCK_LEASE_MS,
-    USER_LOCK_WAIT_MS,
+    how.lockWaitMs ?? USER_LOCK_WAIT_MS,
     async (assertOwned): Promise<EndFreezeResult> => {
       // A half-applied earlier credit must land before this plan reads periods.
       await finishPendingCredit(userId, assertOwned);
@@ -355,6 +357,26 @@ export async function endFreeze(
 }
 
 /**
+ * Finishes this member's interrupted credit, if one exists, so the periods a
+ * gate decision reads are final. The lookup uses the unsettled-freeze index's
+ * filter, so members without a pending credit never take the user lock.
+ * Throws SubscriptionLockTimeoutError when the lock stays busy.
+ */
+export async function settlePendingCredit(userId: ObjectId): Promise<void> {
+  const pending = await freezeCollection().findOne(
+    { userId, endedAt: { $ne: null }, creditApplied: false },
+    { projection: { _id: 1 } },
+  );
+  if (!pending) return;
+  await withRedisLock(
+    subscriptionUserLockKey(userId.toHexString()),
+    USER_LOCK_LEASE_MS,
+    USER_LOCK_WAIT_MS,
+    (assertOwned) => finishPendingCredit(userId, assertOwned),
+  );
+}
+
+/**
  * Finishes every interrupted credit. Each member is handled under their lock;
  * a busy member is retried on the next sweep.
  */
@@ -382,7 +404,13 @@ export async function finishInterruptedCredits(): Promise<number> {
   return finished;
 }
 
-/** Ends every freeze that has outlived its `maxDays`. Returns how many ended. */
+/** Audit actor for sweeps that no person triggered. */
+const REAPER_ACTOR = { id: "system", email: "system" };
+
+/**
+ * Ends every freeze that has outlived its `maxDays` and writes the same
+ * `subscription-unfrozen` audit rows as a manual end. Returns how many ended.
+ */
 export async function reapExpiredFreezes(now = new Date()): Promise<number> {
   await finishInterruptedCredits();
   const due = await freezeCollection()
@@ -407,7 +435,26 @@ export async function reapExpiredFreezes(now = new Date()): Promise<number> {
         reason: "max-days",
         endedBy: null,
       });
-      if (result.status === "ended") ended += 1;
+      if (result.status === "ended") {
+        ended += 1;
+        try {
+          await logMemberAudit(
+            REAPER_ACTOR,
+            "subscription-unfrozen",
+            row.userId,
+            {
+              freezeId: result.freeze._id.toHexString(),
+              startedAt: result.freeze.startedAt.toISOString(),
+              endedAt: result.freeze.endedAt?.toISOString() ?? null,
+              creditedMs: result.creditedMs,
+              reason: "max-days",
+            },
+          );
+        } catch (error) {
+          // The freeze is already credited; a missing row must not stop the sweep.
+          console.error("freeze reap audit failed:", error);
+        }
+      }
     } catch (error) {
       // A busy member is retried on the next sweep; other members must not wait.
       if (!(error instanceof SubscriptionLockTimeoutError)) {

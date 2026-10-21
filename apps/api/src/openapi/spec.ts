@@ -603,6 +603,7 @@ export const openApiDocument: OpenApiDocument = createDocument({
           "200": jsonResponse("Role assigned", okSchema),
           "400": apiErrorResponse,
           "404": apiErrorResponse,
+          "409": apiErrorResponse,
           "429": apiErrorResponse,
         }),
       },

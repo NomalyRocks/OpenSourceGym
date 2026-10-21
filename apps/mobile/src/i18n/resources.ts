@@ -527,6 +527,10 @@ const tr = {
     "Üyeliği dondurmak için devam eden bir üyelik döneminiz olmalı.",
   "Your membership is being updated. Please try again in a moment.":
     "Üyeliğiniz güncelleniyor. Lütfen birazdan tekrar deneyin.",
+  "Unban the member before changing their role.":
+    "Üyenin rolünü değiştirmeden önce yasağını kaldırın.",
+  "End the member's freeze before changing their role.":
+    "Üyenin rolünü değiştirmeden önce dondurmayı sonlandırın.",
   "You are banned": "YASAKLANDIN",
   "Reason: {{reason}}": "Sebep: {{reason}}",
   "Banned on {{date}}": "Yasaklanma tarihi: {{date}}",

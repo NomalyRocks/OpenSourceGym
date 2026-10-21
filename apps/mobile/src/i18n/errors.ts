@@ -53,6 +53,8 @@ const codeMessages = {
   SUBSCRIPTION_BUSY:
     "Your membership is being updated. Please try again in a moment.",
   BANNED: "Your membership is banned. Please contact reception.",
+  MEMBER_BANNED: "Unban the member before changing their role.",
+  MEMBER_FROZEN: "End the member's freeze before changing their role.",
   LOCAL_FILE_READ_FAILED: "The selected photo could not be read.",
   DELETION_MEMBER_ONLY: "Only member accounts can create a deletion request.",
   DELETION_ALREADY_PENDING: "You already have a pending deletion request.",

@@ -29,8 +29,10 @@ import {
 /**
  * Staff-side controls over a member account: detail, ban, subscription freeze
  * and a deletion request opened on the member's behalf (docs/member-controls.md).
- * Members are chain-wide, so none of these routes are gym-scoped and every
- * audit row carries `gymId: null`.
+ * The routes are member-only (`MEMBER_ONLY` for any other account) and are not
+ * gym-scoped in the path. A non-owner is scoped through the gyms on any of the
+ * member's periods (`canManageMember`). Audit rows are written once per gym
+ * (`logMemberAudit`), so each gym's admins see the action in their own list.
  */
 export const memberControlsRouter: Router = Router();
 

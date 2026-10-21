@@ -370,6 +370,11 @@ const tr = {
   "Gyms removed": "Çıkarılan salonlar",
   "Also apply to later scheduled periods ({{count}})":
     "Sonraki planlı dönemlere de uygula ({{count}})",
+  "Later scheduled periods:": "Sonraki planlı dönemler:",
+  "{{period}} → {{gyms}}": "{{period}} → {{gyms}}",
+  "{{period}}: unchanged": "{{period}}: değişmiyor",
+  "{{period}}: would be left with no gyms; left unchanged":
+    "{{period}}: salon kalmayacağı için değiştirilmiyor",
   "Some periods could not be updated:": "Bazı dönemler güncellenemedi:",
   "Subscription gyms updated on {{count}} periods.":
     "{{count}} dönemin salonları güncellendi.",
@@ -384,6 +389,10 @@ const tr = {
   "Enter a ban reason of 3 to 500 characters.":
     "3 ile 500 karakter arasında bir yasaklama sebebi girin.",
   "This member is not banned.": "Bu üye yasaklı değil.",
+  "Unban the member before changing their role.":
+    "Üyenin rolünü değiştirmeden önce yasağını kaldırın.",
+  "End the member's freeze before changing their role.":
+    "Üyenin rolünü değiştirmeden önce dondurmayı sonlandırın.",
   "Subscription freezing is turned off.": "Abonelik dondurma kapalı.",
   "This membership is already frozen.": "Bu üyelik zaten dondurulmuş.",
   "This membership is not frozen.": "Bu üyelik dondurulmamış.",

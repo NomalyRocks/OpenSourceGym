@@ -9,7 +9,7 @@ const mongoUri = process.env.TEST_MONGODB_URI;
 const redisUri = process.env.TEST_REDIS_URL;
 
 test(
-  "an open freeze shows as frozen in directory, detail and status filter",
+  "an open freeze shows as frozen in directory, detail and status filter, and blocks promotion",
   {
     skip:
       mongoUri && redisUri
@@ -19,7 +19,7 @@ test(
   async () => {
     const databaseName = `opengym_frozen_${randomUUID().replaceAll("-", "")}`;
     const isolatedRedisUrl = new URL(redisUri!);
-    isolatedRedisUrl.pathname = "/13";
+    isolatedRedisUrl.pathname = "/11";
     process.env.MONGODB_URI = `${mongoUri!}/${databaseName}`;
     process.env.REDIS_URL = isolatedRedisUrl.toString();
     process.env.BETTER_AUTH_URL = "http://localhost:3000";
@@ -202,6 +202,42 @@ test(
         );
       const after = await get(owner.cookie, `/users/${frozenLapsed.id}`);
       assert.equal(after.user.subscriptionStatus, "expired");
+
+      // A banned or frozen member cannot be promoted: unban and resume accept
+      // members only, so the promoted account could not be fixed afterwards.
+      async function promote(userId: string, role: string) {
+        const response = await fetch(`${base}/api/admin/users/${userId}/role`, {
+          method: "POST",
+          headers: { "content-type": "application/json", cookie: owner.cookie },
+          body: JSON.stringify({ role }),
+        });
+        return {
+          status: response.status,
+          body: (await response.json()) as any,
+        };
+      }
+      const roleOf = async (userId: string) =>
+        (await db.collection("user").findOne({ _id: new ObjectId(userId) }))
+          ?.role;
+      const frozenPromotion = await promote(frozenActive.id, "staff");
+      assert.equal(frozenPromotion.status, 409);
+      assert.equal(frozenPromotion.body.code, "MEMBER_FROZEN");
+      assert.equal(await roleOf(frozenActive.id), "member");
+
+      const plainUser = { _id: new ObjectId(plain.id) };
+      await db.collection("user").updateOne(plainUser, {
+        $set: {
+          ban: { reason: "test", bannedAt: new Date(), bannedBy: owner.id },
+        },
+      });
+      const bannedPromotion = await promote(plain.id, "admin");
+      assert.equal(bannedPromotion.status, 409);
+      assert.equal(bannedPromotion.body.code, "MEMBER_BANNED");
+      assert.equal(await roleOf(plain.id), "member");
+
+      await db.collection("user").updateOne(plainUser, { $set: { ban: null } });
+      assert.equal((await promote(plain.id, "staff")).status, 200);
+      assert.equal(await roleOf(plain.id), "staff");
     } finally {
       await db.dropDatabase().catch(() => undefined);
       await redis.flushDb().catch(() => undefined);

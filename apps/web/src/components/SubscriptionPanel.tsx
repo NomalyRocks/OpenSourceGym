@@ -76,6 +76,18 @@ function gymNames(ids: string[], gyms: { id: string; name: string }[]) {
   return ids.map((id) => gyms.find((g) => g.id === id)?.name ?? id).join(", ");
 }
 
+/** True when both lists hold the same gym ids, ignoring order and duplicates. */
+function sameGymSet(a: string[], b: string[]): boolean {
+  const left = new Set(a);
+  const right = new Set(b);
+  return left.size === right.size && [...left].every((id) => right.has(id));
+}
+
+/** What "apply to later periods" does to one later period. */
+type LaterChange =
+  | { target: Subscription; kind: "unchanged" | "empty" }
+  | { target: Subscription; kind: "update"; next: string[] };
+
 // Creates a NEW sequential period after the member's latest one. Two steps
 // (form, then confirm) so an accidental click cannot sell an extra period.
 function NewPeriodModal({
@@ -326,8 +338,19 @@ function EditGymsForm({
   const period = (s: Subscription) =>
     `${formatDate(s.startsAt)} – ${formatDate(s.endsAt)}`;
 
-  async function put(target: Subscription) {
-    const body: SetSubscriptionGymsRequest = { gymIds: selected };
+  // Later periods receive only this diff, never a copy of this period's list:
+  // the PUT replaces the whole list, so copying would drop gyms that exist only
+  // on a later period. A period left with no gyms is skipped, not sent.
+  const laterChanges: LaterChange[] = later.map((target): LaterChange => {
+    const kept = target.gymIds.filter((id) => !removed.includes(id));
+    const next = [...kept, ...added.filter((id) => !kept.includes(id))];
+    if (sameGymSet(next, target.gymIds)) return { target, kind: "unchanged" };
+    if (next.length === 0) return { target, kind: "empty" };
+    return { target, kind: "update", next };
+  });
+
+  async function put(target: Subscription, gymIds: string[]) {
+    const body: SetSubscriptionGymsRequest = { gymIds };
     await api(`/api/admin/subscriptions/${target.id}/gyms`, {
       method: "PUT",
       body,
@@ -348,7 +371,7 @@ function EditGymsForm({
       // This period first; if it fails the later ones are left untouched.
       if (changed) {
         try {
-          await put(subscription);
+          await put(subscription, selected);
           updated += 1;
         } catch (err) {
           setError(errorMessage(err, t, "Could not update the gyms."));
@@ -357,13 +380,14 @@ function EditGymsForm({
       }
       if (applyLater) {
         const failed: string[] = [];
-        for (const target of later) {
+        for (const change of laterChanges) {
+          if (change.kind !== "update") continue;
           try {
-            await put(target);
+            await put(change.target, change.next);
             updated += 1;
           } catch (err) {
             failed.push(
-              `${period(target)}: ${errorMessage(err, t, "Could not update the gyms.")}`,
+              `${period(change.target)}: ${errorMessage(err, t, "Could not update the gyms.")}`,
             );
           }
         }
@@ -436,12 +460,38 @@ function EditGymsForm({
           })}
         </label>
       )}
+      {applyLater && (
+        <>
+          <p className="hint" style={{ marginBottom: 8 }}>
+            {t("Later scheduled periods:")}
+          </p>
+          <ul className="modal-list" style={{ marginBottom: 14 }}>
+            {laterChanges.map((change) => (
+              <li key={change.target.id}>
+                {change.kind === "update"
+                  ? t("{{period}} → {{gyms}}", {
+                      period: period(change.target),
+                      gyms: gymList(change.next),
+                    })
+                  : change.kind === "empty"
+                    ? t(
+                        "{{period}}: would be left with no gyms; left unchanged",
+                        { period: period(change.target) },
+                      )
+                    : t("{{period}}: unchanged", {
+                        period: period(change.target),
+                      })}
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
       <div className="row">
         {!finished && (
           <button
             type="button"
             onClick={() => void save()}
-            disabled={saving || (!changed && !applyLater)}
+            disabled={saving || !changed}
           >
             {saving ? t("Saving…") : t("Save")}
           </button>

@@ -8,7 +8,7 @@ const redisUri = process.env.TEST_REDIS_URL;
 const DAY = 86_400_000;
 
 test(
-  "an interrupted freeze credit is settled before create/cancel plan, and never applied twice",
+  "an interrupted freeze credit is settled before create/cancel plan and gate entry, and never applied twice",
   {
     skip:
       mongoUri && redisUri
@@ -18,7 +18,7 @@ test(
   async () => {
     const databaseName = `opengym_freezecredit_${randomUUID().replaceAll("-", "")}`;
     const isolatedRedisUrl = new URL(redisUri!);
-    isolatedRedisUrl.pathname = "/13";
+    isolatedRedisUrl.pathname = "/8";
     process.env.MONGODB_URI = `${mongoUri!}/${databaseName}`;
     process.env.REDIS_URL = isolatedRedisUrl.toString();
     process.env.BETTER_AUTH_URL = "http://localhost:3000";
@@ -29,11 +29,18 @@ test(
     const [
       { db, mongoClient },
       { connectRedis, redis },
-      { createSequentialSubscription, cancelScheduledSubscription },
+      {
+        createSequentialSubscription,
+        cancelScheduledSubscription,
+        checkEntrySubscription,
+        getSubscriptionSummary,
+      },
+      { settlePendingCredit, reapExpiredFreezes },
     ] = await Promise.all([
       import("../db.js"),
       import("../redis.js"),
       import("../subscriptions.js"),
+      import("../freeze.js"),
     ]);
 
     try {
@@ -140,6 +147,88 @@ test(
         (await freezes.findOne({ userId: cancelUser }))!.creditApplied,
         true,
       );
+
+      // gate: the nominal end passed during the freeze, so only the settled
+      // credit keeps the member entitled
+      const gateUser = new ObjectId();
+      const gateRunning = periodOf(gateUser, -28, -1);
+      await subscriptions.insertOne(gateRunning);
+      await interruptedFreeze(gateUser, gateRunning._id, 9, -28);
+      const gate = gymId.toHexString();
+      assert.equal(
+        await checkEntrySubscription(gateUser.toHexString(), gate),
+        "none",
+      );
+      await settlePendingCredit(gateUser);
+      assert.equal(
+        days((await subscriptions.findOne({ _id: gateRunning._id }))!.endsAt),
+        9,
+      );
+      assert.equal(
+        (await freezes.findOne({ userId: gateUser }))!.creditApplied,
+        true,
+      );
+      assert.equal(
+        await checkEntrySubscription(gateUser.toHexString(), gate),
+        "ok",
+      );
+      // nothing pending: a no-op that takes no lock
+      await settlePendingCredit(new ObjectId());
+
+      /** An open freeze, as startFreeze writes it. */
+      const openFreeze = (userId: ObjectId, startedDays: number) =>
+        freezes.insertOne({
+          userId,
+          startedAt: at(startedDays),
+          startedBy: "staff",
+          maxDays: 30,
+          endedAt: null,
+          endedBy: null,
+          endReason: null,
+          creditedMs: null,
+          plan: null,
+          creditApplied: false,
+        });
+
+      // summary: while frozen, the dates are those of resuming now
+      const pausedUser = new ObjectId();
+      await subscriptions.insertOne(periodOf(pausedUser, -10, 20));
+      await openFreeze(pausedUser, -4);
+      const paused = await getSubscriptionSummary(pausedUser.toHexString());
+      assert.equal(paused.active, true);
+      assert.equal(paused.remainingDays, 24, "20 days left + 4 frozen");
+      assert.ok(paused.freeze);
+      // the nominal end passed during the freeze: still entitled, not "none"
+      const lapsedUser = new ObjectId();
+      await subscriptions.insertOne(periodOf(lapsedUser, -30, -2));
+      await openFreeze(lapsedUser, -5);
+      const lapsed = await getSubscriptionSummary(lapsedUser.toHexString());
+      assert.equal(lapsed.active, true);
+      assert.equal(lapsed.remainingDays, 3);
+      assert.ok(lapsed.endsAt);
+
+      // reaper: a freeze past maxDays ends with exactly maxDays credited, and
+      // the change is audited like a manual end
+      const reapUser = new ObjectId();
+      const reapRunning = periodOf(reapUser, -50, 10);
+      await subscriptions.insertOne(reapRunning);
+      await openFreeze(reapUser, -40);
+      assert.ok((await reapExpiredFreezes()) >= 1);
+      assert.equal(
+        days((await subscriptions.findOne({ _id: reapRunning._id }))!.endsAt),
+        40,
+      );
+      const reapAudit = await db
+        .collection("audit_logs")
+        .find({
+          action: "subscription-unfrozen",
+          targetId: reapUser.toHexString(),
+        })
+        .toArray();
+      assert.equal(reapAudit.length, 1);
+      assert.equal(reapAudit[0]?.actorId, "system");
+      assert.equal(reapAudit[0]?.gymId, gymId.toHexString());
+      assert.equal(reapAudit[0]?.details.reason, "max-days");
     } finally {
       await db.dropDatabase().catch(() => undefined);
       if (redis.isOpen) {

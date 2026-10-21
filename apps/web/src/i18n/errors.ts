@@ -73,6 +73,8 @@ const codeMessages: Record<ApiErrorCode, WebTranslationKey> = {
   SEARCH_QUERY_TOO_SHORT: "Enter at least two characters to search.",
   INVALID_USER_OR_ROLE: "Invalid user or role.",
   SELF_ROLE_CHANGE: "You cannot change your own role.",
+  MEMBER_BANNED: "Unban the member before changing their role.",
+  MEMBER_FROZEN: "End the member's freeze before changing their role.",
   MFA_REQUIRED: "MFA verification is required for this operation.",
   MFA_LOCKED: "Too many verification attempts. Please try again later.",
   MFA_INVALID: "The verification code is invalid or has expired.",

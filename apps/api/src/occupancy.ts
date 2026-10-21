@@ -1,5 +1,6 @@
-import type { MemberPresence } from "@opengym/shared";
+import type { MemberPresence, Role } from "@opengym/shared";
 import { gymCollection, toObjectId } from "./db.js";
+import { canAccessGym } from "./gyms.js";
 import { redis } from "./redis.js";
 
 // Members inside one gym: field = userId, value = entry time (epoch ms, string)
@@ -356,7 +357,7 @@ export function selectPresence(
  */
 export async function loadMemberPresence(
   userIds: readonly string[],
-  caller: { role: string; gymIds: readonly string[] },
+  caller: { role: Role; gymIds: readonly string[] },
   now = Date.now(),
 ): Promise<Map<string, MemberPresence>> {
   const result = new Map<string, MemberPresence>();
@@ -382,10 +383,10 @@ export async function loadMemberPresence(
       });
     }),
   );
-  const canSee = (gymId: string): boolean =>
-    caller.role === "owner" || caller.gymIds.includes(gymId);
   for (const [userId, records] of byUser) {
-    const picked = selectPresence(records, cutoffs, canSee);
+    const picked = selectPresence(records, cutoffs, (gymId) =>
+      canAccessGym(caller, gymId),
+    );
     if (picked) {
       result.set(userId, {
         gymId: picked.gymId,

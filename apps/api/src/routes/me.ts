@@ -44,6 +44,7 @@ import {
   endFreeze,
   findOpenFreeze,
   getFreezeAllowance,
+  settlePendingCredit,
   startFreeze,
 } from "../freeze.js";
 import {
@@ -435,6 +436,8 @@ const GATE_SCAN_RATE_LIMIT = 30;
 const GATE_SCAN_RATE_WINDOW_SECONDS = 60;
 const GATE_OPEN_LOCK_TTL_MS = 3_000;
 const GATE_OPEN_MS = 500;
+// The turnstile is already open: on a timeout the freeze stays open and the next entry scan ends it.
+const GATE_FREEZE_END_WAIT_MS = 1_000;
 const LOCATION_HISTORY_TTL_SECONDS = 120;
 const LOCATION_DRIFT_WINDOW_MS = 120_000;
 const LOCATION_DRIFT_THRESHOLD_M = 1000;
@@ -789,6 +792,16 @@ meRouter.post(
       }
     }
 
+    // An interrupted freeze credit is settled first, so the periods judged below
+    // are final. A failure is logged and the scan continues with the normal check.
+    if (direction === "in" && req.user.role === "member") {
+      try {
+        await settlePendingCredit(new ObjectId(req.user.id));
+      } catch (error) {
+        console.error("pending freeze credit settle failed:", error);
+      }
+    }
+
     // Soft unfreeze: an entry scan by a frozen member resumes the membership.
     // The freeze is NOT ended here: a scan refused further down (wrong gym,
     // anti-passback, offline gate, ...) must leave it untouched. The decision
@@ -927,13 +940,16 @@ meRouter.post(
     }
     // Every refusal has passed and the gate is open: only now does the freeze
     // end. The member is already walking through, so a failure here is logged
-    // and never turns into a refusal; the next scan (or the reaper) retries.
+    // and never turns into a refusal. The next entry scan retries: an open
+    // freeze is ended again, and an interrupted credit is settled before the
+    // decision (settlePendingCredit), as the hourly reaper also does.
     let unfrozen = false;
     if (frozen) {
       try {
         const ended = await endFreeze(new ObjectId(req.user.id), {
           reason: "gate-scan",
           endedBy: req.user.id,
+          lockWaitMs: GATE_FREEZE_END_WAIT_MS,
         });
         if (ended.status === "ended") {
           unfrozen = true;

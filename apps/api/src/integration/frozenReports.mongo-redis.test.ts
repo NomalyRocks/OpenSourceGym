@@ -18,7 +18,7 @@ test(
   async () => {
     const databaseName = `opengym_frozenrep_${randomUUID().replaceAll("-", "")}`;
     const isolatedRedisUrl = new URL(redisUri!);
-    isolatedRedisUrl.pathname = "/13";
+    isolatedRedisUrl.pathname = "/9";
     process.env.MONGODB_URI = `${mongoUri!}/${databaseName}`;
     process.env.REDIS_URL = isolatedRedisUrl.toString();
     process.env.BETTER_AUTH_URL = "http://localhost:3000";

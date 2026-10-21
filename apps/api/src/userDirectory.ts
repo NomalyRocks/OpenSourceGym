@@ -177,13 +177,9 @@ const SUBSCRIPTION_STAGES = (now: Date): Document[] => [
           in: { $toString: "$$g" },
         },
       },
-      subscriptionEndsAt: {
-        $cond: [
-          { $or: ["$_frozen", { $gt: [{ $size: "$_activeSubs" }, 0] }] },
-          { $max: "$_subs.endsAt" },
-          { $max: "$_subs.endsAt" },
-        ],
-      },
+      // Latest end among the started periods: the current one when active, the
+      // latest past one when expired, the nominal end when frozen.
+      subscriptionEndsAt: { $max: "$_subs.endsAt" },
     },
   },
 ];

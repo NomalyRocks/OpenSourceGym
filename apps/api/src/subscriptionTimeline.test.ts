@@ -9,6 +9,7 @@ import {
   planFreezeCredit,
   planSubscriptionCancellation,
   planLegacySubscriptionRepairs,
+  previewFreezeCredit,
   summarizeSubscriptionTimeline,
   type SubscriptionTimelineRecord,
 } from "./subscriptionTimeline.js";
@@ -466,5 +467,39 @@ describe("freeze credit repacking", () => {
       ),
       "none",
     );
+  });
+
+  it("previews the credited timeline without touching the input", () => {
+    // Frozen since day -20 (cap 30): resuming now credits 20 days.
+    const periods = [period("A", -50, -8), period("B", -8, 22)];
+    const preview = previewFreezeCredit(
+      periods,
+      { startedAt: t(-20), maxDays: 30 },
+      t(0),
+    );
+
+    assert.deepEqual(days(preview), [
+      [-50, 12],
+      [12, 42],
+    ]);
+    assert.deepEqual(days(periods), [
+      [-50, -8],
+      [-8, 22],
+    ]);
+  });
+
+  it("keeps the remaining days still while frozen, up to the cap", () => {
+    const periods = [period("A", -10, 20)];
+    const freeze = { startedAt: t(0), maxDays: 30 };
+    const remaining = (at: number) =>
+      summarizeSubscriptionTimeline(
+        previewFreezeCredit(periods, freeze, t(at)),
+        t(at),
+      ).remainingDays;
+
+    assert.equal(remaining(1), 20);
+    assert.equal(remaining(15), 20);
+    // Past the cap the credit stops growing and the clock runs again.
+    assert.equal(remaining(40), 10);
   });
 });

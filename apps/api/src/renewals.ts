@@ -4,7 +4,7 @@ import { ObjectId } from "mongodb";
 import type { Collection, Db, Document, WithId } from "mongodb";
 import { db, isDuplicateKeyError } from "./db.js";
 import { env } from "./env.js";
-import { excludeFrozenStages, listFrozenUserIds } from "./frozenMembers.js";
+import { excludeFrozenMembersStages, isMemberFrozen } from "./frozenMembers.js";
 import { sendMail } from "./mailer.js";
 import { acquireLock, releaseLock } from "./redis.js";
 import { localDayLabel } from "./reports.js";
@@ -130,7 +130,7 @@ export async function listRenewalsDue(
 
   const match: Document = { endsAt: { $gte: now, $lte: horizon } };
   const stages: Document[] = [
-    ...excludeFrozenStages(await listFrozenUserIds(database)),
+    ...(await excludeFrozenMembersStages(database)),
     { $match: { gymIds: new ObjectId(params.gymId) } },
     ...latestSubscriptionStages(),
     {
@@ -215,9 +215,7 @@ export async function findRenewalTarget(
   gymId: string,
   database: Db = db,
 ): Promise<RenewalTarget | null> {
-  if ((await listFrozenUserIds(database)).some((id) => id.equals(userId))) {
-    return null;
-  }
+  if (await isMemberFrozen(userId, database)) return null;
   const [row] = await database
     .collection("subscriptions")
     .aggregate<RenewalAggregateRow>([

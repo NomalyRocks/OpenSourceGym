@@ -4,13 +4,16 @@ import type { MySubscription, SubscriptionMonths } from "@opengym/shared";
 import { ObjectId } from "mongodb";
 import type { Db, WithId } from "mongodb";
 import { db, gymCollection } from "./db.js";
-import { finishPendingCredit } from "./freezeCredit.js";
+import { finishPendingCredit, freezeCollection } from "./freezeCredit.js";
 import { acquireLock, redis, releaseLock } from "./redis.js";
 import {
   calculateSubscriptionPeriod,
+  evaluateEntryAccess,
   planLegacySubscriptionRepairs,
   planSubscriptionCancellation,
+  previewFreezeCredit,
   summarizeSubscriptionTimeline,
+  type SubscriptionSummary,
   type SubscriptionTimelineRecord,
 } from "./subscriptionTimeline.js";
 
@@ -350,14 +353,19 @@ export async function checkEntrySubscription(
         startsAt: { $lte: now },
         endsAt: { $gte: now },
       },
-      { projection: { gymIds: 1 } },
+      { projection: { startsAt: 1, endsAt: 1, gymIds: 1 } },
     )
     .toArray();
-  if (docs.length === 0) return "none";
-  const gymOid = new ObjectId(gymId);
-  return docs.some((doc) => (doc.gymIds ?? []).some((id) => id.equals(gymOid)))
-    ? "ok"
-    : "other-gym";
+  // Normalised through ObjectId so an upper-case gym id still matches.
+  return evaluateEntryAccess(
+    docs.map((doc) => ({
+      startsAt: doc.startsAt,
+      endsAt: doc.endsAt,
+      gymIds: (doc.gymIds ?? []).map((id) => id.toHexString()),
+    })),
+    now,
+    new ObjectId(gymId).toHexString(),
+  );
 }
 
 /** Gyms listed on the periods covering now (empty when not subscribed). */
@@ -383,7 +391,15 @@ export async function listActiveSubscriptionGymIds(
   return [...seen.values()];
 }
 
-/** Converts the active subscription and contiguous future packages to a mobile summary. */
+/**
+ * Converts the active subscription and contiguous future packages to a mobile
+ * summary.
+ *
+ * While the member is frozen, the timeline is shown as it would stand if the
+ * freeze ended now ({@link previewFreezeCredit}): the end, the days left and the
+ * gyms are what the member gets on resuming. Days left therefore stay put while
+ * frozen, until the freeze reaches its `maxDays` cap.
+ */
 export async function getSubscriptionSummary(
   userId: string,
   now = new Date(),
@@ -399,23 +415,48 @@ export async function getSubscriptionSummary(
       freeze: null,
     };
   }
-  const docs = await subscriptionCollection()
-    .find({ userId: new ObjectId(userId), endsAt: { $gte: now } })
-    .sort({ startsAt: 1, endsAt: 1, createdAt: 1, _id: 1 })
-    .toArray();
-  const summary = summarizeSubscriptionTimeline(docs, now);
-  // Read directly (not via freeze.ts, which imports this module for the lock).
-  const openFreeze = await db
-    .collection<{ userId: ObjectId; startedAt: Date; endedAt: Date | null }>(
-      "subscription_freezes",
-    )
-    .findOne(
-      { userId: new ObjectId(userId), endedAt: null },
-      { projection: { startedAt: 1 } },
+  const owner = new ObjectId(userId);
+  const openFreeze = await freezeCollection().findOne(
+    { userId: owner, endedAt: null },
+    { projection: { startedAt: 1, maxDays: 1 } },
+  );
+
+  let summary: SubscriptionSummary;
+  let gymIds: ObjectId[];
+  if (openFreeze) {
+    // Periods that ended before the freeze began cannot cover now, and the
+    // credit only touches periods ending after it began.
+    const docs = await subscriptionCollection()
+      .find({ userId: owner, endsAt: { $gt: openFreeze.startedAt } })
+      .sort({ startsAt: 1, endsAt: 1, createdAt: 1, _id: 1 })
+      .toArray();
+    const previewed = previewFreezeCredit(
+      docs.map((doc) => ({
+        id: doc._id.toHexString(),
+        startsAt: doc.startsAt,
+        endsAt: doc.endsAt,
+        gymIds: doc.gymIds ?? [],
+      })),
+      openFreeze,
+      now,
     );
-  const gymIds = summary.active
-    ? await listActiveSubscriptionGymIds(userId, now)
-    : [];
+    summary = summarizeSubscriptionTimeline(previewed, now);
+    const seen = new Map<string, ObjectId>();
+    for (const period of previewed) {
+      if (period.startsAt > now || period.endsAt < now) continue;
+      for (const id of period.gymIds) seen.set(id.toHexString(), id);
+    }
+    gymIds = [...seen.values()];
+  } else {
+    const docs = await subscriptionCollection()
+      .find({ userId: owner, endsAt: { $gte: now } })
+      .sort({ startsAt: 1, endsAt: 1, createdAt: 1, _id: 1 })
+      .toArray();
+    summary = summarizeSubscriptionTimeline(docs, now);
+    gymIds = summary.active
+      ? await listActiveSubscriptionGymIds(userId, now)
+      : [];
+  }
   const gymDocs =
     gymIds.length > 0
       ? await gymCollection()

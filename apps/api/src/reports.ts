@@ -12,8 +12,7 @@ import type { GymDoc } from "./gyms.js";
 import { env } from "./env.js";
 import {
   countFrozenMembers,
-  excludeFrozenStages,
-  listFrozenUserIds,
+  excludeFrozenMembersStages,
 } from "./frozenMembers.js";
 
 /** Maximum report range—limits the number of chart buckets. */
@@ -102,7 +101,7 @@ export async function countRenewalsDue(
   gymId?: string,
 ): Promise<number> {
   return countFrom(database, "subscriptions", [
-    ...excludeFrozenStages(await listFrozenUserIds(database)),
+    ...(await excludeFrozenMembersStages(database)),
     ...gymScopeStages(gymId),
     ...latestEndPipeline({
       $gte: now,
@@ -121,7 +120,7 @@ export async function countActiveMembers(
   gymId?: string,
 ): Promise<number> {
   return countFrom(database, "subscriptions", [
-    ...excludeFrozenStages(await listFrozenUserIds(database)),
+    ...(await excludeFrozenMembersStages(database)),
     ...gymScopeStages(gymId),
     { $match: { startsAt: { $lte: now }, endsAt: { $gte: now } } },
     { $group: { _id: "$userId" } },
@@ -178,9 +177,9 @@ export async function buildReportSummary(
     // end remains within the range, the member is unsubscribed at range end.
     // A frozen member whose nominal end passed during the freeze is paused,
     // not lapsed.
-    listFrozenUserIds(database).then((frozenIds) =>
+    excludeFrozenMembersStages(database).then((frozenStages) =>
       countFrom(database, "subscriptions", [
-        ...excludeFrozenStages(frozenIds),
+        ...frozenStages,
         ...gymScopeStages(gymId),
         ...latestEndPipeline({ $gte: from, $lte: to }),
       ]),

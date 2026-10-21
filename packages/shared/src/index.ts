@@ -161,9 +161,18 @@ export interface CancelSubscriptionResponse {
 }
 
 export interface MySubscription {
+  /**
+   * Whether a period covers now. While frozen, computed as if the freeze ended
+   * now, so a frozen member sees the membership they would resume with.
+   */
   active: boolean;
   startsAt: string | null;
   endsAt: string | null;
+  /**
+   * Days until `endsAt`, rounded up. While frozen, computed as if the freeze ended
+   * now: the value stays put during the freeze and only shrinks after the
+   * freeze reaches its `maxDays` cap.
+   */
   remainingDays: number;
   /** Gyms the active period allows (empty when not active) */
   gymIds: string[];
@@ -449,6 +458,10 @@ export type ApiErrorCode =
   | "GYM_OUT_OF_SCOPE"
   /** Demoting the only remaining owner is refused */
   | "LAST_OWNER"
+  /** Promoting a banned member is refused until the ban is lifted */
+  | "MEMBER_BANNED"
+  /** Promoting a member with an open freeze is refused until it ends */
+  | "MEMBER_FROZEN"
   | "INVALID_LOCATION"
   | "INVALID_CAPACITY"
   | "INVALID_AUTO_EXIT"

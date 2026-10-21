@@ -27,7 +27,7 @@ import {
   type UserDocument,
 } from "../db.js";
 import { acquireLock, redis, releaseLock } from "../redis.js";
-import { logAudit } from "../audit.js";
+import { logAudit, logAuditPerGym } from "../audit.js";
 import { authed, requireRole } from "../middleware.js";
 import { loadMemberPresence, markOutsideEverywhere } from "../occupancy.js";
 import { revokeUserSessions } from "../sessions.js";
@@ -51,7 +51,11 @@ import {
   setSubscriptionGymIds,
   SubscriptionLockTimeoutError,
 } from "../subscriptions.js";
-import { freezeConfigSchema, getFreezeConfig } from "../freeze.js";
+import {
+  findOpenFreeze,
+  freezeConfigSchema,
+  getFreezeConfig,
+} from "../freeze.js";
 import { tryNormalizePhoneToE164 } from "../phone.js";
 import {
   dateRangeFilter,
@@ -278,7 +282,9 @@ const OWNER_ROLE_LOCK_WAIT_MS = 3_000;
 
 type RoleChange =
   | { status: "ok"; previous: UserDocument }
-  | { status: "not-found" | "last-owner" | "busy" };
+  | { status: "not-found" | "last-owner" | "busy" }
+  /** A banned or frozen member cannot be promoted: the unban/unfreeze routes only accept members */
+  | { status: "banned" | "frozen" };
 
 /**
  * Applies a role change. Every change is serialized through one Redis lock: the
@@ -304,6 +310,12 @@ async function changeUserRole(
     if (current.role === "owner" && role !== "owner") {
       const owners = await userCollection().countDocuments({ role: "owner" });
       if (owners <= 1) return { status: "last-owner" };
+    }
+    // Best-effort: the ban and freeze routes check the role before taking their
+    // locks, so a ban or freeze written concurrently with this check is missed.
+    if ((current.role ?? "member") === "member" && role !== "member") {
+      if (current.ban) return { status: "banned" };
+      if (await findOpenFreeze(targetId)) return { status: "frozen" };
     }
     // Gym scope only exists for admin/staff, so it is cleared on any change to
     // member or owner and kept otherwise (the owner re-assigns it explicitly).
@@ -425,6 +437,24 @@ adminRouter.post(
     }
     if (change.status === "last-owner") {
       sendApiError(res, 409, "LAST_OWNER", "The last owner cannot be demoted.");
+      return;
+    }
+    if (change.status === "banned") {
+      sendApiError(
+        res,
+        409,
+        "MEMBER_BANNED",
+        "Unban the member before changing their role.",
+      );
+      return;
+    }
+    if (change.status === "frozen") {
+      sendApiError(
+        res,
+        409,
+        "MEMBER_FROZEN",
+        "End the member's freeze before changing their role.",
+      );
       return;
     }
     if (change.status !== "ok") return;
@@ -560,7 +590,7 @@ adminRouter.post(
         createdBy: req.user.id,
       });
       const gymHexIds = gymCheck.ids.map((id) => id.toHexString());
-      await logAudit(
+      await logAuditPerGym(
         req.user,
         "subscription-created",
         parsed.data.userId,
@@ -571,7 +601,7 @@ adminRouter.post(
           subscriptionId: created.id.toHexString(),
           gymIds: gymHexIds,
         },
-        gymHexIds.length === 1 ? (gymHexIds[0] ?? null) : null,
+        gymHexIds,
       );
       res.json({
         ok: true,
@@ -673,15 +703,13 @@ adminRouter.put(
       return;
     }
     const after = next.map((id) => id.toHexString());
-    await logAudit(
+    // One row per gym whose membership changed, so each gym's admins see it.
+    await logAuditPerGym(
       req.user,
       "subscription-gyms-updated",
       updated.userId.toHexString(),
       { subscriptionId: subscriptionId.toHexString(), before, after },
-      // Tie the row to a gym only when exactly one gym changed
-      added.length + removed.length === 1
-        ? (added[0] ?? removed[0] ?? null)
-        : null,
+      [...added, ...removed],
     );
     res.json({
       id: updated._id.toHexString(),
@@ -745,7 +773,7 @@ adminRouter.delete(
       }
       const { cancelled, shifted } = result;
       const gymHexIds = (cancelled.gymIds ?? []).map((id) => id.toHexString());
-      await logAudit(
+      await logAuditPerGym(
         req.user,
         "subscription-cancelled",
         cancelled.userId.toHexString(),
@@ -760,7 +788,7 @@ adminRouter.delete(
             endsAt: doc.endsAt.toISOString(),
           })),
         },
-        gymHexIds.length === 1 ? (gymHexIds[0] ?? null) : null,
+        gymHexIds,
       );
       const body: CancelSubscriptionResponse = {
         ok: true,

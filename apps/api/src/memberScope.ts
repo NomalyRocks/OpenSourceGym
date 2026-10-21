@@ -1,6 +1,6 @@
 import type { ObjectId } from "mongodb";
 import type { Role } from "@opengym/shared";
-import { logAudit } from "./audit.js";
+import { logAuditPerGym } from "./audit.js";
 import { canAccessGym } from "./gyms.js";
 import type { SessionUser } from "./middleware.js";
 import { subscriptionCollection } from "./subscriptions.js";
@@ -57,14 +57,28 @@ export async function listMemberAuditGymIds(
   return gymIds.size > 0 ? [...gymIds] : [null];
 }
 
-/** Writes one audit row per gym of the member (see {@link listMemberAuditGymIds}). */
+/**
+ * Writes one audit row per gym for a member action: the gyms of the member's
+ * current/future periods (see {@link listMemberAuditGymIds}), plus, for an admin
+ * or staff actor, each of their own gyms on ANY period. The second set matters
+ * because such an actor may act through a past period's gym, which the first
+ * set does not cover. Chain-level row (`gymId: null`) only when no gym applies.
+ */
 export async function logMemberAudit(
-  actor: Pick<SessionUser, "id" | "email">,
+  actor: Pick<SessionUser, "id" | "email"> &
+    Partial<Pick<SessionUser, "role" | "gymIds">>,
   action: string,
   memberId: ObjectId,
   details?: Record<string, unknown>,
 ): Promise<void> {
-  for (const gymId of await listMemberAuditGymIds(memberId)) {
-    await logAudit(actor, action, memberId.toHexString(), details, gymId);
+  const gymIds: (string | null)[] = [
+    ...(await listMemberAuditGymIds(memberId)),
+  ];
+  if (actor.role === "admin" || actor.role === "staff") {
+    const own = new Set(actor.gymIds ?? []);
+    for (const gymId of await listMemberGymIds(memberId)) {
+      if (own.has(gymId)) gymIds.push(gymId);
+    }
   }
+  await logAuditPerGym(actor, action, memberId.toHexString(), details, gymIds);
 }

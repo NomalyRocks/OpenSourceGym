@@ -22,3 +22,26 @@ export async function logAudit(
     at: new Date(),
   });
 }
+
+/**
+ * Appends one audit record per gym, so each gym's admins see the action in
+ * their own audit list. Duplicate and null entries are skipped; when no real
+ * gym is left (an empty list, or only nulls) a single chain-level row
+ * (`gymId: null`) is written instead.
+ */
+export async function logAuditPerGym(
+  actor: Pick<SessionUser, "id" | "email">,
+  action: string,
+  targetId: string | undefined,
+  details: Record<string, unknown> | undefined,
+  gymIds: readonly (string | null)[],
+): Promise<void> {
+  const unique = [...new Set(gymIds.filter((id) => id !== null))];
+  if (unique.length === 0) {
+    await logAudit(actor, action, targetId, details, null);
+    return;
+  }
+  for (const gymId of unique) {
+    await logAudit(actor, action, targetId, details, gymId);
+  }
+}

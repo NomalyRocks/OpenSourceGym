@@ -227,6 +227,39 @@ export function evaluateEntryAccess(
 }
 
 /**
+ * The periods as they would stand if the freeze that began at `freeze.startedAt`
+ * ended at `now`: the credit is the frozen time so far, capped at `maxDays`, and
+ * it is repacked with {@link planFreezeCredit}. Periods the plan does not touch
+ * come back unchanged. Nothing is written; the summary and the entry dry run
+ * both read the timeline through this, so they agree on one answer.
+ */
+export function previewFreezeCredit<
+  T extends SubscriptionPeriod & { id: string },
+>(
+  periods: readonly T[],
+  freeze: { startedAt: Date; maxDays: number },
+  now: Date,
+): T[] {
+  const creditMs = calculateFreezeCreditMs(
+    freeze.startedAt,
+    now,
+    freeze.maxDays,
+  );
+  const planned = new Map(
+    planFreezeCredit(periods, freeze.startedAt, creditMs).map((change) => [
+      change.id,
+      change,
+    ]),
+  );
+  return periods.map((period) => {
+    const change = planned.get(period.id);
+    return change
+      ? { ...period, startsAt: change.startsAt, endsAt: change.endsAt }
+      : period;
+  });
+}
+
+/**
  * Dry run of ending a freeze right now: would the member be let in at `gymId`
  * once the credit is applied? The gate uses this to decide an entry scan
  * without ending the freeze, which happens only after the turnstile opened, so
@@ -241,24 +274,8 @@ export function evaluateEntryWithFreezeCredit(
   now: Date,
   gymId: string,
 ): EntryAccess {
-  const creditMs = calculateFreezeCreditMs(
-    freeze.startedAt,
-    now,
-    freeze.maxDays,
-  );
-  const planned = new Map(
-    planFreezeCredit(periods, freeze.startedAt, creditMs).map((change) => [
-      change.id,
-      change,
-    ]),
-  );
   return evaluateEntryAccess(
-    periods.map((period) => {
-      const change = planned.get(period.id);
-      return change
-        ? { ...period, startsAt: change.startsAt, endsAt: change.endsAt }
-        : period;
-    }),
+    previewFreezeCredit(periods, freeze, now),
     now,
     gymId,
   );
