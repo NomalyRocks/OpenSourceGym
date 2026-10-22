@@ -23,9 +23,9 @@
   "devDependencies": {
     "@eslint/js": "^9.39.5",
     "eslint": "^9.30.0",
-    "prettier": "^3.9.6",
-    "turbo": "^2.10.9",
+    "prettier": "^3.9.10",
+    "turbo": "^2.11.9",
     "typescript": "^6.0.3",
-    "typescript-eslint": "^8.67.0"
+    "typescript-eslint": "^8.71.2"
   }
 }
