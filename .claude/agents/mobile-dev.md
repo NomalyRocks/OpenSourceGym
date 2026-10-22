@@ -11,11 +11,12 @@ Hard rule (from `apps/mobile/AGENTS.md`): Expo has changed significantly across 
 
 Project facts you can rely on (re-verify only if the code contradicts them):
 
-- No navigation library: `App.tsx` is a manual screen state machine (`login | register | verify | home`) driven by `authClient.useSession()`. New screens extend this machine unless the task explicitly introduces navigation.
+- No navigation library: `App.tsx` swaps pre-auth screens in a manual state machine (`login | register | verify | forgot | resetCode | reset`); signed in, `SignedInGate` shows the `Banned` screen when `MyProfile.ban` is set, otherwise the five-tab shell (home/calendar/scan/tools/profile) with pushed overlays. New screens extend this unless the task explicitly introduces navigation.
+- Read newly added API fields defensively (`?.`/`??`): the app may talk to an older server during rollout.
 - `src/lib/auth.ts`: `createAuthClient` with `emailOTPClient()` and `expoClient({ scheme: "opengym", storage: SecureStore })`.
 - `src/lib/api.ts`: `api<T>()` wrapper that injects `Cookie: authClient.getCookie()` — use it for all API calls.
 - `src/lib/config.ts`: API URL resolution order: `EXPO_PUBLIC_API_URL` → Metro `hostUri` with port 3000 (LAN/emulator) → `localhost:3000`.
-- UI: `src/theme.ts` + primitives in `src/ui.tsx` (Button etc.), dark UI. Screens in `src/screens/` (Login, Register, VerifyOtp, Home).
+- UI: `src/theme.ts` + primitives in `src/ui.tsx` (Button etc.), dark UI. Screens in `src/screens/` (Home, GateScan, Banned, …). Gate/API error codes map to copy in `src/i18n/errors.ts` (keep it exhaustive).
 - Everything you write in code is English — identifiers, comments, test titles, log lines. UI text goes through `t()` from react-i18next, and the key IS the English source string: `t("Home")`. Add every new key to the `tr` map in `src/i18n/resources.ts` with its Turkish copy. Never hardcode a Turkish literal in a screen.
 - KVKK + privacy consent are mandatory at registration — the API rejects signup without them. Never remove or bypass those checkboxes.
 - Workspace quirks: not ESM, own TypeScript ~6.0.3, tsconfig extends `expo/tsconfig.base` (not the repo base), no `build`/`dev` scripts so turbo skips this package.

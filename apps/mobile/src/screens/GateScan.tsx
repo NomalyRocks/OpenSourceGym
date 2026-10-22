@@ -140,7 +140,7 @@ function ScanLine({ color }: { color: string }) {
   );
 }
 
-export function GateScan() {
+export function GateScan({ onBanned }: { onBanned?: () => void } = {}) {
   const { t } = useTranslation();
   const theme = useTheme();
   const styles = useThemedStyles(scanStyles);
@@ -313,6 +313,8 @@ export function GateScan() {
         resetTimerRef.current = setTimeout(resetToScanning, RESCAN_DELAY_MS);
       } catch (error) {
         if (error instanceof ApiError) {
+          // A banned member is moved to the ban screen by refetching the profile.
+          if (error.code === "BANNED") onBanned?.();
           // The stock LOCATION_REQUIRED copy tells the member to grant location
           // permission. When they already have, that is misleading — the real
           // problem is that the device could not produce a fix.
@@ -341,7 +343,7 @@ export function GateScan() {
         notifyResult(false);
       }
     },
-    [notifyResult, resetToScanning, resolveScanPosition, t],
+    [notifyResult, onBanned, resetToScanning, resolveScanPosition, t],
   );
 
   if (!permission) {
@@ -442,6 +444,13 @@ export function GateScan() {
                 state.data.direction === "out" ? t("exit") : t("entry"),
             })}
           </Text>
+          {state.data.unfrozen ? (
+            <StatusMessage
+              tone="success"
+              style={styles.unfrozenNote}
+              text={t("Your membership freeze has ended. Welcome back!")}
+            />
+          ) : null}
           <StatusMessage
             tone="success"
             text={t("The camera will reopen shortly for a new scan.")}
@@ -493,6 +502,7 @@ const recoveryHints = {
   // Operator misconfiguration: there is nothing the member can do on their
   // phone, so do not send them to their own settings.
   GYM_LOCATION_UNSET: "The gym has not set its location yet. Ask reception.",
+  BANNED: "Contact gym reception about your membership.",
 } satisfies Partial<Record<GateRejectCode, MobileTranslationKey>>;
 
 function RecoveryHint({
@@ -656,5 +666,6 @@ const scanStyles = (theme: Theme) =>
       marginTop: theme.spacing.xs,
       marginBottom: theme.spacing.lg,
     },
+    unfrozenNote: { marginBottom: theme.spacing.sm },
     resultAction: { marginTop: theme.spacing.sm },
   });

@@ -222,11 +222,17 @@ export function Reports() {
         />
       </div>
 
-      <div className="kpi-grid cols-3">
+      <div className="kpi-grid">
         <KpiCard
           label={t("Active members")}
           value={summary ? number(summary.activeMembers) : "—"}
-          delta={t("active subscriptions")}
+          delta={t("active subscriptions, frozen excluded")}
+        />
+        <KpiCard
+          label={t("Frozen members")}
+          value={summary ? number(summary.frozenMembers ?? 0) : "—"}
+          delta={t("membership freeze open")}
+          color="var(--info)"
         />
         <KpiCard
           label={t("Entry count")}

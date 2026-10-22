@@ -104,6 +104,9 @@ async function loadSessionUser(
     age: typeof doc.age === "number" ? doc.age : null,
     heightCm: typeof doc.heightCm === "number" ? doc.heightCm : null,
     weightKg: typeof doc.weightKg === "number" ? doc.weightKg : null,
+    ban: doc.ban
+      ? { reason: doc.ban.reason, bannedAt: doc.ban.bannedAt.toISOString() }
+      : null,
   };
 }
 

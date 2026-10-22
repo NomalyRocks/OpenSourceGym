@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type {
   ChainSettings as ChainSettingsData,
+  FreezeConfig,
   LegalConfig,
 } from "@opengym/shared";
 import { api, isAbortError } from "../lib/api";
@@ -57,6 +58,15 @@ export function ChainSettings() {
   };
   const setLegal = (next: LegalConfig) =>
     settings && setSettings({ ...settings, legal: next });
+
+  const freeze: FreezeConfig = settings?.freeze ?? {
+    enabled: true,
+    memberSelfService: true,
+    maxPerYear: 4,
+    maxDays: 30,
+  };
+  const setFreeze = (next: FreezeConfig) =>
+    settings && setSettings({ ...settings, freeze: next });
 
   return (
     <div className="stagger">
@@ -119,6 +129,68 @@ export function ChainSettings() {
                 value={legal.version}
                 onChange={(e) =>
                   setLegal({ ...legal, version: Number(e.target.value) })
+                }
+                required
+              />
+            </div>
+          </div>
+
+          <h2 style={{ marginTop: 28 }}>{t("Subscription freeze")}</h2>
+          <p className="hint" style={{ marginBottom: 14 }}>
+            {t(
+              "Staff can freeze a member's subscription. The frozen time is credited back when the freeze ends.",
+            )}
+          </p>
+          <label className="check" style={{ marginBottom: 14 }}>
+            <input
+              type="checkbox"
+              checked={freeze.enabled}
+              onChange={(e) =>
+                setFreeze({ ...freeze, enabled: e.target.checked })
+              }
+            />{" "}
+            {t("Allow freezing subscriptions")}
+          </label>
+          <label className="check" style={{ marginBottom: 14 }}>
+            <input
+              type="checkbox"
+              checked={freeze.memberSelfService}
+              disabled={!freeze.enabled}
+              onChange={(e) =>
+                setFreeze({ ...freeze, memberSelfService: e.target.checked })
+              }
+            />{" "}
+            {t("Members can freeze from the app")}
+          </label>
+          <div className="row" style={{ marginBottom: 14 }}>
+            <div className="field">
+              <label htmlFor="freezeMaxPerYear">
+                {t("Freezes per member per year")}
+              </label>
+              <input
+                id="freezeMaxPerYear"
+                type="number"
+                min={0}
+                max={12}
+                value={freeze.maxPerYear}
+                onChange={(e) =>
+                  setFreeze({ ...freeze, maxPerYear: Number(e.target.value) })
+                }
+                required
+              />
+            </div>
+            <div className="field">
+              <label htmlFor="freezeMaxDays">
+                {t("Longest freeze credited (days)")}
+              </label>
+              <input
+                id="freezeMaxDays"
+                type="number"
+                min={1}
+                max={180}
+                value={freeze.maxDays}
+                onChange={(e) =>
+                  setFreeze({ ...freeze, maxDays: Number(e.target.value) })
                 }
                 required
               />

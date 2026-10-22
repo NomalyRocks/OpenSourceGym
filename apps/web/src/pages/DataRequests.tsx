@@ -135,7 +135,19 @@ export function DataRequests() {
           <tbody>
             {requests.map((r) => (
               <tr key={r.id}>
-                <td>{r.name || "—"}</td>
+                <td>
+                  {r.name || "—"}
+                  <span className="hint">
+                    {r.requestedBy
+                      ? t("Requested by {{name}}", { name: r.requestedBy.name })
+                      : t("Requested by the member")}
+                  </span>
+                  {r.reason && (
+                    <span className="hint">
+                      {t("Reason: {{reason}}", { reason: r.reason })}
+                    </span>
+                  )}
+                </td>
                 <td>{r.email || "—"}</td>
                 <td>
                   {new Date(r.requestedAt).toLocaleDateString(

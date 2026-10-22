@@ -52,13 +52,20 @@ export function ChainSummary() {
         subtitle={t("Totals for every gym in the chain over the last 30 days.")}
       />
       {error && <div className="msg error">{error}</div>}
-      <div className="kpi-grid">
+      <div className="kpi-grid cols-3">
         <div className="kpi-card">
           <div className="kpi-label">{t("Active members")}</div>
           <div className="kpi-value">
             {data ? num(data.activeMembers) : "—"}
           </div>
           <div className="kpi-delta">{t("across the chain")}</div>
+        </div>
+        <div className="kpi-card">
+          <div className="kpi-label">{t("Frozen members")}</div>
+          <div className="kpi-value" style={{ color: "var(--info)" }}>
+            {data ? num(data.frozenMembers ?? 0) : "—"}
+          </div>
+          <div className="kpi-delta">{t("membership freeze open")}</div>
         </div>
         <div className="kpi-card">
           <div className="kpi-label">{t("Inside now")}</div>
@@ -73,6 +80,7 @@ export function ChainSummary() {
             <tr>
               <th>{t("Gym name")}</th>
               <th>{t("Active members")}</th>
+              <th>{t("Frozen members")}</th>
               <th>{t("Renewals due")}</th>
               <th>{t("Inside now")}</th>
               <th>{t("Entries")}</th>
@@ -86,6 +94,7 @@ export function ChainSummary() {
                   <Link to={`/gyms/${g.gymId}/overview`}>{g.gymName}</Link>
                 </td>
                 <td>{num(g.activeMembers)}</td>
+                <td>{num(g.frozenMembers ?? 0)}</td>
                 <td>{num(g.renewalsDue)}</td>
                 <td>{num(g.inside)}</td>
                 <td>{num(g.entries.allowed)}</td>
@@ -98,7 +107,7 @@ export function ChainSummary() {
             ))}
             {data && data.gyms.length === 0 && (
               <tr>
-                <td colSpan={6}>
+                <td colSpan={7}>
                   {t("No gyms yet. Add the first one above.")}
                 </td>
               </tr>

@@ -10,7 +10,9 @@ jobs:
     runs-on: ubuntu-latest
     services:
       mongo:
-        image: mongo:8
+        # Pinned: mongo:8 now resolves to 8.3.x, which refuses to start on the
+        # runner's Linux >= 6.19 kernel (SERVER-121912). Unpin once fixed.
+        image: mongo:8.2.6
         ports:
           - 27017:27017
       redis:

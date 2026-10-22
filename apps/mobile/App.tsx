@@ -17,7 +17,9 @@ import {
 } from "react-native";
 import { StatusBar } from "expo-status-bar";
 import { useTranslation } from "react-i18next";
+import type { MemberBan, MyProfile } from "@opengym/shared";
 import { SafeAreaProvider } from "react-native-safe-area-context";
+import { api } from "./src/lib/api";
 import { authClient } from "./src/lib/auth";
 import { clearCalorieCalculatorState } from "./src/lib/calorieCalculatorStorage";
 import {
@@ -63,6 +65,7 @@ import {
   useTabBarSpace,
   type AppTab,
 } from "./src/components/BottomTabBar";
+import { Banned } from "./src/screens/Banned";
 import { LanguageSwitcher } from "./src/i18n/LanguageSwitcher";
 import { initializeLocalization, syncDeviceLanguage } from "./src/i18n";
 
@@ -161,7 +164,40 @@ function DeviceBlocked({ onHome }: { onHome: () => void }) {
   );
 }
 
-function SignedInApp({
+/**
+ * Tracks the member's ban. `loaded` flips once the first profile request has
+ * settled (success or failure), so a banned member never sees the tabs flash
+ * before the ban screen. A failed refetch keeps the last known state: a flaky
+ * network must neither ban nor unban anyone on screen.
+ */
+function useBan(): {
+  ban: MemberBan | null;
+  loaded: boolean;
+  refresh: () => void;
+} {
+  const [ban, setBan] = useState<MemberBan | null>(null);
+  const [loaded, setLoaded] = useState(false);
+
+  const refresh = useCallback(() => {
+    api<MyProfile>("/api/me/profile")
+      .then((profile) => setBan(profile.ban ?? null))
+      .catch(() => undefined)
+      .finally(() => setLoaded(true));
+  }, []);
+
+  useEffect(() => {
+    refresh();
+    // An unban takes effect when the app returns to the foreground.
+    const subscription = AppState.addEventListener("change", (state) => {
+      if (state === "active") refresh();
+    });
+    return () => subscription.remove();
+  }, [refresh]);
+
+  return { ban, loaded, refresh };
+}
+
+function SignedInGate({
   userName,
   integrity,
   center,
@@ -169,6 +205,33 @@ function SignedInApp({
   userName: string;
   integrity: DeviceIntegrityResult | null;
   center: NotificationCenter;
+}) {
+  const styles = useThemedStyles(appStyles);
+  const { ban, loaded, refresh } = useBan();
+
+  if (!loaded) return <View style={styles.loading} />;
+  // The ban screen replaces the whole shell; only sign-out is offered.
+  if (ban) return <Banned ban={ban} />;
+  return (
+    <SignedInApp
+      userName={userName}
+      integrity={integrity}
+      center={center}
+      onBanned={refresh}
+    />
+  );
+}
+
+function SignedInApp({
+  userName,
+  integrity,
+  center,
+  onBanned,
+}: {
+  userName: string;
+  integrity: DeviceIntegrityResult | null;
+  center: NotificationCenter;
+  onBanned: () => void;
 }) {
   const theme = useTheme();
   const styles = useThemedStyles(appStyles);
@@ -228,6 +291,7 @@ function SignedInApp({
               onOpenQr={() => setActiveTab("scan")}
               onOpenNotifications={() => setOverlay("notifications")}
               onOpenProfile={() => setActiveTab("profile")}
+              onRefreshed={onBanned}
               unreadCount={center.unreadCount}
             />
           </View>
@@ -249,7 +313,7 @@ function SignedInApp({
             ) : integrity.compromised ? (
               <DeviceBlocked onHome={() => setActiveTab("home")} />
             ) : (
-              <GateScan />
+              <GateScan onBanned={onBanned} />
             )
           ) : null}
 
@@ -344,7 +408,7 @@ function AppContent() {
     body = <View style={styles.loading} />;
   } else if (session) {
     body = (
-      <SignedInApp
+      <SignedInGate
         userName={session.user.name}
         integrity={integrity}
         center={center}

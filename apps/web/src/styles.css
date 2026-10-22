@@ -20,6 +20,7 @@
   --ok: oklch(0.72 0.16 155);
   --warn: oklch(0.78 0.15 80);
   --danger: oklch(0.67 0.2 25);
+  --info: oklch(0.74 0.12 235);
   --radius: 8px;
   --radius-lg: 12px;
   --sidebar-w: 264px;
@@ -799,6 +800,10 @@ tr:hover td {
   color: var(--danger);
 }
 
+.badge.info {
+  color: var(--info);
+}
+
 .badge.warn {
   color: var(--warn);
 }
@@ -1108,7 +1113,7 @@ tr:hover td {
 
 .board {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 14px;
 }
 
@@ -1456,7 +1461,12 @@ tr:hover td {
   grid-template-columns: repeat(3, 1fr);
 }
 
+.kpi-grid.cols-5 {
+  grid-template-columns: repeat(5, 1fr);
+}
+
 @media (max-width: 900px) {
+  .kpi-grid.cols-5,
   .kpi-grid.cols-3 {
     grid-template-columns: repeat(2, 1fr);
   }
@@ -1538,4 +1548,154 @@ label.check {
   margin-left: auto;
   display: flex;
   gap: 8px;
+}
+
+/* ---- subscription period modals ---- */
+
+.modal-overlay .panel.wide {
+  max-width: 520px;
+  max-height: calc(100vh - 40px);
+  overflow-y: auto;
+}
+
+.modal-summary {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 6px 16px;
+  margin: 0 0 16px;
+  font-size: 13px;
+}
+
+.modal-summary dt {
+  color: var(--ink-dim);
+}
+
+.modal-summary dd {
+  margin: 0;
+}
+
+.modal-preview {
+  margin: 0 0 16px;
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.modal-list {
+  margin: 6px 0 0;
+  padding-left: 18px;
+}
+
+button.danger {
+  background: var(--danger);
+  color: var(--accent-ink);
+}
+
+button.danger:hover {
+  background: color-mix(in oklch, var(--danger) 85%, white);
+}
+
+.period-options {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+
+label.period-option {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  cursor: pointer;
+}
+
+label.period-option.selected {
+  border-color: var(--accent);
+}
+
+.period-option .grow {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+/* Role row in the user drawer: badges and the role select share one height and
+   baseline instead of the select towering over them. */
+.row.role-row {
+  align-items: center;
+}
+
+select.role-select {
+  appearance: none;
+  padding: 2px 24px 2px 8px;
+  font-size: 12px;
+  font-weight: 500;
+  border-radius: 6px;
+  cursor: pointer;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' fill='none' stroke='%23999' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M1 1l4 4 4-4'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 8px center;
+}
+
+/* ---- member controls ---- */
+
+textarea {
+  background: var(--bg-hover);
+  border: 1px solid var(--line);
+  color: var(--ink);
+  padding: 8px 11px;
+  font-family: var(--font-body);
+  font-size: 13px;
+  border-radius: var(--radius);
+  outline: none;
+  resize: vertical;
+  width: 100%;
+}
+
+textarea:focus {
+  border-color: var(--ink-dim);
+}
+
+.control-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 12px 0;
+  border-top: 1px solid var(--line);
+}
+
+.control-info {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+/* ---- live presence ---- */
+.presence {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+}
+
+.presence-dot {
+  flex: none;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--ok);
+}
+
+.inside-list {
+  max-height: 360px;
+  overflow-y: auto;
+}
+
+.inside-list .member-identity {
+  min-width: 0;
 }

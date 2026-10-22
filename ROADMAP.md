@@ -269,3 +269,42 @@ açık konu 3).
 yalnızca o salonun verisini görür; yalnızca A salonu için aboneliği olan üye
 A'ya girer, B'de `NOT_ALLOWED_AT_GYM` ile reddedilir ve red kayda geçer; doluluk
 salon bazında doğru sayılır; tüm depo kontrolleri yeşildir.
+
+## Faz 12 — Üye Yönetim Araçları (v3.1)
+
+**Hedef:** Abonelik işlemlerini hataya kapalı hale getirmek; personele
+yasaklama, dondurma ve owner denetiminde silme talebi araçları vermek. Tasarım:
+[docs/member-controls.md](docs/member-controls.md).
+
+**Bağımlılıklar:** Faz 11.
+
+**İş Kırılımı:**
+
+- [x] Abonelik verme iki adımlı modal (önizleme + onay); mevcut dönem varken
+      "yeni dönem eklenir" uyarısı ve salon değiştirmeye yönlendirme
+- [x] Salt okunur dönem tablosu; tek "Abonelikleri düzenle" modalı (salon
+      değiştirme, isteğe bağlı sonraki dönemlere uygulama, planlı dönem iptali)
+- [x] Başlamamış dönemin iptali; sonraki dönemlerin öne kaydırılması (kilit
+      altında, `logAudit`)
+- [x] Üye yasaklama (owner/admin): giriş `BANNED` ile reddedilir, çıkış asla;
+      mobilde sebepli yasak ekranı
+- [x] Abonelik dondurma (panel + mobil self-servis): owner ayarlı yıllık hak,
+      azami gün ve self-servis anahtarı; turnikede başarılı girişte yumuşak çözülme;
+      süre iadesi ardışık dönemleri yeniden dizer, dondurma başına idempotent;
+      saatlik reaper
+- [x] Üye adına silme talebi (admin/staff), onay yalnızca owner; onayda serbest
+      metin gerekçelerin silinmesi (KVKK)
+- [x] Owner olmayanlar yalnızca kendi salonlarında dönemi olan üyelere işlem
+      yapar; audit kaydı etkilenen her salona yazılır
+- [x] Entries sayfasından açılan ortak üye çekmecesi (`GET /api/admin/users/:id`)
+- [x] Güvenlik incelemesi bulgularının kapatılması, entegrasyon testleri dahil
+      tüm kontroller yeşil
+- [x] Panel ve mobil akışların tarayıcı/cihaz üzerinde smoke testi (admin için
+      audit sayfası kapsam kontrolü atlandı)
+- [x] Self-servis ve turnike kaynaklı dondurma audit kayıtlarının salon bazlı
+      yazılması
+
+**Definition of Done:** Personel yanlışlıkla ek dönem veremez, verdiyse iptal
+eder; yasaklı üye hiçbir salona giremez ama çıkışı engellenmez; dondurulmuş üye
+turnikede okutunca üyeliği kaldığı yerden devam eder ve kaybettiği gün geri
+eklenir; tüm depo kontrolleri yeşildir.

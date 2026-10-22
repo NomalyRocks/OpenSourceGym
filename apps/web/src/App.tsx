@@ -62,7 +62,9 @@ function HomeRedirect() {
   return (
     <div className="panel">
       <h2>{t("No gym assigned")}</h2>
-      <p className="hint">{t("Ask the chain owner to assign you to a gym.")}</p>
+      <p className="hint">
+        {t("You are not assigned to any gym yet. Ask the owner to assign one.")}
+      </p>
     </div>
   );
 }

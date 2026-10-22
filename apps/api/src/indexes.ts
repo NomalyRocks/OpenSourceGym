@@ -75,6 +75,36 @@ export async function ensureIndexes(database: Db = db): Promise<void> {
     { name: "subscriptions_gym_ends_at" },
   );
 
+  // subscription_freezes: at most one open freeze per member. The unique
+  // partial index is the real guard against two concurrent freezes; the
+  // read-then-insert check is only a cheaper path.
+  await ensureIndex(
+    database,
+    "subscription_freezes",
+    { userId: 1 },
+    {
+      name: "subscription_freezes_open_unique",
+      unique: true,
+      partialFilterExpression: { endedAt: { $type: "null" } },
+    },
+  );
+  // Open freezes and closed ones whose credit is not fully applied yet: the
+  // reaper's two scans. Tiny by construction (applied freezes drop out).
+  await ensureIndex(
+    database,
+    "subscription_freezes",
+    { creditApplied: 1, endedAt: 1 },
+    {
+      name: "subscription_freezes_unsettled",
+      partialFilterExpression: { creditApplied: false },
+    },
+  );
+  // Yearly freeze count per member.
+  await ensureIndex(database, "subscription_freezes", {
+    userId: 1,
+    startedAt: -1,
+  });
+
   // weight_history: both recording (reading the latest value) and calendar
   // listing use the find({ userId }).sort({ at: -1 }) pattern.
   await ensureIndex(

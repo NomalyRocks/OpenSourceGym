@@ -15,6 +15,7 @@ import { ensureIndexes } from "./indexes.js";
 import { adminRouter } from "./routes/admin.js";
 import { meRouter } from "./routes/me.js";
 import { gymsRouter } from "./routes/gyms.js";
+import { memberControlsRouter } from "./routes/memberControls.js";
 import { chainReportsRouter } from "./routes/reports.js";
 import {
   startRenewalReminderScheduler,
@@ -26,6 +27,7 @@ import {
   type EntryEventConsumer,
 } from "./eventQueue.js";
 import { startOccupancyReaper, type OccupancyReaper } from "./occupancy.js";
+import { startFreezeReaper, type FreezeReaper } from "./freeze.js";
 import { renameLegacyConsentFields } from "./consentFieldRename.js";
 import { getLegalConfig } from "./legal.js";
 import { backfillLegacyUserPhones } from "./phoneBackfill.js";
@@ -48,6 +50,9 @@ app.use("/api", openApiRouter);
 app.use("/api/admin/gyms", gymsRouter);
 app.use("/api/admin/reports", chainReportsRouter);
 app.use("/api/admin", adminRouter);
+// AFTER adminRouter: it owns GET /users/directory, which GET /users/:id here
+// would otherwise swallow.
+app.use("/api/admin", memberControlsRouter);
 app.use("/api/me", meRouter);
 
 // The registration screen must show consent text before sign-in: this returns
@@ -166,6 +171,7 @@ const server = createServer(app);
 let entryEventConsumer: EntryEventConsumer | null = null;
 let reminderScheduler: RenewalReminderScheduler | null = null;
 let occupancyReaper: OccupancyReaper | null = null;
+let freezeReaper: FreezeReaper | null = null;
 
 async function main() {
   assertProductionProfilePhotoConfig();
@@ -180,6 +186,7 @@ async function main() {
   entryEventConsumer = await startEntryEventConsumer();
   reminderScheduler = startRenewalReminderScheduler();
   occupancyReaper = startOccupancyReaper();
+  freezeReaper = startFreezeReaper();
   server.listen(env.port, () => {
     console.log(`opengym-api listening on :${env.port}`);
   });
@@ -221,6 +228,10 @@ async function shutdown(signal: string): Promise<void> {
   // connection closes.
   await step("occupancy reaper", 5000, () =>
     occupancyReaper ? occupancyReaper.stop() : Promise.resolve(),
+  );
+  // Takes the per-user subscription lock (Redis), so it stops before Redis closes.
+  await step("freeze reaper", 5000, () =>
+    freezeReaper ? freezeReaper.stop() : Promise.resolve(),
   );
   await step("turnstile event consumer", 5000, () =>
     entryEventConsumer ? entryEventConsumer.stop() : Promise.resolve(),

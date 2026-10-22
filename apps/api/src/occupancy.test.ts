@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { insideCutoffs } from "./occupancy.js";
+import { insideCutoffs, selectPresence } from "./occupancy.js";
 
 const NOW = Date.UTC(2026, 7, 12, 12, 0, 0);
 const HOUR = 60 * 60 * 1000;
@@ -53,5 +53,65 @@ test("entry record cutoffs", async (t) => {
   await t.test("keeps the 24-hour floor for short windows", () => {
     assert.equal(hoursBefore(insideCutoffs(24, NOW).drop), 24);
     assert.equal(hoursBefore(insideCutoffs(1, NOW).drop), 24);
+  });
+});
+
+test("selectPresence", async (t) => {
+  const cutoffs = new Map([
+    ["a", NOW - 4 * HOUR],
+    ["b", NOW - 4 * HOUR],
+  ]);
+  const all = () => true;
+
+  await t.test("drops records past the gym's count cutoff", () => {
+    assert.equal(
+      selectPresence([{ gymId: "a", enteredAt: NOW - 5 * HOUR }], cutoffs, all),
+      null,
+    );
+    assert.deepEqual(
+      selectPresence([{ gymId: "a", enteredAt: NOW - 4 * HOUR }], cutoffs, all),
+      { gymId: "a", enteredAt: NOW - 4 * HOUR },
+    );
+  });
+
+  await t.test("takes the latest of several stale records", () => {
+    const picked = selectPresence(
+      [
+        { gymId: "a", enteredAt: NOW - 3 * HOUR },
+        { gymId: "b", enteredAt: NOW - 1 * HOUR },
+      ],
+      cutoffs,
+      all,
+    );
+    assert.equal(picked?.gymId, "b");
+  });
+
+  await t.test("hides a latest record outside the caller's scope", () => {
+    const records = [
+      { gymId: "a", enteredAt: NOW - 3 * HOUR },
+      { gymId: "b", enteredAt: NOW - 1 * HOUR },
+    ];
+    assert.equal(
+      selectPresence(records, cutoffs, (g) => g === "a"),
+      null,
+    );
+    assert.equal(
+      selectPresence(records, cutoffs, (g) => g === "b")?.gymId,
+      "b",
+    );
+  });
+
+  await t.test("ignores unknown gyms and non-finite entries", () => {
+    assert.equal(
+      selectPresence(
+        [
+          { gymId: "zzz", enteredAt: NOW },
+          { gymId: "a", enteredAt: Number.NaN },
+        ],
+        cutoffs,
+        all,
+      ),
+      null,
+    );
   });
 });

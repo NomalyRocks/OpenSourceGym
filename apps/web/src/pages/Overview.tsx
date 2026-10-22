@@ -2,9 +2,13 @@ import { useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { PageHeader } from "../components/PageHeader";
+import { Avatar } from "../components/Avatar";
+import { usePresenceFormat } from "../lib/presence";
 import type {
   AdminStats,
   EntryEvent,
+  GymInsideResponse,
+  InsideMember,
   OccupancyResponse,
   Page,
   PublicUser,
@@ -58,6 +62,67 @@ function KpiCard({
     );
   }
   return <div className="kpi-card">{body}</div>;
+}
+
+/** Members counted inside the gym right now, with a live "minutes inside". */
+function InsideNow() {
+  const { t } = useTranslation();
+  const gymApi = useGymApi();
+  const { duration, time } = usePresenceFormat();
+  const [members, setMembers] = useState<InsideMember[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  async function load(signal: AbortSignal) {
+    try {
+      const res = await api<GymInsideResponse>(gymApi("/inside"), { signal });
+      setMembers(res.members);
+      setError(null);
+    } catch (err) {
+      if (isAbortError(err)) return;
+      setError(errorMessage(err, t, "Could not load data."));
+    }
+  }
+
+  usePollingQuery(load, 30000);
+
+  return (
+    <div className="panel" style={{ marginTop: 16 }}>
+      <h2>
+        {t("Inside now")}
+        {members && <span className="count-pill">{members.length}</span>}
+      </h2>
+      {error && <div className="msg error">{error}</div>}
+      <div className="list inside-list">
+        {(members ?? []).map((m) => {
+          const [first = "", ...rest] = m.name.split(" ");
+          return (
+            <div className="list-row" key={m.userId}>
+              <div className="member-identity">
+                <Avatar
+                  member={{
+                    id: m.userId,
+                    firstName: first,
+                    lastName: rest.join(" "),
+                    profilePhotoUrl: m.profilePhotoUrl,
+                  }}
+                />
+                <div>
+                  <div className="list-row-title">{m.name}</div>
+                  <div className="list-row-sub">
+                    {t("Entered at {{time}}", { time: time(m.enteredAt) })}
+                  </div>
+                </div>
+              </div>
+              <div className="list-row-side">{duration(m.enteredAt)}</div>
+            </div>
+          );
+        })}
+        {members?.length === 0 && (
+          <p className="hint">{t("No one is inside right now.")}</p>
+        )}
+      </div>
+    </div>
+  );
 }
 
 export function Overview() {
@@ -139,7 +204,7 @@ export function Overview() {
       />
       {error && <div className="msg error">{error}</div>}
 
-      <div className="kpi-grid">
+      <div className="kpi-grid cols-5">
         <KpiCard
           label={t("Today's revenue")}
           value={new Intl.NumberFormat(locale, {
@@ -154,7 +219,13 @@ export function Overview() {
         <KpiCard
           label={t("Active members")}
           value={stats ? String(stats.activeMembers) : "—"}
-          delta={t("active subscriptions")}
+          delta={t("active subscriptions, frozen excluded")}
+        />
+        <KpiCard
+          label={t("Frozen members")}
+          value={stats ? String(stats.frozenMembers ?? 0) : "—"}
+          delta={t("membership freeze open")}
+          color="var(--info)"
         />
         <KpiCard
           label={t("Gym occupancy")}
@@ -264,6 +335,8 @@ export function Overview() {
           </div>
         </div>
       </div>
+
+      <InsideNow />
     </div>
   );
 }

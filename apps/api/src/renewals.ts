@@ -4,6 +4,7 @@ import { ObjectId } from "mongodb";
 import type { Collection, Db, Document, WithId } from "mongodb";
 import { db, isDuplicateKeyError } from "./db.js";
 import { env } from "./env.js";
+import { excludeFrozenMembersStages, isMemberFrozen } from "./frozenMembers.js";
 import { sendMail } from "./mailer.js";
 import { acquireLock, releaseLock } from "./redis.js";
 import { localDayLabel } from "./reports.js";
@@ -129,6 +130,7 @@ export async function listRenewalsDue(
 
   const match: Document = { endsAt: { $gte: now, $lte: horizon } };
   const stages: Document[] = [
+    ...(await excludeFrozenMembersStages(database)),
     { $match: { gymIds: new ObjectId(params.gymId) } },
     ...latestSubscriptionStages(),
     {
@@ -203,12 +205,17 @@ export interface RenewalTarget {
   firstName: string;
 }
 
-/** Reads a member's latest subscription listing the gym, for a reminder. */
+/**
+ * Reads a member's latest subscription listing the gym, for a reminder.
+ * Null for a frozen member: their period is paused, so there is no upcoming
+ * renewal to remind about (callers answer NO_UPCOMING_RENEWAL).
+ */
 export async function findRenewalTarget(
   userId: ObjectId,
   gymId: string,
   database: Db = db,
 ): Promise<RenewalTarget | null> {
+  if (await isMemberFrozen(userId, database)) return null;
   const [row] = await database
     .collection("subscriptions")
     .aggregate<RenewalAggregateRow>([

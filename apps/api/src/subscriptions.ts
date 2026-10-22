@@ -4,16 +4,25 @@ import type { MySubscription, SubscriptionMonths } from "@opengym/shared";
 import { ObjectId } from "mongodb";
 import type { Db, WithId } from "mongodb";
 import { db, gymCollection } from "./db.js";
+import { finishPendingCredit, freezeCollection } from "./freezeCredit.js";
 import { acquireLock, redis, releaseLock } from "./redis.js";
 import {
   calculateSubscriptionPeriod,
+  evaluateEntryAccess,
   planLegacySubscriptionRepairs,
+  planSubscriptionCancellation,
+  previewFreezeCredit,
   summarizeSubscriptionTimeline,
+  type SubscriptionSummary,
   type SubscriptionTimelineRecord,
 } from "./subscriptionTimeline.js";
 
-const USER_LOCK_LEASE_MS = 30_000;
-const USER_LOCK_WAIT_MS = 5_000;
+export const USER_LOCK_LEASE_MS = 30_000;
+export const USER_LOCK_WAIT_MS = 5_000;
+
+/** Redis lock serializing every change to one member's subscription timeline. */
+export const subscriptionUserLockKey = (userId: string): string =>
+  `og:lock:subscription:${userId}`;
 const REPAIR_LOCK_LEASE_MS = 60_000;
 const REPAIR_LOCK_WAIT_MS = 15 * 60_000;
 const REPAIR_MARKER_ID = "subscription-overlap-repair-v1";
@@ -34,6 +43,8 @@ interface SubscriptionFields {
   note: string | null;
   createdBy: string;
   createdAt: Date;
+  /** Freezes whose credit was already applied to this period (idempotency marker) */
+  freezeCredits?: ObjectId[];
 }
 
 export type SubscriptionDocument = WithId<SubscriptionFields>;
@@ -87,7 +98,7 @@ function isAbortError(error: unknown): boolean {
   return error instanceof Error && error.name === "AbortError";
 }
 
-async function withRedisLock<T>(
+export async function withRedisLock<T>(
   key: string,
   leaseMs: number,
   waitMs: number,
@@ -158,7 +169,7 @@ async function withRedisLock<T>(
   }
 }
 
-function subscriptionCollection(database: Db = db) {
+export function subscriptionCollection(database: Db = db) {
   return database.collection<SubscriptionFields>("subscriptions");
 }
 
@@ -169,10 +180,13 @@ export async function createSequentialSubscription(
 ): Promise<CreatedSequentialSubscription> {
   const userId = input.userId.toHexString();
   return withRedisLock(
-    `og:lock:subscription:${userId}`,
+    subscriptionUserLockKey(userId),
     USER_LOCK_LEASE_MS,
     USER_LOCK_WAIT_MS,
     async (assertOwned) => {
+      // A freeze credit interrupted half-way must land before the new period
+      // is planned from the latest end, or it would overlap the late shift.
+      await finishPendingCredit(input.userId, assertOwned, database);
       const latest = await subscriptionCollection(database).findOne(
         { userId: input.userId },
         { sort: { endsAt: -1, createdAt: -1, _id: -1 } },
@@ -194,6 +208,98 @@ export async function createSequentialSubscription(
         createdAt: now,
       });
       return { id: inserted.insertedId, startsAt, endsAt };
+    },
+  );
+}
+
+export type CancelSubscriptionResult =
+  | { status: "not-found" }
+  | { status: "started" }
+  | { status: "out-of-scope" }
+  | {
+      status: "cancelled";
+      cancelled: SubscriptionDocument;
+      /** Later periods of the same member with their new dates */
+      shifted: SubscriptionDocument[];
+    };
+
+/**
+ * Cancels a period that has not started and pulls the member's later periods
+ * forward by its duration. Read, re-check and write all happen under the same
+ * per-user lock as createSequentialSubscription; the delete and the shifts go
+ * out as one ordered bulkWrite.
+ *
+ * `canAccessGyms` is evaluated on the period re-read under the lock, so a
+ * concurrent gym edit cannot slip past the scope check.
+ */
+export async function cancelScheduledSubscription(
+  id: ObjectId,
+  canAccessGyms: (gymIds: string[]) => boolean,
+  database: Db = db,
+): Promise<CancelSubscriptionResult> {
+  const collection = subscriptionCollection(database);
+  // The lock is per member, so the owner must be known before locking.
+  const preview = await collection.findOne(
+    { _id: id },
+    { projection: { userId: 1 } },
+  );
+  if (!preview) return { status: "not-found" };
+
+  return withRedisLock(
+    subscriptionUserLockKey(preview.userId.toHexString()),
+    USER_LOCK_LEASE_MS,
+    USER_LOCK_WAIT_MS,
+    async (assertOwned): Promise<CancelSubscriptionResult> => {
+      // Settle an interrupted freeze credit first so the periods read below,
+      // and the shift planned from them, are final.
+      await finishPendingCredit(preview.userId, assertOwned, database);
+      const target = await collection.findOne({ _id: id });
+      if (!target || !target.userId.equals(preview.userId)) {
+        return { status: "not-found" };
+      }
+      if (!canAccessGyms((target.gymIds ?? []).map((g) => g.toHexString()))) {
+        return { status: "out-of-scope" };
+      }
+      if (target.startsAt.getTime() <= Date.now()) {
+        return { status: "started" };
+      }
+
+      const later = await collection
+        .find({ userId: target.userId, _id: { $ne: id } })
+        .sort({ startsAt: 1, endsAt: 1, _id: 1 })
+        .toArray();
+      const plan = planSubscriptionCancellation(
+        target,
+        later.map((doc) => ({
+          id: doc._id.toHexString(),
+          startsAt: doc.startsAt,
+          endsAt: doc.endsAt,
+        })),
+      );
+      const byId = new Map(later.map((doc) => [doc._id.toHexString(), doc]));
+
+      await assertOwned();
+      await collection.bulkWrite(
+        [
+          { deleteOne: { filter: { _id: id } } },
+          ...plan.map((change) => ({
+            updateOne: {
+              filter: { _id: byId.get(change.id)!._id },
+              update: {
+                $set: { startsAt: change.startsAt, endsAt: change.endsAt },
+              },
+            },
+          })),
+        ],
+        { ordered: true },
+      );
+
+      const shifted = plan.map((change) => ({
+        ...byId.get(change.id)!,
+        startsAt: change.startsAt,
+        endsAt: change.endsAt,
+      }));
+      return { status: "cancelled", cancelled: target, shifted };
     },
   );
 }
@@ -247,14 +353,19 @@ export async function checkEntrySubscription(
         startsAt: { $lte: now },
         endsAt: { $gte: now },
       },
-      { projection: { gymIds: 1 } },
+      { projection: { startsAt: 1, endsAt: 1, gymIds: 1 } },
     )
     .toArray();
-  if (docs.length === 0) return "none";
-  const gymOid = new ObjectId(gymId);
-  return docs.some((doc) => (doc.gymIds ?? []).some((id) => id.equals(gymOid)))
-    ? "ok"
-    : "other-gym";
+  // Normalised through ObjectId so an upper-case gym id still matches.
+  return evaluateEntryAccess(
+    docs.map((doc) => ({
+      startsAt: doc.startsAt,
+      endsAt: doc.endsAt,
+      gymIds: (doc.gymIds ?? []).map((id) => id.toHexString()),
+    })),
+    now,
+    new ObjectId(gymId).toHexString(),
+  );
 }
 
 /** Gyms listed on the periods covering now (empty when not subscribed). */
@@ -280,11 +391,19 @@ export async function listActiveSubscriptionGymIds(
   return [...seen.values()];
 }
 
-/** Converts the active subscription and contiguous future packages to a mobile summary. */
+/**
+ * Converts the active subscription and contiguous future packages to a mobile
+ * summary.
+ *
+ * While the member is frozen, the timeline is shown as it would stand if the
+ * freeze ended now ({@link previewFreezeCredit}): the end, the days left and the
+ * gyms are what the member gets on resuming. Days left therefore stay put while
+ * frozen, until the freeze reaches its `maxDays` cap.
+ */
 export async function getSubscriptionSummary(
   userId: string,
   now = new Date(),
-): Promise<MySubscription> {
+): Promise<Omit<MySubscription, "freezeAllowance">> {
   if (!ObjectId.isValid(userId)) {
     return {
       active: false,
@@ -293,16 +412,51 @@ export async function getSubscriptionSummary(
       remainingDays: 0,
       gymIds: [],
       gyms: [],
+      freeze: null,
     };
   }
-  const docs = await subscriptionCollection()
-    .find({ userId: new ObjectId(userId), endsAt: { $gte: now } })
-    .sort({ startsAt: 1, endsAt: 1, createdAt: 1, _id: 1 })
-    .toArray();
-  const summary = summarizeSubscriptionTimeline(docs, now);
-  const gymIds = summary.active
-    ? await listActiveSubscriptionGymIds(userId, now)
-    : [];
+  const owner = new ObjectId(userId);
+  const openFreeze = await freezeCollection().findOne(
+    { userId: owner, endedAt: null },
+    { projection: { startedAt: 1, maxDays: 1 } },
+  );
+
+  let summary: SubscriptionSummary;
+  let gymIds: ObjectId[];
+  if (openFreeze) {
+    // Periods that ended before the freeze began cannot cover now, and the
+    // credit only touches periods ending after it began.
+    const docs = await subscriptionCollection()
+      .find({ userId: owner, endsAt: { $gt: openFreeze.startedAt } })
+      .sort({ startsAt: 1, endsAt: 1, createdAt: 1, _id: 1 })
+      .toArray();
+    const previewed = previewFreezeCredit(
+      docs.map((doc) => ({
+        id: doc._id.toHexString(),
+        startsAt: doc.startsAt,
+        endsAt: doc.endsAt,
+        gymIds: doc.gymIds ?? [],
+      })),
+      openFreeze,
+      now,
+    );
+    summary = summarizeSubscriptionTimeline(previewed, now);
+    const seen = new Map<string, ObjectId>();
+    for (const period of previewed) {
+      if (period.startsAt > now || period.endsAt < now) continue;
+      for (const id of period.gymIds) seen.set(id.toHexString(), id);
+    }
+    gymIds = [...seen.values()];
+  } else {
+    const docs = await subscriptionCollection()
+      .find({ userId: owner, endsAt: { $gte: now } })
+      .sort({ startsAt: 1, endsAt: 1, createdAt: 1, _id: 1 })
+      .toArray();
+    summary = summarizeSubscriptionTimeline(docs, now);
+    gymIds = summary.active
+      ? await listActiveSubscriptionGymIds(userId, now)
+      : [];
+  }
   const gymDocs =
     gymIds.length > 0
       ? await gymCollection()
@@ -321,6 +475,9 @@ export async function getSubscriptionSummary(
       name: gym.name,
       active: gym.active,
     })),
+    freeze: openFreeze
+      ? { startedAt: openFreeze.startedAt.toISOString() }
+      : null,
   };
 }
 

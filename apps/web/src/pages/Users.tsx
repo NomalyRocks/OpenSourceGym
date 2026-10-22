@@ -18,380 +18,30 @@ import {
   X,
 } from "lucide-react";
 import type {
-  CreateSubscriptionRequest,
-  SetSubscriptionGymsRequest,
+  PublicUser,
   SubscriptionStatus,
   UserDirectoryPage,
   UserDirectoryRow,
-  MfaMethod,
-  PublicUser,
-  Subscription,
-  SubscriptionMonths,
 } from "@opengym/shared";
-import { ApiError, api, authApi, isAbortError } from "../lib/api";
-import { useProfile } from "../lib/profile";
+import { api, isAbortError } from "../lib/api";
 import { PageHeader } from "../components/PageHeader";
 import { Avatar } from "../components/Avatar";
-import { useGymId, useGyms } from "../lib/gyms";
+import { MemberDrawer } from "../components/MemberDrawer";
+import { PresenceBadge } from "../components/PresenceBadge";
+import { StatusBadge, statusMeta } from "../components/StatusBadge";
+import { useGyms } from "../lib/gyms";
 import { dateLocale } from "../i18n/format";
 import { errorMessage } from "../i18n/errors";
+import { roleKey } from "../lib/roleKey";
 import type { WebTranslationKey } from "../i18n/resources";
-
-const subscriptionMonthOptions: readonly SubscriptionMonths[] = [1, 3, 6, 12];
-
-function roleKey(
-  role: PublicUser["role"],
-): "Owner" | "Administrator" | "Staff" | "Member" {
-  if (role === "owner") return "Owner";
-  if (role === "admin") return "Administrator";
-  if (role === "staff") return "Staff";
-  return "Member";
-}
-
-const monthsKeys = {
-  1: "1 month",
-  3: "3 months",
-  6: "6 months",
-  12: "12 months",
-} as const satisfies Record<SubscriptionMonths, WebTranslationKey>;
-
-function monthsKey(months: SubscriptionMonths): WebTranslationKey {
-  return monthsKeys[months];
-}
-
-function subscriptionStatus(subscription: Subscription): {
-  label: WebTranslationKey;
-  className: string;
-} {
-  const now = Date.now();
-  if (new Date(subscription.startsAt).getTime() > now) {
-    return { label: "Scheduled", className: "warn" };
-  }
-  if (new Date(subscription.endsAt).getTime() >= now) {
-    return { label: "Active", className: "ok" };
-  }
-  return { label: "Expired", className: "member" };
-}
-
-// Edits which gyms a current or future period covers; the dates stay as they
-// are. Gyms outside the caller's scope are not listed and therefore kept.
-function SubscriptionGymsEditor({
-  subscription,
-  onSaved,
-  onCancel,
-}: {
-  subscription: Subscription;
-  onSaved: () => void;
-  onCancel: () => void;
-}) {
-  const { t } = useTranslation();
-  const { gyms } = useGyms();
-  const [selected, setSelected] = useState<string[]>(subscription.gymIds);
-  const [error, setError] = useState<string | null>(null);
-  const [saving, setSaving] = useState(false);
-  // Active gyms, plus any inactive gym already on the period so it can be removed
-  const options = gyms.filter(
-    (g) => g.active || subscription.gymIds.includes(g.id),
-  );
-  const toggle = (id: string) =>
-    setSelected((prev) =>
-      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id],
-    );
-
-  async function save() {
-    setError(null);
-    if (selected.length === 0) {
-      setError(t("Select at least one gym."));
-      return;
-    }
-    setSaving(true);
-    try {
-      const body: SetSubscriptionGymsRequest = { gymIds: selected };
-      await api(`/api/admin/subscriptions/${subscription.id}/gyms`, {
-        method: "PUT",
-        body,
-      });
-      onSaved();
-    } catch (err) {
-      setError(errorMessage(err, t, "Could not update the gyms."));
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  return (
-    <div>
-      {error && <div className="msg error">{error}</div>}
-      <div className="row">
-        {options.map((g) => (
-          <label key={g.id} className="check">
-            <input
-              type="checkbox"
-              checked={selected.includes(g.id)}
-              onChange={() => toggle(g.id)}
-            />{" "}
-            {g.name}
-          </label>
-        ))}
-      </div>
-      <div className="row">
-        <button onClick={save} disabled={saving}>
-          {t("Save")}
-        </button>
-        <button className="ghost" onClick={onCancel} disabled={saving}>
-          {t("Cancel")}
-        </button>
-      </div>
-    </div>
-  );
-}
-
-function SubscriptionPanel({
-  member,
-  onGranted,
-}: {
-  member: PublicUser;
-  onGranted?: () => void;
-}) {
-  const { t, i18n } = useTranslation();
-  const [subs, setSubs] = useState<Subscription[] | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [loadError, setLoadError] = useState<string | null>(null);
-  const [msg, setMsg] = useState<{ kind: string; text: string } | null>(null);
-  const [months, setMonths] = useState<SubscriptionMonths>(1);
-  const [editingId, setEditingId] = useState<string | null>(null);
-  const { gyms } = useGyms();
-  const selectedGymId = useGymId();
-  const activeGyms = gyms.filter((g) => g.active);
-  // Defaults to the gym currently selected in the panel.
-  const [gymIds, setGymIds] = useState<string[]>([selectedGymId]);
-  const toggleGym = (id: string) =>
-    setGymIds((prev) =>
-      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id],
-    );
-
-  function load(signal?: AbortSignal) {
-    return api<Subscription[]>(`/api/admin/users/${member.id}/subscriptions`, {
-      signal,
-    });
-  }
-
-  // Load here instead of during the render phase: requesting during render caused
-  // duplicate requests in StrictMode and setState calls after unmount.
-  useEffect(() => {
-    const controller = new AbortController();
-    setSubs(null);
-    setLoading(true);
-    setLoadError(null);
-
-    load(controller.signal)
-      .then(setSubs)
-      .catch((err) => {
-        if (isAbortError(err)) return;
-        setLoadError(errorMessage(err, t, "Could not load data."));
-      })
-      .finally(() => setLoading(false));
-
-    // Cancel the in-flight request when the member changes or the component
-    // unmounts, so a late response cannot overwrite the new member's list.
-    return () => controller.abort();
-  }, [member.id]);
-
-  async function grant() {
-    setMsg(null);
-    if (gymIds.length === 0) {
-      setMsg({ kind: "error", text: t("Select at least one gym.") });
-      return;
-    }
-    try {
-      const request: CreateSubscriptionRequest = {
-        userId: member.id,
-        months,
-        gymIds,
-        note: t("{{months}}-month plan", { months }),
-      };
-      await api("/api/admin/subscriptions", {
-        method: "POST",
-        body: request,
-      });
-      setMsg({ kind: "success", text: t("Subscription granted.") });
-      setSubs(await load());
-      onGranted?.();
-    } catch (err) {
-      setMsg({
-        kind: "error",
-        text: errorMessage(err, t, "Could not grant the subscription."),
-      });
-    }
-  }
-
-  return (
-    <div className="panel">
-      <div className="member-detail-heading">
-        <Avatar member={member} large />
-        <h2>
-          {t("Subscription — {{name}}", {
-            name: `${member.firstName} ${member.lastName}`,
-          })}
-        </h2>
-      </div>
-      {msg && <div className={`msg ${msg.kind}`}>{msg.text}</div>}
-      {loadError && <div className="msg error">{loadError}</div>}
-      <div className="row" style={{ marginBottom: 18 }}>
-        <div className="field">
-          <label htmlFor="months">{t("Plan")}</label>
-          <select
-            id="months"
-            value={months}
-            onChange={(e) =>
-              setMonths(Number(e.target.value) as SubscriptionMonths)
-            }
-          >
-            {subscriptionMonthOptions.map((option) => (
-              <option key={option} value={option}>
-                {t(monthsKey(option))}
-              </option>
-            ))}
-          </select>
-        </div>
-        <div className="field">
-          <label>{t("Gyms")}</label>
-          <div className="row">
-            {activeGyms.map((g) => (
-              <label key={g.id} className="check">
-                <input
-                  type="checkbox"
-                  checked={gymIds.includes(g.id)}
-                  onChange={() => toggleGym(g.id)}
-                />{" "}
-                {g.name}
-              </label>
-            ))}
-          </div>
-        </div>
-        <button onClick={grant}>{t("Grant subscription")}</button>
-      </div>
-      <table>
-        <thead>
-          <tr>
-            <th>{t("Start")}</th>
-            <th>{t("End")}</th>
-            <th>{t("Note")}</th>
-            <th>{t("Gyms")}</th>
-            <th>{t("Status")}</th>
-          </tr>
-        </thead>
-        <tbody>
-          {loading && (
-            <tr>
-              <td colSpan={5}>{t("Loading…")}</td>
-            </tr>
-          )}
-          {!loading &&
-            (subs ?? []).map((subscription) => {
-              const status = subscriptionStatus(subscription);
-              return (
-                <tr key={subscription.id}>
-                  <td>
-                    {new Date(subscription.startsAt).toLocaleDateString(
-                      dateLocale(i18n.resolvedLanguage),
-                    )}
-                  </td>
-                  <td>
-                    {new Date(subscription.endsAt).toLocaleDateString(
-                      dateLocale(i18n.resolvedLanguage),
-                    )}
-                  </td>
-                  <td>{subscription.note ?? "—"}</td>
-                  <td>
-                    {editingId === subscription.id ? (
-                      <SubscriptionGymsEditor
-                        subscription={subscription}
-                        onCancel={() => setEditingId(null)}
-                        onSaved={() => {
-                          setEditingId(null);
-                          setMsg({
-                            kind: "success",
-                            text: t("Subscription gyms updated."),
-                          });
-                          void load().then(setSubs);
-                          onGranted?.();
-                        }}
-                      />
-                    ) : (
-                      <>
-                        {subscription.gymIds
-                          .map(
-                            (id) => gyms.find((g) => g.id === id)?.name ?? id,
-                          )
-                          .join(", ")}
-                        {new Date(subscription.endsAt).getTime() >
-                          Date.now() && (
-                          <>
-                            {" "}
-                            <button
-                              type="button"
-                              className="link-btn"
-                              onClick={() => setEditingId(subscription.id)}
-                            >
-                              {t("Edit gyms")}
-                            </button>
-                          </>
-                        )}
-                      </>
-                    )}
-                  </td>
-                  <td>
-                    <span className={`badge ${status.className}`}>
-                      {t(status.label)}
-                    </span>
-                  </td>
-                </tr>
-              );
-            })}
-          {!loading && subs?.length === 0 && (
-            <tr>
-              <td colSpan={5}>{t("No subscription records.")}</td>
-            </tr>
-          )}
-        </tbody>
-      </table>
-    </div>
-  );
-}
-
-interface MfaPrompt {
-  target: PublicUser;
-  role: string;
-}
-
-interface MfaPrompt {
-  target: PublicUser;
-  role: string;
-}
 
 type View = "table" | "board" | "list";
 type SortKey = "name" | "createdAt";
 
 const ROLES: PublicUser["role"][] = ["owner", "admin", "staff", "member"];
-const STATUSES: SubscriptionStatus[] = ["active", "expired", "none"];
+const STATUSES: SubscriptionStatus[] = ["active", "frozen", "expired", "none"];
 const PAGE_SIZE_TABLE = 25;
 const PAGE_SIZE_CARDS = 100;
-
-const statusMeta: Record<
-  SubscriptionStatus,
-  { cls: string; label: WebTranslationKey }
-> = {
-  active: { cls: "ok", label: "Active" },
-  expired: { cls: "danger", label: "Expired" },
-  none: { cls: "none", label: "None" },
-};
-
-function StatusBadge({ status }: { status: SubscriptionStatus }) {
-  const { t } = useTranslation();
-  const meta = statusMeta[status];
-  return <span className={`badge dot ${meta.cls}`}>{t(meta.label)}</span>;
-}
 
 /** Pill-shaped filter button with a popover of options. */
 function FilterChip({
@@ -433,7 +83,6 @@ function FilterChip({
 export function Users() {
   const { t, i18n } = useTranslation();
   const locale = dateLocale(i18n.resolvedLanguage);
-  const { profile: user } = useProfile();
   const { gyms } = useGyms();
   const gymName = (id: string) => gyms.find((g) => g.id === id)?.name ?? id;
 
@@ -453,15 +102,8 @@ export function Users() {
   const [reloadTick, setReloadTick] = useState(0);
   const reload = useCallback(() => setReloadTick((n) => n + 1), []);
   const [checked, setChecked] = useState<Set<string>>(new Set());
-  const [selected, setSelected] = useState<UserDirectoryRow | null>(null);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
   const [msg, setMsg] = useState<{ kind: string; text: string } | null>(null);
-
-  const [mfaPrompt, setMfaPrompt] = useState<MfaPrompt | null>(null);
-  const [mfaMethod, setMfaMethod] = useState<MfaMethod>("totp");
-  const [mfaCode, setMfaCode] = useState("");
-  const [mfaError, setMfaError] = useState<string | null>(null);
-  const [mfaInfo, setMfaInfo] = useState<string | null>(null);
-  const [mfaBusy, setMfaBusy] = useState(false);
 
   const pageSize = view === "table" ? PAGE_SIZE_TABLE : PAGE_SIZE_CARDS;
 
@@ -563,86 +205,6 @@ export function Users() {
     ) : (
       <ChevronDown size={13} />
     );
-
-  async function applyRole(
-    target: PublicUser,
-    role: string,
-    mfa?: { mfaCode: string; mfaMethod: MfaMethod },
-  ) {
-    await api(`/api/admin/users/${target.id}/role`, {
-      method: "POST",
-      body: { role, ...mfa },
-    });
-    setMsg({
-      kind: "success",
-      text: t("{{email}} was updated to {{role}}.", {
-        email: target.email,
-        role: t(roleKey(role as PublicUser["role"])),
-      }),
-    });
-    setSelected((prev) =>
-      prev?.id === target.id
-        ? { ...prev, role: role as PublicUser["role"] }
-        : prev,
-    );
-    reload();
-  }
-
-  async function setRole(target: PublicUser, role: string) {
-    setMsg(null);
-    try {
-      await applyRole(target, role);
-    } catch (err) {
-      if (err instanceof ApiError && err.code === "MFA_REQUIRED") {
-        setMfaPrompt({ target, role });
-        setMfaMethod("totp");
-        setMfaCode("");
-        setMfaError(null);
-        setMfaInfo(null);
-        return;
-      }
-      setMsg({
-        kind: "error",
-        text: errorMessage(err, t, "Could not assign the role."),
-      });
-    }
-  }
-
-  async function chooseMfaMethod(method: MfaMethod) {
-    setMfaMethod(method);
-    setMfaCode("");
-    setMfaError(null);
-    setMfaInfo(null);
-    if (method === "otp") {
-      try {
-        await authApi("/two-factor/send-otp", {});
-        setMfaInfo(t("A code was sent to your email."));
-      } catch (err) {
-        setMfaError(errorMessage(err, t, "The code could not be sent."));
-      }
-    }
-  }
-
-  async function confirmMfa() {
-    if (!mfaPrompt) return;
-    setMfaBusy(true);
-    setMfaError(null);
-    try {
-      await applyRole(mfaPrompt.target, mfaPrompt.role, {
-        mfaCode,
-        mfaMethod,
-      });
-      setMfaPrompt(null);
-    } catch (err) {
-      if (err instanceof ApiError && err.code === "MFA_INVALID") {
-        setMfaError(t("The code is invalid."));
-      } else {
-        setMfaError(errorMessage(err, t, "Verification failed."));
-      }
-    } finally {
-      setMfaBusy(false);
-    }
-  }
 
   const items = data?.items ?? [];
   const total = data?.total ?? 0;
@@ -864,6 +426,7 @@ export function Users() {
                     <Activity size={13} /> {t("Status")}
                   </span>
                 </th>
+                <th>{t("Presence")}</th>
                 <th>
                   <button
                     type="button"
@@ -885,8 +448,8 @@ export function Users() {
               {items.map((u) => (
                 <tr
                   key={u.id}
-                  className={selected?.id === u.id ? "selected" : ""}
-                  onClick={() => setSelected(u)}
+                  className={selectedId === u.id ? "selected" : ""}
+                  onClick={() => setSelectedId(u.id)}
                 >
                   <td
                     className="col-check"
@@ -920,18 +483,21 @@ export function Users() {
                   <td>
                     <StatusBadge status={u.subscriptionStatus} />
                   </td>
+                  <td>
+                    <PresenceBadge presence={u.presence ?? null} />
+                  </td>
                   <td className="muted">{joined(u)}</td>
                   <td className="muted">{userGyms(u)}</td>
                 </tr>
               ))}
               {loading && items.length === 0 && (
                 <tr>
-                  <td colSpan={7}>{t("Loading…")}</td>
+                  <td colSpan={8}>{t("Loading…")}</td>
                 </tr>
               )}
               {!loading && items.length === 0 && (
                 <tr>
-                  <td colSpan={7}>{t("No matching member found.")}</td>
+                  <td colSpan={8}>{t("No matching member found.")}</td>
                 </tr>
               )}
             </tbody>
@@ -953,7 +519,7 @@ export function Users() {
                   <div
                     className="board-card"
                     key={u.id}
-                    onClick={() => setSelected(u)}
+                    onClick={() => setSelectedId(u.id)}
                   >
                     <Avatar member={u} />
                     <div className="who">
@@ -979,7 +545,7 @@ export function Users() {
             <div
               className="compact-row"
               key={u.id}
-              onClick={() => setSelected(u)}
+              onClick={() => setSelectedId(u.id)}
             >
               <Avatar member={u} />
               <span className="grow">{fullName(u)}</span>
@@ -1029,118 +595,12 @@ export function Users() {
         </div>
       </div>
 
-      {selected && (
-        <div className="drawer-overlay" onMouseDown={() => setSelected(null)}>
-          <aside
-            className="drawer"
-            role="dialog"
-            aria-label={fullName(selected)}
-            onMouseDown={(e) => e.stopPropagation()}
-          >
-            <div className="drawer-head">
-              <div className="member-identity">
-                <Avatar member={selected} large />
-                <div>
-                  <div>{fullName(selected)}</div>
-                  <div className="hint">{selected.email}</div>
-                </div>
-              </div>
-              <button
-                type="button"
-                className="ghost"
-                aria-label={t("Close")}
-                onClick={() => setSelected(null)}
-              >
-                <X size={16} />
-              </button>
-            </div>
-            {msg && <div className={`msg ${msg.kind}`}>{msg.text}</div>}
-            <div className="panel">
-              <div className="row">
-                <span className={`badge ${selected.role}`}>
-                  {t(roleKey(selected.role))}
-                </span>
-                <StatusBadge status={selected.subscriptionStatus} />
-                {user?.role === "owner" && selected.id !== user.id && (
-                  <select
-                    aria-label={t("Role")}
-                    value={selected.role}
-                    onChange={(e) => void setRole(selected, e.target.value)}
-                  >
-                    <option value="member">{t("Member")}</option>
-                    <option value="staff">{t("Staff")}</option>
-                    <option value="admin">{t("Administrator")}</option>
-                    <option value="owner">{t("Owner")}</option>
-                  </select>
-                )}
-              </div>
-            </div>
-            <SubscriptionPanel
-              key={selected.id}
-              member={selected}
-              onGranted={reload}
-            />
-          </aside>
-        </div>
-      )}
-      {mfaPrompt && (
-        <div className="modal-overlay">
-          <div className="panel">
-            <h2>{t("MFA verification required")}</h2>
-            <p className="hint" style={{ marginBottom: 16 }}>
-              {t("Enter a verification code to change {{email}} to {{role}}.", {
-                email: mfaPrompt.target.email,
-                role: t(roleKey(mfaPrompt.role as PublicUser["role"])),
-              })}
-            </p>
-            {mfaError && <div className="msg error">{mfaError}</div>}
-            {mfaInfo && <div className="msg success">{mfaInfo}</div>}
-            <div className="row" style={{ marginBottom: 16 }}>
-              <button
-                type="button"
-                className={mfaMethod === "totp" ? "" : "ghost"}
-                onClick={() => void chooseMfaMethod("totp")}
-              >
-                {t("Authenticator")}
-              </button>
-              <button
-                type="button"
-                className={mfaMethod === "otp" ? "" : "ghost"}
-                onClick={() => void chooseMfaMethod("otp")}
-              >
-                {t("Email code")}
-              </button>
-            </div>
-            <div className="field">
-              <label htmlFor="mfaCode">{t("Verification code")}</label>
-              <input
-                id="mfaCode"
-                value={mfaCode}
-                onChange={(e) => setMfaCode(e.target.value)}
-                autoComplete="one-time-code"
-                autoFocus
-                required
-              />
-            </div>
-            <div className="row">
-              <button
-                type="button"
-                onClick={() => void confirmMfa()}
-                disabled={mfaBusy || !mfaCode}
-              >
-                {mfaBusy ? t("Verifying…") : t("Approve")}
-              </button>
-              <button
-                type="button"
-                className="ghost"
-                onClick={() => setMfaPrompt(null)}
-                disabled={mfaBusy}
-              >
-                {t("Cancel")}
-              </button>
-            </div>
-          </div>
-        </div>
+      {selectedId && (
+        <MemberDrawer
+          userId={selectedId}
+          onClose={() => setSelectedId(null)}
+          onChanged={reload}
+        />
       )}
     </div>
   );

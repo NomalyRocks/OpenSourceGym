@@ -1,6 +1,7 @@
 import { MongoClient, MongoServerError, ObjectId } from "mongodb";
 import type { Collection, Db, WithId } from "mongodb";
 import type {
+  FreezeConfig,
   GymLocation,
   LegalConfig,
   ReminderConfig,
@@ -53,6 +54,13 @@ export interface UserDocument {
   age?: number;
   heightCm?: number;
   weightKg?: number;
+  /** Set while the member is banned; written only by the ban routes */
+  ban?: {
+    reason: string;
+    bannedAt: Date;
+    /** Id of the owner/admin who set the ban */
+    bannedBy: string;
+  };
 }
 
 export function userCollection(database: Db = db): Collection<UserDocument> {
@@ -83,6 +91,8 @@ export interface ChainSettingsDocument {
   _id: typeof CHAIN_SETTINGS_ID;
   chainName?: string;
   legal?: Partial<LegalConfig>;
+  /** Subscription freeze rules; absent means the defaults in freeze.ts */
+  freeze?: Partial<FreezeConfig>;
 }
 
 export function chainSettingsCollection(

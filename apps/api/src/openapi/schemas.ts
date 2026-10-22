@@ -60,9 +60,18 @@ export const publicUserSchema = withId(
   "PublicUser",
 );
 
+export const memberPresenceSchema = withId(
+  z.object({
+    gymId: objectIdSchema,
+    gymName: z.string(),
+    enteredAt: isoDateTimeSchema,
+  }),
+  "MemberPresence",
+);
+
 export const userDirectoryRowSchema = withId(
   publicUserSchema.extend({
-    subscriptionStatus: z.enum(["active", "expired", "none"]),
+    subscriptionStatus: z.enum(["active", "frozen", "expired", "none"]),
     subscriptionGymIds: z.array(objectIdSchema).meta({
       description:
         "Gyms of the member's currently active subscription periods; empty when there is none",
@@ -70,6 +79,10 @@ export const userDirectoryRowSchema = withId(
     subscriptionEndsAt: isoDateTimeSchema.nullable().meta({
       description:
         "End of the current period when active, of the latest past period when expired, null when none",
+    }),
+    presence: memberPresenceSchema.nullable().meta({
+      description:
+        "Gym the user is counted inside right now; null when outside or when that gym is outside the caller's scope",
     }),
   }),
   "UserDirectoryRow",
@@ -83,6 +96,23 @@ export const userDirectoryPageSchema = withId(
     items: z.array(userDirectoryRowSchema),
   }),
   "UserDirectoryPage",
+);
+
+export const memberBanSchema = withId(
+  z.object({ reason: z.string(), bannedAt: isoDateTimeSchema }),
+  "MemberBan",
+);
+
+export const freezeConfigSchema = withId(
+  z.object({
+    enabled: z.boolean(),
+    memberSelfService: z.boolean().meta({
+      description: "Members may freeze/resume from the app themselves",
+    }),
+    maxPerYear: z.number().int().min(0).max(12),
+    maxDays: z.number().int().min(1).max(180),
+  }),
+  "FreezeConfig",
 );
 
 export const myProfileSchema = withId(
@@ -103,6 +133,9 @@ export const myProfileSchema = withId(
     }),
     weightKg: z.number().nullable().meta({
       description: "Weight used to prefill the calorie calculator (kg)",
+    }),
+    ban: memberBanSchema.nullable().meta({
+      description: "Set while the member is banned",
     }),
   }),
   "MyProfile",
@@ -228,13 +261,17 @@ export const chainSettingsSchema = withId(
   z.object({
     chainName: z.string(),
     legal: legalConfigSchema,
+    freeze: freezeConfigSchema,
   }),
   "ChainSettings",
 );
 
 export const adminStatsSchema = withId(
   z.object({
-    activeMembers: z.number().int().nonnegative(),
+    activeMembers: z.number().int().nonnegative().meta({
+      description: "Frozen members excluded",
+    }),
+    frozenMembers: z.number().int().nonnegative(),
     renewalsDue: z.number().int().nonnegative(),
   }),
   "AdminStats",
@@ -273,6 +310,7 @@ export const gateRejectCodeSchema = withId(
     "NOT_INSIDE",
     "GYM_LOCATION_UNSET",
     "RATE_LIMITED",
+    "BANNED",
   ]),
   "GateRejectCode",
 );
@@ -306,6 +344,11 @@ export const deletionRequestSchema = withId(
     status: z.enum(["pending", "approved", "rejected"]),
     resolvedAt: isoDateTimeSchema.nullable(),
     resolvedBy: z.string().nullable(),
+    requestedBy: z
+      .object({ id: z.string(), name: z.string() })
+      .nullable()
+      .meta({ description: "Staff member who opened it; null for the member" }),
+    reason: z.string().nullable(),
   }),
   "DeletionRequest",
 );
@@ -347,6 +390,16 @@ export const profilePhotoResponseSchema = withId(
   "ProfilePhotoResponse",
 );
 
+export const myFreezeAllowanceSchema = withId(
+  z.object({
+    canFreeze: z.boolean(),
+    usedInLastYear: z.number().int().nonnegative(),
+    maxPerYear: z.number().int(),
+    maxDays: z.number().int(),
+  }),
+  "MyFreezeAllowance",
+);
+
 export const mySubscriptionSchema = withId(
   z.object({
     active: z.boolean(),
@@ -355,6 +408,10 @@ export const mySubscriptionSchema = withId(
     remainingDays: z.number().int().nonnegative(),
     gymIds: z.array(objectIdSchema),
     gyms: z.array(gymRefSchema),
+    freeze: z.object({ startedAt: isoDateTimeSchema }).nullable().meta({
+      description: "Set while frozen; the next entry scan resumes it",
+    }),
+    freezeAllowance: myFreezeAllowanceSchema,
   }),
   "MySubscription",
 );
@@ -385,6 +442,9 @@ export const gateScanResponseSchema = withId(
     deviceName: z.string(),
     direction: deviceDirectionSchema,
     openMs: z.number().int().positive(),
+    unfrozen: z.boolean().optional().meta({
+      description: "True when this entry scan ended the member's freeze",
+    }),
   }),
   "GateScanResponse",
 );
@@ -398,6 +458,21 @@ export const occupancySchema = withId(
     ratio: z.number().nonnegative().nullable(),
   }),
   "Occupancy",
+);
+
+export const gymInsideSchema = withId(
+  z.object({
+    gymId: objectIdSchema,
+    members: z.array(
+      z.object({
+        userId: objectIdSchema,
+        name: z.string(),
+        profilePhotoUrl: z.string().nullable(),
+        enteredAt: isoDateTimeSchema,
+      }),
+    ),
+  }),
+  "GymInside",
 );
 
 export const myOccupancySchema = withId(
@@ -526,6 +601,7 @@ export const chainSettingsRequestSchema = withId(
   z.object({
     chainName: z.string().trim().min(1),
     legal: legalConfigSchema.optional(),
+    freeze: freezeConfigSchema.optional(),
   }),
   "ChainSettingsRequest",
 );
@@ -687,4 +763,53 @@ export const createSubscriptionResponseSchema = withId(
     endsAt: isoDateTimeSchema,
   }),
   "CreateSubscriptionResponse",
+);
+
+export const cancelSubscriptionResponseSchema = withId(
+  z.object({
+    ok: z.literal(true),
+    shifted: z.array(subscriptionSchema),
+  }),
+  "CancelSubscriptionResponse",
+);
+
+export const banMemberRequestSchema = withId(
+  z.object({ reason: z.string().trim().min(3).max(500) }),
+  "BanMemberRequest",
+);
+
+export const createMemberDeletionRequestSchema = withId(
+  z.object({ reason: z.string().trim().max(500).optional() }),
+  "CreateMemberDeletionRequest",
+);
+
+export const memberFreezeStateSchema = withId(
+  z.object({
+    active: z
+      .object({
+        startedAt: isoDateTimeSchema,
+        maxDays: z.number().int(),
+        startedBy: z.string(),
+      })
+      .nullable(),
+    usedInLastYear: z.number().int().nonnegative(),
+    config: freezeConfigSchema,
+  }),
+  "MemberFreezeState",
+);
+
+export const memberDetailSchema = withId(
+  z.object({
+    user: userDirectoryRowSchema,
+    ban: memberBanSchema.extend({ bannedBy: z.string() }).nullable(),
+    freeze: memberFreezeStateSchema,
+    pendingDeletion: z
+      .object({
+        id: objectIdSchema,
+        requestedAt: isoDateTimeSchema,
+        requestedBy: z.object({ id: z.string(), name: z.string() }).nullable(),
+      })
+      .nullable(),
+  }),
+  "MemberDetail",
 );

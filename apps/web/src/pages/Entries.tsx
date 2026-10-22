@@ -14,6 +14,7 @@ import { dateLocale } from "../i18n/format";
 import { dayEndIso, dayStartIso } from "../lib/dateRange";
 import type { WebTranslationKey } from "../i18n/resources";
 import { useGymApi } from "../lib/gyms";
+import { MemberDrawer } from "../components/MemberDrawer";
 
 const reasonLabels: Record<GateRejectCode, WebTranslationKey> = {
   INVALID_QR: "Invalid code",
@@ -31,6 +32,7 @@ const reasonLabels: Record<GateRejectCode, WebTranslationKey> = {
   NOT_INSIDE: "No entry record",
   GYM_LOCATION_UNSET: "Gym location not set",
   RATE_LIMITED: "Too many attempts",
+  BANNED: "Member banned",
 };
 
 // Fall back to raw text for records left by the old flow (INVALID_TOKEN/EXPIRED/REPLAY)
@@ -54,6 +56,7 @@ export function Entries() {
   const [pagedBack, setPagedBack] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [drawerUserId, setDrawerUserId] = useState<string | null>(null);
 
   function buildQuery(cursor: string | null): string {
     const params = new URLSearchParams();
@@ -193,7 +196,19 @@ export function Entries() {
               <tr key={e.id}>
                 <td>{new Date(e.at).toLocaleString(locale)}</td>
                 <td>{e.deviceName || "—"}</td>
-                <td>{e.memberName ?? "—"}</td>
+                <td>
+                  {e.userId ? (
+                    <button
+                      type="button"
+                      className="link-btn"
+                      onClick={() => setDrawerUserId(e.userId)}
+                    >
+                      {e.memberName ?? t("Unknown member")}
+                    </button>
+                  ) : (
+                    (e.memberName ?? "—")
+                  )}
+                </td>
                 <td>
                   {e.allowed ? (
                     <span className="badge ok">{t("Allowed")}</span>
@@ -228,6 +243,12 @@ export function Entries() {
           </button>
         )}
       </div>
+      {drawerUserId && (
+        <MemberDrawer
+          userId={drawerUserId}
+          onClose={() => setDrawerUserId(null)}
+        />
+      )}
     </div>
   );
 }

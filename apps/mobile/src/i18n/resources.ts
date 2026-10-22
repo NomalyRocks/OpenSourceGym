@@ -492,6 +492,50 @@ const tr = {
   "Return to Tools": "Araçlara dön",
   "Start calculation": "Hesaplamaya başla",
   Continue: "Devam",
+  "Your membership is banned. Please contact reception.":
+    "Üyeliğiniz yasaklandı. Lütfen resepsiyonla iletişime geçin.",
+  "Contact gym reception about your membership.":
+    "Üyeliğinizle ilgili spor salonu resepsiyonuyla iletişime geçin.",
+  "Your membership freeze has ended. Welcome back!":
+    "Üyelik dondurmanız sona erdi. Tekrar hoş geldiniz!",
+  "Your membership is frozen since {{date}}. Scanning in at the turnstile resumes it.":
+    "Üyeliğiniz {{date}} tarihinden beri dondurulmuş durumda. Turnikede QR okutmanız üyeliğinizi yeniden başlatır.",
+  Frozen: "Donduruldu",
+  "Freeze membership": "Üyeliği dondur",
+  "Resume membership": "Üyeliği devam ettir",
+  Freeze: "Dondur",
+  Resume: "Devam ettir",
+  "{{used}} of {{max}} freezes used this year.":
+    "Bu yıl {{max}} dondurma hakkınızdan {{used}} tanesini kullandınız.",
+  "At most {{days}} days of the freeze are added back to your end date.":
+    "Dondurma süresinin en fazla {{days}} günü bitiş tarihinize eklenir.",
+  "Your next turnstile entry ends the freeze automatically, or you can resume it here at any time.":
+    "Turnikeden bir sonraki girişiniz dondurmayı otomatik olarak sonlandırır; dilediğiniz zaman buradan da devam ettirebilirsiniz.",
+  "Your freeze will end now and the frozen days will be added back to your end date.":
+    "Dondurma şimdi sona erer ve dondurulan günler bitiş tarihinize eklenir.",
+  "No freezes left this year.": "Bu yıl dondurma hakkınız kalmadı.",
+  "The membership could not be frozen. Please try again.":
+    "Üyelik dondurulamadı. Lütfen tekrar deneyin.",
+  "The membership could not be resumed. Please try again.":
+    "Üyelik devam ettirilemedi. Lütfen tekrar deneyin.",
+  "Membership freezing is not available right now.":
+    "Üyelik dondurma şu anda kullanılamıyor.",
+  "You have no freezes left this year.": "Bu yıl dondurma hakkınız kalmadı.",
+  "Your membership is already frozen.": "Üyeliğiniz zaten dondurulmuş.",
+  "Your membership is not frozen.": "Üyeliğiniz dondurulmuş değil.",
+  "You need a running membership period to freeze your membership.":
+    "Üyeliği dondurmak için devam eden bir üyelik döneminiz olmalı.",
+  "Your membership is being updated. Please try again in a moment.":
+    "Üyeliğiniz güncelleniyor. Lütfen birazdan tekrar deneyin.",
+  "Unban the member before changing their role.":
+    "Üyenin rolünü değiştirmeden önce yasağını kaldırın.",
+  "End the member's freeze before changing their role.":
+    "Üyenin rolünü değiştirmeden önce dondurmayı sonlandırın.",
+  "You are banned": "YASAKLANDIN",
+  "Reason: {{reason}}": "Sebep: {{reason}}",
+  "Banned on {{date}}": "Yasaklanma tarihi: {{date}}",
+  "Please contact the gym reception for more information.":
+    "Daha fazla bilgi için lütfen spor salonu resepsiyonuyla iletişime geçin.",
 } as const;
 
 const en = Object.fromEntries(Object.keys(tr).map((key) => [key, key])) as {

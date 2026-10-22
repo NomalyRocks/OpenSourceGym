@@ -40,9 +40,18 @@ import { distanceMeters, evaluateGeofence } from "../geo.js";
 import { isImpossibleTravel } from "../travel.js";
 import { verifyGateQr } from "../gateQr.js";
 import {
+  checkEntryDuringFreeze,
+  endFreeze,
+  findOpenFreeze,
+  getFreezeAllowance,
+  settlePendingCredit,
+  startFreeze,
+} from "../freeze.js";
+import {
   checkEntrySubscription,
   getSubscriptionSummary,
   listActiveSubscriptionGymIds,
+  SubscriptionLockTimeoutError,
 } from "../subscriptions.js";
 import {
   canAccessGym,
@@ -63,6 +72,7 @@ import {
 } from "../occupancy.js";
 import { enqueueEntryEvent } from "../eventQueue.js";
 import { logAudit } from "../audit.js";
+import { logMemberAudit } from "../memberScope.js";
 import { isQrBlocked, recordSharingSignal, QR_LOC_KEY } from "../sharing.js";
 import {
   ProfilePhotoBusyError,
@@ -170,7 +180,14 @@ meRouter.get(
   "/subscription",
   requireRole("owner", "admin", "staff", "member"),
   authed(async (req, res) => {
-    const body: MySubscription = await getSubscriptionSummary(req.user.id);
+    const summary = await getSubscriptionSummary(req.user.id);
+    const body: MySubscription = {
+      ...summary,
+      freezeAllowance: await getFreezeAllowance(new ObjectId(req.user.id), {
+        isMember: req.user.role === "member",
+        banned: req.user.ban !== null,
+      }),
+    };
     res.json(body);
   }),
 );
@@ -419,6 +436,8 @@ const GATE_SCAN_RATE_LIMIT = 30;
 const GATE_SCAN_RATE_WINDOW_SECONDS = 60;
 const GATE_OPEN_LOCK_TTL_MS = 3_000;
 const GATE_OPEN_MS = 500;
+// The turnstile is already open: on a timeout the freeze stays open and the next entry scan ends it.
+const GATE_FREEZE_END_WAIT_MS = 1_000;
 const LOCATION_HISTORY_TTL_SECONDS = 120;
 const LOCATION_DRIFT_WINDOW_MS = 120_000;
 const LOCATION_DRIFT_THRESHOLD_M = 1000;
@@ -730,6 +749,13 @@ meRouter.post(
       return;
     }
 
+    // A banned member is refused ENTRY only; an exit is never blocked, so a
+    // ban cannot trap someone inside. `ban` comes from the per-request re-read.
+    if (direction === "in" && req.user.ban) {
+      deny("BANNED", "Your account is banned. Contact reception.");
+      return;
+    }
+
     // A deactivated gym refuses every ENTRY scan; exits are never refused, so
     // nobody is trapped inside when the owner deactivates a gym.
     if (direction === "in" && !gym.active) {
@@ -766,11 +792,33 @@ meRouter.post(
       }
     }
 
+    // An interrupted freeze credit is settled first, so the periods judged below
+    // are final. A failure is logged and the scan continues with the normal check.
+    if (direction === "in" && req.user.role === "member") {
+      try {
+        await settlePendingCredit(new ObjectId(req.user.id));
+      } catch (error) {
+        console.error("pending freeze credit settle failed:", error);
+      }
+    }
+
+    // Soft unfreeze: an entry scan by a frozen member resumes the membership.
+    // The freeze is NOT ended here: a scan refused further down (wrong gym,
+    // anti-passback, offline gate, ...) must leave it untouched. The decision
+    // below is a dry run of the credit; the freeze really ends only after the
+    // turnstile has opened.
+    const frozen =
+      direction === "in" && req.user.role === "member"
+        ? await findOpenFreeze(new ObjectId(req.user.id))
+        : null;
+
     // Do not check subscriptions on exit; a member with an expired subscription must be able to leave.
     // Staff pass the subscription check at their own gyms (the owner at every
     // gym): they still go through the QR flow, geofence and anti-passback.
     if (direction === "in" && !canAccessGym(req.user, gymId)) {
-      const subscription = await checkEntrySubscription(req.user.id, gymId);
+      const subscription = frozen
+        ? await checkEntryDuringFreeze(req.user.id, gymId, frozen)
+        : await checkEntrySubscription(req.user.id, gymId);
       if (subscription === "none") {
         deny(
           "NO_ACTIVE_SUBSCRIPTION",
@@ -890,6 +938,38 @@ meRouter.post(
     } catch (error) {
       console.error("occupancy update failed after the gate opened:", error);
     }
+    // Every refusal has passed and the gate is open: only now does the freeze
+    // end. The member is already walking through, so a failure here is logged
+    // and never turns into a refusal. The next entry scan retries: an open
+    // freeze is ended again, and an interrupted credit is settled before the
+    // decision (settlePendingCredit), as the hourly reaper also does.
+    let unfrozen = false;
+    if (frozen) {
+      try {
+        const ended = await endFreeze(new ObjectId(req.user.id), {
+          reason: "gate-scan",
+          endedBy: req.user.id,
+          lockWaitMs: GATE_FREEZE_END_WAIT_MS,
+        });
+        if (ended.status === "ended") {
+          unfrozen = true;
+          await logMemberAudit(
+            req.user,
+            "subscription-unfrozen",
+            new ObjectId(req.user.id),
+            {
+              freezeId: ended.freeze._id.toHexString(),
+              startedAt: ended.freeze.startedAt.toISOString(),
+              endedAt: ended.freeze.endedAt?.toISOString() ?? null,
+              creditedMs: ended.creditedMs,
+              reason: "gate-scan",
+            },
+          );
+        }
+      } catch (error) {
+        console.error("freeze end failed after the gate opened:", error);
+      }
+    }
     enqueueEntryEvent({
       gymId,
       autoExitedGymId,
@@ -909,8 +989,152 @@ meRouter.post(
       deviceName,
       direction,
       openMs: GATE_OPEN_MS,
+      ...(unfrozen ? { unfrozen: true } : {}),
     };
     res.json(body);
+  }),
+);
+
+// Member self-service freeze (docs/member-controls.md). Same service, lock and
+// credit logic as the admin routes; the member is the actor.
+function sendFreezeRefusal(
+  res: express.Response,
+  status:
+    | "disabled"
+    | "out-of-scope"
+    | "already-frozen"
+    | "no-active-period"
+    | "limit-reached",
+): void {
+  switch (status) {
+    case "out-of-scope":
+      // Unreachable for self-service (no scope callback); kept exhaustive.
+      sendApiError(res, 403, "GYM_OUT_OF_SCOPE", "Not allowed.");
+      return;
+    case "disabled":
+      sendApiError(
+        res,
+        409,
+        "FREEZE_DISABLED",
+        "Subscription freezing is turned off.",
+      );
+      return;
+    case "already-frozen":
+      sendApiError(
+        res,
+        409,
+        "ALREADY_FROZEN",
+        "This membership is already frozen.",
+      );
+      return;
+    case "no-active-period":
+      sendApiError(
+        res,
+        409,
+        "NO_ACTIVE_PERIOD",
+        "You have no subscription period running right now.",
+      );
+      return;
+    case "limit-reached":
+      sendApiError(
+        res,
+        409,
+        "FREEZE_LIMIT_REACHED",
+        "The yearly freeze limit has been reached.",
+      );
+      return;
+  }
+}
+
+function sendSubscriptionBusy(res: express.Response): void {
+  sendApiError(
+    res,
+    503,
+    "SUBSCRIPTION_BUSY",
+    "A subscription operation is in progress. Please try again.",
+  );
+}
+
+meRouter.post(
+  "/freeze",
+  requireRole("member"),
+  authed(async (req, res) => {
+    if (req.user.ban) {
+      sendApiError(
+        res,
+        403,
+        "BANNED",
+        "Your account is banned. Contact reception.",
+      );
+      return;
+    }
+    try {
+      const result = await startFreeze(new ObjectId(req.user.id), req.user.id, {
+        selfService: true,
+      });
+      if (result.status !== "started") {
+        sendFreezeRefusal(res, result.status);
+        return;
+      }
+      await logMemberAudit(
+        req.user,
+        "subscription-frozen",
+        new ObjectId(req.user.id),
+        {
+          freezeId: result.freeze._id.toHexString(),
+          startedAt: result.freeze.startedAt.toISOString(),
+          maxDays: result.freeze.maxDays,
+          selfService: true,
+        },
+      );
+      res.json({ ok: true });
+    } catch (error) {
+      if (error instanceof SubscriptionLockTimeoutError) {
+        sendSubscriptionBusy(res);
+        return;
+      }
+      throw error;
+    }
+  }),
+);
+
+// Resume is always allowed (even when freezing was switched off or the member
+// is banned), so a member can never be stuck frozen.
+meRouter.delete(
+  "/freeze",
+  requireRole("member"),
+  authed(async (req, res) => {
+    try {
+      const result = await endFreeze(new ObjectId(req.user.id), {
+        reason: "resumed",
+        endedBy: req.user.id,
+      });
+      if (result.status !== "ended") {
+        // "out-of-scope" cannot happen here (no scope callback is passed).
+        sendApiError(res, 409, "NOT_FROZEN", "This membership is not frozen.");
+        return;
+      }
+      await logMemberAudit(
+        req.user,
+        "subscription-unfrozen",
+        new ObjectId(req.user.id),
+        {
+          freezeId: result.freeze._id.toHexString(),
+          startedAt: result.freeze.startedAt.toISOString(),
+          endedAt: result.freeze.endedAt?.toISOString() ?? null,
+          creditedMs: result.creditedMs,
+          reason: "resumed",
+          selfService: true,
+        },
+      );
+      res.json({ ok: true });
+    } catch (error) {
+      if (error instanceof SubscriptionLockTimeoutError) {
+        sendSubscriptionBusy(res);
+        return;
+      }
+      throw error;
+    }
   }),
 );
 
@@ -1019,6 +1243,8 @@ meRouter.post(
         status: "pending",
         resolvedAt: null,
         resolvedBy: null,
+        requestedBy: null,
+        reason: null,
       });
     } catch (err) {
       if (isDuplicateKeyError(err)) {

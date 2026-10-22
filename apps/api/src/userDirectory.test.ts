@@ -122,3 +122,34 @@ test("name sort requests a Turkish collation, createdAt does not", () => {
     undefined,
   );
 });
+
+test("directory query accepts the frozen status", () => {
+  assert.deepEqual(
+    userDirectoryQuerySchema.parse({ status: "frozen,active" }).status,
+    ["frozen", "active"],
+  );
+});
+
+test("status derivation checks the open freeze first, in both pipeline shapes", () => {
+  const stagesOf = (pipeline: object[]): object[] => {
+    const facet = pipeline.find((s) => "$facet" in s) as {
+      $facet: { items: object[] };
+    };
+    return pipeline.concat(facet.$facet.items);
+  };
+  for (const query of [{}, { status: "frozen" }]) {
+    const plan = buildDirectoryPlan(
+      userDirectoryQuerySchema.parse(query),
+      {},
+      NOW,
+    );
+    const json = JSON.stringify(stagesOf(plan.pipeline));
+    assert.ok(json.includes('"from":"subscription_freezes"'));
+    const frozenAt = json.indexOf('"then":"frozen"');
+    assert.ok(frozenAt > 0);
+    assert.ok(frozenAt < json.indexOf('"then":"active"'));
+    assert.ok(
+      json.indexOf('"then":"active"') < json.indexOf('"then":"expired"'),
+    );
+  }
+});

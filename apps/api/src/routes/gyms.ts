@@ -1,22 +1,25 @@
 import { Router } from "express";
+import { ObjectId } from "mongodb";
 import { z } from "zod";
 import type {
   AdminStats,
   EntryEvent,
   Gym,
+  GymInsideResponse,
   OccupancyResponse,
   Page,
 } from "@opengym/shared";
 import { sendApiError } from "../apiError.js";
 import { logAudit } from "../audit.js";
-import { db, gymCollection } from "../db.js";
+import { db, gymCollection, toObjectId, userCollection } from "../db.js";
+import { buildProfilePhotoUrl } from "../profilePhoto.js";
 import {
   DEFAULT_AUTO_EXIT_HOURS,
   findGym,
   listGymsFor,
   toGym,
 } from "../gyms.js";
-import { getOccupancy } from "../occupancy.js";
+import { getOccupancy, listInside } from "../occupancy.js";
 import {
   GEOFENCE_RADIUS_M_DEFAULT,
   GEOFENCE_RADIUS_M_MAX,
@@ -29,6 +32,7 @@ import {
   requireRole,
 } from "../middleware.js";
 import { dateRangeFilter, findPage, pageQuerySchema } from "../pagination.js";
+import { countFrozenMembers } from "../frozenMembers.js";
 import { countActiveMembers, countRenewalsDue } from "../reports.js";
 import { devicesRouter } from "./devices.js";
 import { gymReportsRouter } from "./reports.js";
@@ -259,6 +263,49 @@ gymsRouter.get(
   }),
 );
 
+// Who is counted inside right now (panel), longest-staying first.
+gymsRouter.get(
+  "/:gymId/inside",
+  requireGymAccess("owner", "admin", "staff"),
+  gymScoped(async (req, res) => {
+    const gymId = req.gym._id.toHexString();
+    const inside = await listInside(gymId);
+    const users = await userCollection()
+      .find(
+        {
+          _id: {
+            $in: inside
+              .map((e) => toObjectId(e.userId))
+              .filter((id): id is ObjectId => id !== null),
+          },
+        },
+        {
+          projection: { name: 1, profilePhotoKey: 1, profilePhotoUpdatedAt: 1 },
+        },
+      )
+      .toArray();
+    const byId = new Map(users.map((u) => [u._id.toHexString(), u]));
+    const body: GymInsideResponse = {
+      gymId,
+      members: inside.map((e) => {
+        const user = byId.get(e.userId);
+        return {
+          userId: e.userId,
+          name: user?.name ?? "",
+          profilePhotoUrl: user
+            ? buildProfilePhotoUrl(
+                user.profilePhotoKey,
+                user.profilePhotoUpdatedAt,
+              )
+            : null,
+          enteredAt: new Date(e.enteredAt).toISOString(),
+        };
+      }),
+    };
+    res.json(body);
+  }),
+);
+
 gymsRouter.put(
   "/:gymId/settings",
   requireGymAccess("owner", "admin"),
@@ -313,11 +360,16 @@ gymsRouter.get(
   gymScoped(async (req, res) => {
     const now = new Date();
     const gymId = req.gym._id.toHexString();
-    const [activeMembers, renewalsDue] = await Promise.all([
+    const [activeMembers, renewalsDue, frozen] = await Promise.all([
       countActiveMembers(db, now, gymId),
       countRenewalsDue(db, now, gymId),
+      countFrozenMembers(db, now),
     ]);
-    const body: AdminStats = { activeMembers, renewalsDue };
+    const body: AdminStats = {
+      activeMembers,
+      frozenMembers: frozen.byGym.get(gymId) ?? 0,
+      renewalsDue,
+    };
     res.json(body);
   }),
 );
