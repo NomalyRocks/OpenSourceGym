@@ -176,8 +176,8 @@ export interface MySubscription {
   remainingDays: number;
   /** Gyms the active period allows (empty when not active) */
   gymIds: string[];
-  /** Same gyms with display names */
-  gyms: GymRef[];
+  /** Same gyms with display names and each gym's own entitlement window */
+  gyms: MySubscriptionGym[];
   /** Set while the membership is frozen; the next entry scan ends the freeze */
   freeze: { startedAt: string } | null;
   /** What the member may do from the app (POST/DELETE /api/me/freeze) */
@@ -194,6 +194,18 @@ export interface MyFreezeAllowance {
   usedInLastYear: number;
   maxPerYear: number;
   maxDays: number;
+}
+
+/**
+ * A gym on the member's current membership. `startsAt`/`endsAt`/`remainingDays`
+ * cover only the contiguous periods that include this gym, so they can differ
+ * per gym; while frozen they are previewed as if the freeze ended now, like the
+ * chain-level fields on {@link MySubscription}.
+ */
+export interface MySubscriptionGym extends GymRef {
+  startsAt: string;
+  endsAt: string;
+  remainingDays: number;
 }
 
 /** Minimal gym reference embedded in member-facing payloads */
@@ -638,6 +650,33 @@ export interface MemberPresence {
   gymName: string;
   /** Entry turnstile time (ISO); the panel derives "minutes inside" from it */
   enteredAt: string;
+}
+
+/** GET /api/me/presence — the member's own "am I inside" state */
+export interface MyPresence {
+  /**
+   * Where the member currently counts as inside (same autoExitHours cutoff as
+   * the occupancy figure); null when outside.
+   */
+  inside: MemberPresence | null;
+  /** Most recent allowed entry scan at any gym; null when there is none */
+  lastEntry: { gymId: string; gymName: string; at: string } | null;
+}
+
+/**
+ * GET /api/me/gyms/:gymId/busy-hours — typical entry traffic per hour for
+ * today's weekday, averaged over recent same-weekday days.
+ */
+export interface MyBusyHours {
+  gymId: string;
+  /** IANA time zone the hour buckets are cut in */
+  timeZone: string;
+  /** Weekday the profile describes (today in `timeZone`), 0 = Sunday */
+  weekday: number;
+  /** How many past same-weekday days were averaged (0 when there is no history) */
+  sampleDays: number;
+  /** Always 24 rows, hour 0..23: average allowed entry scans in that hour */
+  hours: { hour: number; avgEntries: number }[];
 }
 
 /** One row of GET /api/admin/gyms/:gymId/inside */

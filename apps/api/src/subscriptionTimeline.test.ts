@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
+import { ObjectId } from "mongodb";
 import {
   addUtcCalendarMonthsClamped,
   calculateFreezeCreditMs,
@@ -10,6 +11,7 @@ import {
   planSubscriptionCancellation,
   planLegacySubscriptionRepairs,
   previewFreezeCredit,
+  summarizeGymAccess,
   summarizeSubscriptionTimeline,
   type SubscriptionTimelineRecord,
 } from "./subscriptionTimeline.js";
@@ -501,5 +503,59 @@ describe("freeze credit repacking", () => {
     assert.equal(remaining(15), 20);
     // Past the cap the credit stops growing and the clock runs again.
     assert.equal(remaining(40), 10);
+  });
+});
+
+describe("summarizeGymAccess", () => {
+  const now = new Date("2026-01-10T00:00:00.000Z");
+  const day = (n: number) => new Date(Date.UTC(2026, 0, n));
+
+  it("gives each gym its own end and days left", () => {
+    const result = summarizeGymAccess(
+      [
+        { startsAt: day(1), endsAt: day(20), gymIds: ["a", "b"] },
+        { startsAt: day(20), endsAt: day(50), gymIds: ["a"] },
+      ],
+      ["a", "b"],
+      now,
+    );
+    assert.equal(result.get("a")?.endsAt?.getTime(), day(50).getTime());
+    assert.equal(result.get("a")?.remainingDays, 40);
+    assert.equal(result.get("b")?.endsAt?.getTime(), day(20).getTime());
+    assert.equal(result.get("b")?.remainingDays, 10);
+  });
+
+  it("stops at a gap in that gym's own coverage", () => {
+    const result = summarizeGymAccess(
+      [
+        { startsAt: day(1), endsAt: day(20), gymIds: ["a"] },
+        { startsAt: day(25), endsAt: day(50), gymIds: ["a"] },
+      ],
+      ["a"],
+      now,
+    );
+    assert.equal(result.get("a")?.endsAt?.getTime(), day(20).getTime());
+  });
+
+  it("does not treat a gym only on a future period as active", () => {
+    const result = summarizeGymAccess(
+      [
+        { startsAt: day(1), endsAt: day(20), gymIds: ["a"] },
+        { startsAt: day(20), endsAt: day(50), gymIds: ["b"] },
+      ],
+      ["b"],
+      now,
+    );
+    assert.equal(result.get("b")?.active, false);
+  });
+
+  it("matches mixed ObjectId and string ids", () => {
+    const id = new ObjectId();
+    const result = summarizeGymAccess(
+      [{ startsAt: day(1), endsAt: day(20), gymIds: [id] }],
+      [id.toHexString()],
+      now,
+    );
+    assert.equal(result.get(id.toHexString())?.active, true);
   });
 });

@@ -400,6 +400,18 @@ export const myFreezeAllowanceSchema = withId(
   "MyFreezeAllowance",
 );
 
+export const mySubscriptionGymSchema = withId(
+  z.object({
+    id: objectIdSchema,
+    name: z.string(),
+    active: z.boolean(),
+    startsAt: isoDateTimeSchema,
+    endsAt: isoDateTimeSchema,
+    remainingDays: z.number().int().nonnegative(),
+  }),
+  "MySubscriptionGym",
+);
+
 export const mySubscriptionSchema = withId(
   z.object({
     active: z.boolean(),
@@ -407,7 +419,7 @@ export const mySubscriptionSchema = withId(
     endsAt: isoDateTimeSchema.nullable(),
     remainingDays: z.number().int().nonnegative(),
     gymIds: z.array(objectIdSchema),
-    gyms: z.array(gymRefSchema),
+    gyms: z.array(mySubscriptionGymSchema),
     freeze: z.object({ startedAt: isoDateTimeSchema }).nullable().meta({
       description: "Set while frozen; the next entry scan resumes it",
     }),
@@ -812,4 +824,40 @@ export const memberDetailSchema = withId(
       .nullable(),
   }),
   "MemberDetail",
+);
+
+export const myPresenceSchema = withId(
+  z.object({
+    inside: z
+      .object({
+        gymId: objectIdSchema,
+        gymName: z.string(),
+        enteredAt: isoDateTimeSchema,
+      })
+      .nullable(),
+    lastEntry: z
+      .object({
+        gymId: objectIdSchema,
+        gymName: z.string(),
+        at: isoDateTimeSchema,
+      })
+      .nullable(),
+  }),
+  "MyPresence",
+);
+
+export const myBusyHoursSchema = withId(
+  z.object({
+    gymId: objectIdSchema,
+    timeZone: z.string(),
+    weekday: z.number().int().min(0).max(6),
+    sampleDays: z.number().int().min(0).max(4),
+    hours: z.array(
+      z.object({
+        hour: z.number().int().min(0).max(23),
+        avgEntries: z.number().nonnegative(),
+      }),
+    ),
+  }),
+  "MyBusyHours",
 );

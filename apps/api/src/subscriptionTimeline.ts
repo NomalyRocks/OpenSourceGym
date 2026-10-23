@@ -1,4 +1,5 @@
 import type { SubscriptionMonths } from "@opengym/shared";
+import type { ObjectId } from "mongodb";
 
 const DAY_MS = 86_400_000;
 
@@ -322,4 +323,28 @@ export function summarizeSubscriptionTimeline(
       Math.ceil((entitlementEndsAt.getTime() - now.getTime()) / DAY_MS),
     ),
   };
+}
+
+/**
+ * Per-gym entitlement windows. Each gym is summarized from only the records
+ * that list it, so the contiguity rule is the same as the chain-level summary
+ * but a gym absent from a period does not inherit that period's days.
+ */
+export function summarizeGymAccess(
+  records: readonly {
+    startsAt: Date;
+    endsAt: Date;
+    gymIds: readonly (ObjectId | string)[];
+  }[],
+  gymIds: readonly string[],
+  now: Date,
+): Map<string, SubscriptionSummary> {
+  const result = new Map<string, SubscriptionSummary>();
+  for (const gymId of gymIds) {
+    const covering = records.filter((record) =>
+      record.gymIds.some((id) => String(id) === gymId),
+    );
+    result.set(gymId, summarizeSubscriptionTimeline(covering, now));
+  }
+  return result;
 }

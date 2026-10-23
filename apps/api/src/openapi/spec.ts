@@ -41,6 +41,8 @@ import {
   legalConfigSchema,
   myDeletionRequestSchema,
   myEntriesSchema,
+  myPresenceSchema,
+  myBusyHoursSchema,
   myBodyMetricsSchema,
   myBodyMetricsUpdateSchema,
   myProfileSchema,
@@ -1103,6 +1105,36 @@ export const openApiDocument: OpenApiDocument = createDocument({
         responses: protectedResponses({
           "200": jsonResponse("Entry days", myEntriesSchema),
           "400": apiErrorResponse,
+        }),
+      },
+    },
+    "/api/me/presence": {
+      get: {
+        tags: ["me"],
+        operationId: "getMyPresence",
+        summary: "Get my presence",
+        ...requiredRole(
+          "owner | admin | staff | member",
+          "Returns where the caller currently counts as inside and their latest allowed entry scan",
+        ),
+        responses: protectedResponses({
+          "200": jsonResponse("Presence", myPresenceSchema),
+        }),
+      },
+    },
+    "/api/me/gyms/{gymId}/busy-hours": {
+      get: {
+        tags: ["me"],
+        operationId: "getMyGymBusyHours",
+        summary: "Get a gym's typical entry traffic by hour",
+        ...requiredRole(
+          "owner | admin | staff | member",
+          "Average allowed entries per hour over the last four same-weekday days; the gym must be in the caller's active subscription, otherwise (or for an unknown id) GYM_OUT_OF_SCOPE",
+        ),
+        requestParams: { path: gymPathParams },
+        responses: protectedResponses({
+          "200": jsonResponse("Busy hours", myBusyHoursSchema),
+          "403": apiErrorResponse,
         }),
       },
     },
