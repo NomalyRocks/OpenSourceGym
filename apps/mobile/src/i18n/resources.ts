@@ -12,7 +12,6 @@ const tr = {
   Password: "Şifre",
   "New password (min. 8 characters)": "Yeni şifre (min. 8 karakter)",
   "Confirm new password": "Yeni şifre (tekrar)",
-  "Password (min. 8 characters)": "Şifre (min. 8 karakter)",
   "Too many attempts. Please wait one minute.":
     "Çok fazla deneme. Lütfen bir dakika bekleyin.",
   "The email or password is incorrect.": "E-posta veya şifre hatalı.",
@@ -251,6 +250,10 @@ const tr = {
   "Validation starts automatically when a code is detected.":
     "Kod algılandığında doğrulama otomatik başlar.",
   "Turnstile opened": "Turnike açıldı",
+  "Turnstile did not open": "Turnike açılmadı",
+  "Have a good workout": "İyi antrenmanlar",
+  "See you next time": "Görüşmek üzere",
+  "{{device}}": "{{device}}",
   "A {{direction}} record was created for {{device}}.":
     "{{device}} için {{direction}} kaydı oluşturuldu.",
   exit: "çıkış",
@@ -258,14 +261,6 @@ const tr = {
   "The camera will reopen shortly for a new scan.":
     "Yeni tarama için kamera birazdan yeniden açılacak.",
   "Entry could not be completed": "Geçiş tamamlanamadı",
-  "Enable location permission and try again.":
-    "Konum iznini etkinleştirip tekrar deneyin.",
-  "Disable the mock location app and try again.":
-    "Sahte konum uygulamasını kapatıp tekrar deneyin.",
-  "Contact gym reception about the account-sharing block.":
-    "Hesap paylaşımı engeli için salon resepsiyonuna başvurun.",
-  "The turnstile is offline. Ask gym reception for help.":
-    "Turnike çevrimdışı. Salon resepsiyonundan yardım isteyin.",
   "Your location could not be determined. Move somewhere with a clearer view of the sky and try again.":
     "Konumunuz belirlenemedi. Gökyüzünü daha net gören bir yere geçip tekrar deneyin.",
   "Wait a few seconds for the location to be found, then scan again.":
@@ -274,12 +269,6 @@ const tr = {
     "Az önce geçiş yaptınız. Tekrar okutmadan önce biraz bekleyin.",
   "You are not recorded as having entered the gym, so the exit turnstile cannot open. Please contact reception.":
     "Salona giriş kaydınız görünmediği için çıkış turnikesi açılamıyor. Resepsiyona başvurun.",
-  "Wait a moment, then scan again.": "Biraz bekleyip tekrar okutun.",
-  "Ask reception to check you in.": "Resepsiyondan giriş kaydınızı yaptırın.",
-  "Scan the exit turnstile when you leave, then try again.":
-    "Çıkarken çıkış turnikesini okutun, sonra tekrar deneyin.",
-  "The gym has not set its location yet. Ask reception.":
-    "Salon henüz konumunu tanımlamamış. Resepsiyona danışın.",
   "You are already recorded as inside. Use the exit turnstile before entering again.":
     "Zaten içeride görünüyorsunuz. Tekrar girmeden önce çıkış turnikesini kullanın.",
   "Entry is unavailable because the gym location is not configured. Please contact reception.":
@@ -290,8 +279,6 @@ const tr = {
     "Bağlantı kurulamadı. İnternet bağlantınızı kontrol edip tekrar deneyin.",
   "Could not sign out. Please try again.": "Çıkış yapılamadı. Tekrar deneyin.",
   // Splash screen
-  "Your membership and turnstile access in one place":
-    "Üyeliğin ve turnike geçişin tek yerde",
   "Getting ready…": "Hazırlanıyor…",
   // Authentication flow
   "We sent a 6-digit code to your inbox.":
@@ -392,6 +379,39 @@ const tr = {
   "OpenGym {{version}} ({{build}})": "OpenGym {{version}} ({{build}})",
   // Tools and calorie calculator
   Tools: "Araçlar",
+  "Calendar and calculators for your training.":
+    "Antrenman için takvim ve hesaplayıcılar.",
+  "Opens your membership and gym history calendar in full screen.":
+    "Üyelik ve salon geçmişi takvimini tam ekranda açar.",
+  "Your remaining days stop counting while frozen. The end date moves later by the frozen days, up to {{maxDays}} days.":
+    "Dondurma süresince kalan günlerin işlemez. Bitiş tarihin dondurulan gün kadar, en fazla {{maxDays}} gün ileri kayar.",
+  "Your next turnstile entry ends the freeze automatically.":
+    "Turnikeden bir sonraki girişin dondurmayı otomatik olarak bitirir.",
+  "Your remaining days start counting again from today. Your end date moves later by the days you were frozen.":
+    "Kalan günlerin bugünden itibaren yeniden işlemeye başlar. Bitiş tarihin dondurulduğun gün kadar ileri kayar.",
+  "Maximum length": "En uzun süre",
+  "Used this year": "Bu yıl kullanılan",
+  "{{n}} days": "{{n}} gün",
+  "{{used}} of {{max}}": "{{used}} / {{max}}",
+  "This week": "Bu hafta",
+  "{{n}}-week streak": "{{n}} haftalık seri",
+  "No streak yet — visit this week to start one.":
+    "Henüz seri yok — başlatmak için bu hafta gel.",
+  "Visits in the last 4 weeks": "Son 4 haftadaki gelişler",
+  "{{gym}} is quiet right now ({{percent}}%)":
+    "{{gym}} şu an sakin (%{{percent}})",
+  "{{n}} min": "{{n}} dk",
+  "Inside {{gym}} for {{duration}}": "{{gym}} salonunda, süre: {{duration}}",
+  "Busy hours today": "Bugün yoğun saatler",
+  "Usually quietest around {{hour}}:00":
+    "Genelde en sakin saat: {{hour}}:00 civarı",
+  "Ends {{date}}": "Bitiş: {{date}}",
+  "Gym {{index}} of {{count}}": "Salon {{index}} / {{count}}",
+  "No active membership": "Aktif üyelik yok",
+  "Your membership is set up at the front desk. Once it is active, your gyms and their live occupancy appear here.":
+    "Üyeliğin resepsiyonda tanımlanır. Aktif olduğunda salonların ve anlık doluluk burada görünür.",
+  "Are you sure you want to sign out of your account?":
+    "Hesabından çıkış yapmak istediğine emin misin?",
   "Calculators that help you plan your training goals.":
     "Antrenman hedeflerini planlamana yardımcı olan hesaplayıcılar.",
   "Daily calorie needs": "Günlük kalori ihtiyacı",
@@ -494,8 +514,6 @@ const tr = {
   Continue: "Devam",
   "Your membership is banned. Please contact reception.":
     "Üyeliğiniz yasaklandı. Lütfen resepsiyonla iletişime geçin.",
-  "Contact gym reception about your membership.":
-    "Üyeliğinizle ilgili spor salonu resepsiyonuyla iletişime geçin.",
   "Your membership freeze has ended. Welcome back!":
     "Üyelik dondurmanız sona erdi. Tekrar hoş geldiniz!",
   "Your membership is frozen since {{date}}. Scanning in at the turnstile resumes it.":

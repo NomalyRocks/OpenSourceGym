@@ -1,10 +1,17 @@
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Pressable, StyleSheet, Text, View } from "react-native";
-import { CalculatorGlyph, ChevronRightGlyph } from "../components/icons";
+import {
+  CalculatorGlyph,
+  CalendarGlyph,
+  ChevronRightGlyph,
+} from "../components/icons";
 import { useTheme, useThemedStyles, type Theme } from "../theme";
 import { Plate, ScreenHeader, ScrollScreen } from "../ui";
+import { Calendar } from "./Calendar";
 import { CalorieCalculator } from "./CalorieCalculator";
+
+type OpenTool = "calendar" | "calculator" | null;
 
 export function Tools({
   onFullscreenChange,
@@ -14,7 +21,7 @@ export function Tools({
   const { t } = useTranslation();
   const theme = useTheme();
   const styles = useThemedStyles(toolsStyles);
-  const [calculatorOpen, setCalculatorOpen] = useState(false);
+  const [openTool, setOpenTool] = useState<OpenTool>(null);
 
   useEffect(
     () => () => {
@@ -23,25 +30,28 @@ export function Tools({
     [onFullscreenChange],
   );
 
-  function openCalculator() {
-    setCalculatorOpen(true);
+  function open(tool: Exclude<OpenTool, null>) {
+    setOpenTool(tool);
     onFullscreenChange(true);
   }
 
-  function closeCalculator() {
-    setCalculatorOpen(false);
+  function close() {
+    setOpenTool(null);
     onFullscreenChange(false);
   }
 
-  if (calculatorOpen) {
-    return <CalorieCalculator onClose={closeCalculator} />;
+  if (openTool === "calculator") {
+    return <CalorieCalculator onClose={close} />;
+  }
+  if (openTool === "calendar") {
+    return <Calendar active onClose={close} />;
   }
 
   return (
     <ScrollScreen>
       <ScreenHeader
         title={t("Tools")}
-        subtitle={t("Calculators that help you plan your training goals.")}
+        subtitle={t("Calendar and calculators for your training.")}
       />
 
       {/* Single-row, full-width card: a two-column grid would remain half empty
@@ -50,11 +60,41 @@ export function Tools({
       <View style={styles.list}>
         <Pressable
           accessibilityRole="button"
+          accessibilityLabel={t("Calendar")}
+          accessibilityHint={t(
+            "Opens your membership and gym history calendar in full screen.",
+          )}
+          onPress={() => open("calendar")}
+        >
+          {({ pressed }) => (
+            <Plate style={pressed && styles.cardPressed}>
+              <View style={styles.cardRow}>
+                <View style={styles.iconWell}>
+                  <CalendarGlyph size={26} color={theme.colors.accent} />
+                </View>
+                <View style={styles.cardCopy}>
+                  <Text style={styles.cardTitle}>{t("Calendar")}</Text>
+                  <Text style={styles.cardBody}>
+                    {t(
+                      "See your membership period and gym history day by day.",
+                    )}
+                  </Text>
+                </View>
+                <ChevronRightGlyph
+                  size={18}
+                  color={theme.colors.textTertiary}
+                />
+              </View>
+            </Plate>
+          )}
+        </Pressable>
+        <Pressable
+          accessibilityRole="button"
           accessibilityLabel={t("Daily calorie needs")}
           accessibilityHint={t(
             "Opens the calorie and macro calculator in full screen.",
           )}
-          onPress={openCalculator}
+          onPress={() => open("calculator")}
         >
           {({ pressed }) => (
             <Plate style={pressed && styles.cardPressed}>

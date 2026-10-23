@@ -184,7 +184,7 @@ const verifyStyles = (theme: Theme) =>
       justifyContent: "center",
       gap: theme.spacing.xs,
     },
-    resendLabel: { ...theme.type.supporting, color: theme.colors.accent },
+    resendLabel: { ...theme.type.supporting, color: theme.colors.link },
     resendLabelIdle: { color: theme.colors.textTertiary },
     countdown: {
       ...theme.type.label,

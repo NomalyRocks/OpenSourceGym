@@ -141,6 +141,28 @@ export function CalendarGlyph({ size = 22, color }: IconProps) {
   );
 }
 
+/** Dumbbell: bar with a weight plate on each end. */
+export function GymGlyph({ size = 22, color }: IconProps) {
+  const u = size / 24;
+  return (
+    <Frame size={size}>
+      <View style={line(u, color, 6, 11, 12, STROKE * 1.2)} />
+      <View
+        style={rect(u, 3, 7, 3.5, 10, {
+          backgroundColor: color,
+          borderRadius: 1.2 * u,
+        })}
+      />
+      <View
+        style={rect(u, 17.5, 7, 3.5, 10, {
+          backgroundColor: color,
+          borderRadius: 1.2 * u,
+        })}
+      />
+    </Frame>
+  );
+}
+
 /** Toolbox: 2×2 module grid representing different calculators. */
 export function ToolsGlyph({ size = 22, color }: IconProps) {
   const u = size / 24;

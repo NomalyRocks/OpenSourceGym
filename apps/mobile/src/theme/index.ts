@@ -13,6 +13,7 @@ export {
   type ThemeShadows,
 } from "./tokens";
 export {
+  BrandThemeScope,
   ThemeProvider,
   useTheme,
   useThemeMode,

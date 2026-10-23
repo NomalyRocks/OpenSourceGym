@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
+import type { TFunction } from "i18next";
 import {
   ActivityIndicator,
   Animated,
@@ -15,20 +16,13 @@ import {
 } from "expo-camera";
 import * as Haptics from "expo-haptics";
 import * as Location from "expo-location";
-import type { GateRejectCode, GateScanResponse } from "@opengym/shared";
+import type { GateScanResponse } from "@opengym/shared";
 import { ApiError, api } from "../lib/api";
-import { AlertGlyph, CheckGlyph, QrGlyph } from "../components/icons";
+import { QrGlyph } from "../components/icons";
+import { ScanResultOverlay } from "../components/ScanResultOverlay";
 import { useTheme, useThemedStyles, type Theme } from "../theme";
-import {
-  Button,
-  Screen,
-  ScreenHeader,
-  StatusMessage,
-  easing,
-  useReducedMotion,
-} from "../ui";
+import { Button, Screen, ScreenHeader, easing, useReducedMotion } from "../ui";
 import { errorMessage } from "../i18n/errors";
-import type { MobileTranslationKey } from "../i18n/resources";
 
 type ScanState =
   | { kind: "scanning" }
@@ -147,6 +141,9 @@ export function GateScan({ onBanned }: { onBanned?: () => void } = {}) {
   const [permission, requestPermission] = useCameraPermissions();
   const [state, setState] = useState<ScanState>({ kind: "scanning" });
   const busyRef = useRef(false);
+  const frameRef = useRef<View>(null);
+  /** Window position of the viewfinder center, where the result circle grows from. */
+  const originRef = useRef<{ x: number; y: number } | null>(null);
   const resetTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   /** Newest fix from the warm-up watcher; consumed at scan time. */
   const positionRef = useRef<Location.LocationObject | null>(null);
@@ -289,6 +286,9 @@ export function GateScan({ onBanned }: { onBanned?: () => void } = {}) {
       if (busyRef.current || !result.data.startsWith(GATE_QR_PREFIX)) return;
 
       busyRef.current = true;
+      frameRef.current?.measureInWindow((x, y, w, h) => {
+        if (w > 0 && h > 0) originRef.current = { x: x + w / 2, y: y + h / 2 };
+      });
       setState({ kind: "validating" });
 
       // Sending the scan without coordinates gets it refused, so this is the
@@ -395,7 +395,7 @@ export function GateScan({ onBanned }: { onBanned?: () => void } = {}) {
 
       {scanning ? (
         <View style={styles.scanBody}>
-          <View style={styles.cameraFrame}>
+          <View ref={frameRef} style={styles.cameraFrame}>
             <CameraView
               style={StyleSheet.absoluteFill}
               facing="back"
@@ -431,107 +431,76 @@ export function GateScan({ onBanned }: { onBanned?: () => void } = {}) {
               : t("Validation starts automatically when a code is detected.")}
           </Text>
         </View>
-      ) : state.kind === "success" ? (
-        <View style={styles.resultPanel}>
-          <View style={[styles.resultIcon, styles.resultIconSuccess]}>
-            <CheckGlyph size={34} color={theme.colors.success} />
-          </View>
-          <Text style={styles.resultTitle}>{t("Turnstile opened")}</Text>
-          <Text style={styles.resultDetail}>
-            {t("A {{direction}} record was created for {{device}}.", {
-              device: state.data.deviceName,
-              direction:
-                state.data.direction === "out" ? t("exit") : t("entry"),
-            })}
-          </Text>
-          {state.data.unfrozen ? (
-            <StatusMessage
-              tone="success"
-              style={styles.unfrozenNote}
-              text={t("Your membership freeze has ended. Welcome back!")}
-            />
-          ) : null}
-          <StatusMessage
-            tone="success"
-            text={t("The camera will reopen shortly for a new scan.")}
-          />
-        </View>
       ) : (
-        <View style={styles.resultPanel}>
-          <View style={[styles.resultIcon, styles.resultIconError]}>
-            <AlertGlyph size={32} color={theme.colors.error} />
-          </View>
-          <Text style={styles.resultTitle}>
-            {t("Entry could not be completed")}
-          </Text>
-          <Text style={styles.resultDetail}>{state.message}</Text>
-          <RecoveryHint
-            code={state.code}
-            locationUnavailable={state.locationUnavailable}
-          />
-          <View style={styles.resultAction}>
-            <Button title={t("Scan again")} onPress={resetToScanning} />
-          </View>
+        <View style={styles.scanBody}>
+          <View style={styles.cameraFrame} />
         </View>
       )}
+
+      {state.kind === "success" ? (
+        <ScanResultOverlay
+          kind="success"
+          title={t("Turnstile opened")}
+          subtitle={
+            state.data.direction === "out"
+              ? t("See you next time")
+              : t("Have a good workout")
+          }
+          detail={t("{{device}}", { device: state.data.deviceName })}
+          note={
+            state.data.unfrozen
+              ? t("Your membership freeze has ended. Welcome back!")
+              : undefined
+          }
+          primary={{ title: t("Scan again"), onPress: resetToScanning }}
+          origin={originRef.current}
+          onRequestClose={resetToScanning}
+        />
+      ) : state.kind === "denied" ? (
+        <ScanResultOverlay
+          kind="error"
+          title={t("Turnstile did not open")}
+          subtitle={state.message}
+          hint={recoveryHint(state.code, state.locationUnavailable, t)}
+          primary={{ title: t("Scan again"), onPress: resetToScanning }}
+          link={
+            state.code === "LOCATION_REQUIRED" && !state.locationUnavailable
+              ? {
+                  title: t("Open settings"),
+                  onPress: () => void Linking.openSettings(),
+                }
+              : undefined
+          }
+          origin={originRef.current}
+          onRequestClose={resetToScanning}
+        />
+      ) : null}
     </Screen>
   );
 }
 
 /**
- * What the member can actually do about each refusal, in the same shape as the
- * message map in `i18n/errors.ts`. A lookup rather than a ternary chain so that
- * adding a reject code is one line and the compiler checks both halves: the key
- * against {@link GateRejectCode} and the hint against the translation keys.
- *
- * Codes absent here fall back to the generic hint, which is the right default —
- * saying nothing specific beats sending someone to a setting that cannot help.
+ * Extra advice shown under the refusal reason. Nearly every gate message in
+ * `i18n/errors.ts` already says what to do (wait, contact reception, grant
+ * permission), so repeating it is noise; a hint appears only where the message
+ * leaves the member without a next step.
  */
-const recoveryHints = {
-  LOCATION_REQUIRED: "Enable location permission and try again.",
-  MOCK_LOCATION: "Disable the mock location app and try again.",
-  SHARING_BLOCKED: "Contact gym reception about the account-sharing block.",
-  DEVICE_OFFLINE: "The turnstile is offline. Ask gym reception for help.",
-  ALREADY_INSIDE: "Scan the exit turnstile when you leave, then try again.",
-  ENTRY_COOLDOWN: "Wait a moment, then scan again.",
-  // Throttled server-side — the per-member scan window or the duplicate-scan
-  // lock. Both clear themselves in seconds, so this gets the cooldown's advice
-  // rather than being sent to reception over a transient refusal.
-  RATE_LIMITED: "Wait a moment, then scan again.",
-  NOT_INSIDE: "Ask reception to check you in.",
-  // Operator misconfiguration: there is nothing the member can do on their
-  // phone, so do not send them to their own settings.
-  GYM_LOCATION_UNSET: "The gym has not set its location yet. Ask reception.",
-  BANNED: "Contact gym reception about your membership.",
-} satisfies Partial<Record<GateRejectCode, MobileTranslationKey>>;
-
-function RecoveryHint({
-  code,
-  locationUnavailable,
-}: {
-  code?: string;
-  locationUnavailable?: boolean;
-}) {
-  const { t } = useTranslation();
-  // Takes priority over the code: permission is already granted, so pointing at
-  // settings would send the member somewhere that cannot help them.
+function recoveryHint(
+  code: string | undefined,
+  locationUnavailable: boolean | undefined,
+  t: TFunction,
+): string | undefined {
+  // The replacement message says to move; this adds that the fix takes a moment.
   if (locationUnavailable) {
-    const text = t(
+    return t(
       "Wait a few seconds for the location to be found, then scan again.",
     );
-    return <StatusMessage tone="neutral" text={text} />;
   }
-
-  // `code` is whatever the server sent, which is not always a reject code.
-  const hint = code
-    ? recoveryHints[code as keyof typeof recoveryHints]
-    : undefined;
-  return (
-    <StatusMessage
-      tone="neutral"
-      text={t(hint ?? "Contact gym reception if the problem continues.")}
-    />
-  );
+  // States the problem without a next step.
+  if (code === "OUT_OF_RANGE") {
+    return t("Contact gym reception if the problem continues.");
+  }
+  return undefined;
 }
 
 const scanStyles = (theme: Theme) =>
@@ -631,28 +600,6 @@ const scanStyles = (theme: Theme) =>
       paddingHorizontal: theme.spacing.md,
     },
     validatingText: { ...theme.type.label, color: theme.colors.onAccent },
-    hint: {
-      ...theme.type.supporting,
-      color: theme.colors.textSecondary,
-      textAlign: "center",
-      marginTop: theme.spacing.lg,
-    },
-
-    resultPanel: {
-      flex: 1,
-      justifyContent: "center",
-      paddingHorizontal: theme.spacing.md,
-    },
-    resultIcon: {
-      width: 76,
-      height: 76,
-      borderRadius: 38,
-      alignSelf: "center",
-      alignItems: "center",
-      justifyContent: "center",
-    },
-    resultIconSuccess: { backgroundColor: theme.colors.successSurface },
-    resultIconError: { backgroundColor: theme.colors.errorSurface },
     resultTitle: {
       ...theme.type.sectionTitle,
       color: theme.colors.textPrimary,
@@ -666,6 +613,10 @@ const scanStyles = (theme: Theme) =>
       marginTop: theme.spacing.xs,
       marginBottom: theme.spacing.lg,
     },
-    unfrozenNote: { marginBottom: theme.spacing.sm },
-    resultAction: { marginTop: theme.spacing.sm },
+    hint: {
+      ...theme.type.supporting,
+      color: theme.colors.textSecondary,
+      textAlign: "center",
+      marginTop: theme.spacing.lg,
+    },
   });

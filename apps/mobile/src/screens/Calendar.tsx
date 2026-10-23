@@ -73,7 +73,13 @@ function buildGrid(month: Date): DayCell[] {
   return cells;
 }
 
-export function Calendar({ active = true }: { active?: boolean }) {
+export function Calendar({
+  active = true,
+  onClose,
+}: {
+  active?: boolean;
+  onClose?: () => void;
+}) {
   const { t, i18n } = useTranslation();
   const theme = useTheme();
   const styles = useThemedStyles(calendarStyles);
@@ -263,6 +269,7 @@ export function Calendar({ active = true }: { active?: boolean }) {
     <ScrollScreen refreshing={refreshing} onRefresh={refresh}>
       <ScreenHeader
         title={t("Calendar")}
+        onBack={onClose}
         subtitle={t("See your membership period and gym history day by day.")}
       />
 

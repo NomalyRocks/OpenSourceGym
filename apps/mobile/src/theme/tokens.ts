@@ -37,6 +37,8 @@ export interface ThemeColors {
   /** Brand accent: primary action, selected state, focus ring. Not decoration. */
   accent: string;
   accentPressed: string;
+  /** Text-link color; equals `accent` except where accent is too dark as text. */
+  link: string;
   /** Low-opacity accent background (selected row, icon well). */
   accentSurface: string;
   accentBorder: string;
@@ -75,6 +77,7 @@ const darkColors: ThemeColors = {
 
   accent: "#7899f8",
   accentPressed: "#6586e7",
+  link: "#7899f8",
   accentSurface: "rgba(120,153,248,0.16)",
   accentBorder: "rgba(120,153,248,0.38)",
   onAccent: "#080d1a",
@@ -109,6 +112,7 @@ const lightColors: ThemeColors = {
 
   accent: "#3957cc",
   accentPressed: "#2a44bc",
+  link: "#3957cc",
   accentSurface: "rgba(57,87,204,0.10)",
   accentBorder: "rgba(57,87,204,0.28)",
   onAccent: "#ffffff",
@@ -270,7 +274,7 @@ export interface Theme {
   name: ThemeName;
   colors: ThemeColors;
   shadows: ThemeShadows;
-  radius: typeof radius;
+  radius: Record<keyof typeof radius, number>;
   spacing: typeof spacing;
   type: typeof type;
   motion: typeof motion;

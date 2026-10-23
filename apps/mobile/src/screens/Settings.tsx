@@ -1,17 +1,15 @@
 import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Alert, Linking, StyleSheet, Text, View } from "react-native";
+import { Linking, StyleSheet, Text, View } from "react-native";
 import * as Application from "expo-application";
 import type { MyDeletionRequest } from "@opengym/shared";
 import { api } from "../lib/api";
-import { authClient } from "../lib/auth";
 import { errorMessage } from "../i18n/errors";
 import { LanguageSwitcher } from "../i18n/LanguageSwitcher";
 import type { NotificationCenter } from "../lib/notifications";
 import {
   BellGlyph,
   DeviceGlyph,
-  LogOutGlyph,
   MoonGlyph,
   ShieldGlyph,
   SunGlyph,
@@ -26,6 +24,7 @@ import {
 } from "../theme";
 import {
   Button,
+  ConfirmSheet,
   Divider,
   Plate,
   ScreenHeader,
@@ -52,9 +51,8 @@ export function Settings({
 
   const [deletion, setDeletion] = useState<MyDeletionRequest | null>(null);
   const [deletionError, setDeletionError] = useState<string | null>(null);
+  const [deletionSheet, setDeletionSheet] = useState(false);
   const [deletionBusy, setDeletionBusy] = useState(false);
-  const [signOutError, setSignOutError] = useState<string | null>(null);
-  const [signOutBusy, setSignOutBusy] = useState(false);
 
   const loadDeletion = useCallback(async () => {
     try {
@@ -70,20 +68,8 @@ export function Settings({
   }, [loadDeletion]);
 
   function confirmDeletion() {
-    Alert.alert(
-      t("Delete account"),
-      t(
-        "This request will be sent for staff approval. If approved, your account and personal data will be permanently deleted and cannot be restored.",
-      ),
-      [
-        { text: t("Cancel"), style: "cancel" },
-        {
-          text: t("Create request"),
-          style: "destructive",
-          onPress: () => void requestDeletion(),
-        },
-      ],
-    );
+    setDeletionError(null);
+    setDeletionSheet(true);
   }
 
   async function requestDeletion() {
@@ -93,6 +79,7 @@ export function Settings({
       await api("/api/me/deletion-request", { method: "POST" });
       setDeletion(await api<MyDeletionRequest>("/api/me/deletion-request"));
       void center.refresh();
+      setDeletionSheet(false);
     } catch (error) {
       setDeletionError(
         errorMessage(
@@ -123,32 +110,6 @@ export function Settings({
       );
     } finally {
       setDeletionBusy(false);
-    }
-  }
-
-  // Signing out is also a network request: if it fails silently, the member will
-  // not realize the session is still active. Show the error and keep the button retryable.
-  async function signOut() {
-    setSignOutError(null);
-    setSignOutBusy(true);
-    try {
-      // The calculator's on-device health data is removed by the session-loss
-      // effect in App.tsx: it is the only path that also handles revoked sessions.
-      // better-auth reports a failed sign-out by returning `error` rather than
-      // throwing, so checking only the catch block would leave the member
-      // believing the session ended while it is still open.
-      const { error } = await authClient.signOut();
-      if (error) {
-        setSignOutError(
-          errorMessage(error, t, "Could not sign out. Please try again."),
-        );
-      }
-    } catch (error) {
-      setSignOutError(
-        errorMessage(error, t, "Could not sign out. Please try again."),
-      );
-    } finally {
-      setSignOutBusy(false);
     }
   }
 
@@ -260,25 +221,13 @@ export function Settings({
       </View>
 
       <View style={styles.section}>
-        <SectionHeading title={t("Session")} />
-        <StatusMessage text={signOutError} />
-        <Button
-          title={t("Sign out")}
-          variant="secondary"
-          busy={signOutBusy}
-          onPress={() => void signOut()}
-          icon={(color) => <LogOutGlyph size={18} color={color} />}
-        />
-      </View>
-
-      <View style={styles.section}>
         <SectionHeading title={t("Account actions")} />
         <Plate tone="error">
           <Text style={styles.dangerHint}>
             {t("Account deletion requests are reviewed by gym staff.")}
           </Text>
           <View style={styles.control}>
-            <StatusMessage text={deletionError} />
+            <StatusMessage text={deletionSheet ? null : deletionError} />
             {pendingDeletion ? (
               <>
                 <StatusMessage
@@ -323,6 +272,25 @@ export function Settings({
             })
           : "OpenGym"}
       </Text>
+
+      <ConfirmSheet
+        visible={deletionSheet}
+        title={t("Delete account")}
+        body={
+          <Text style={styles.dangerHint}>
+            {t(
+              "This request will be sent for staff approval. If approved, your account and personal data will be permanently deleted and cannot be restored.",
+            )}
+          </Text>
+        }
+        confirmLabel={t("Create request")}
+        confirmTone="danger"
+        cancelLabel={t("Cancel")}
+        busy={deletionBusy}
+        error={deletionError}
+        onConfirm={() => void requestDeletion()}
+        onCancel={() => setDeletionSheet(false)}
+      />
     </ScrollScreen>
   );
 }

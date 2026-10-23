@@ -1,6 +1,5 @@
 import { createContext, useContext, type ReactNode } from "react";
 import {
-  Image,
   Platform,
   Pressable,
   RefreshControl,
@@ -8,6 +7,7 @@ import {
   StyleSheet,
   Text,
   View,
+  useWindowDimensions,
   type StyleProp,
   type ViewStyle,
 } from "react-native";
@@ -16,7 +16,8 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTheme, useThemedStyles, withAlpha, type Theme } from "../theme";
 import { ChevronLeftGlyph } from "../components/icons";
 import { KeyboardAwareScrollView } from "./keyboardAware";
-import authArtwork from "../../assets/auth-equipment.webp";
+import { StatusBar } from "expo-status-bar";
+import { HalftoneBand } from "../components/HalftoneBand";
 
 /**
  * Inset added to the bottom of screen bodies.
@@ -95,74 +96,101 @@ export function LogoMark({
   );
 }
 
+const BAND_BLUE = "#0055FF";
+/** Distance over which the status-bar scrim fades out. */
+const SCRIM_FADE = 28;
+
+/** Glass-style back control on the blue band; matches the language toggle. */
+function BandBackButton({ onPress }: { onPress: () => void }) {
+  const styles = useThemedStyles(layoutStyles);
+  const { t } = useTranslation();
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={t("Back")}
+      onPress={onPress}
+      hitSlop={8}
+      style={({ pressed }) => [
+        styles.authBackWell,
+        pressed && { opacity: 0.7 },
+      ]}
+    >
+      <ChevronLeftGlyph size={20} color="#FFFFFF" />
+    </Pressable>
+  );
+}
+
+export type AuthBandKind = "tall" | "short";
+
+/** Height of the halftone band: status bar inset plus a share of the window. */
+export function authBandHeight(
+  kind: AuthBandKind,
+  insetsTop: number,
+  windowHeight: number,
+): number {
+  return Math.round(insetsTop + windowHeight * (kind === "tall" ? 0.24 : 0.16));
+}
+
 /**
  * Shell for authentication screens.
  *
- * A bounded photo band at the top fades into the page color below; the brand
- * mark sits directly on the boundary. Bounding the photo rather than ghosting
- * it across the entire background keeps both themes readable.
+ * A static halftone band (the splash's dots and wordmark) opens the scroll
+ * content; the form follows on the normal page background and scrolls with it.
+ * The back button sits on the band as a white chevron in a translucent well.
  */
 export function AuthShell({
   children,
   footer,
   onBack,
+  band = "short",
 }: {
   children: ReactNode;
   footer?: ReactNode;
   onBack?: () => void;
+  band?: AuthBandKind;
 }) {
   const theme = useTheme();
   const styles = useThemedStyles(layoutStyles);
   const insets = useSafeAreaInsets();
-  const bandHeight = insets.top + 156;
+  const { height: windowHeight } = useWindowDimensions();
+  const bandHeight = authBandHeight(band, insets.top, windowHeight);
 
   return (
     <View style={styles.flex}>
-      <View
-        style={[styles.authBand, { height: bandHeight }]}
-        pointerEvents="none"
-      >
-        <Image
-          source={authArtwork}
-          style={StyleSheet.absoluteFill}
-          resizeMode="cover"
-          accessibilityIgnoresInvertColors
-        />
-        <View
-          style={[
-            StyleSheet.absoluteFill,
-            {
-              experimental_backgroundImage: `linear-gradient(180deg, ${withAlpha(
-                theme.colors.background,
-                theme.name === "dark" ? 0.34 : 0.1,
-              )} 0%, ${withAlpha(theme.colors.background, 0.82)} 62%, ${
-                theme.colors.background
-              } 100%)`,
-            },
-          ]}
-        />
-      </View>
-
-      {onBack ? (
-        <View style={[styles.authBack, { top: insets.top + 4 }]}>
-          <BackButton onPress={onBack} />
-        </View>
-      ) : null}
-
+      {/* The band is always blue, so the status bar icons stay light. */}
+      <StatusBar style="light" />
       <KeyboardAwareScrollView
         style={styles.flex}
         contentStyle={[
           styles.authContent,
-          {
-            paddingTop: bandHeight - 32,
-            paddingBottom: Math.max(insets.bottom, theme.spacing.lg),
-          },
+          { paddingBottom: Math.max(insets.bottom, theme.spacing.lg) },
         ]}
         keyboardDismissMode={Platform.OS === "ios" ? "interactive" : "on-drag"}
       >
-        <LogoMark ringed />
-        <View style={styles.authBody}>{children}</View>
-        {footer ? <View style={styles.authFooter}>{footer}</View> : null}
+        <View style={{ height: bandHeight }}>
+          <HalftoneBand height={bandHeight} topInset={insets.top} />
+          {/* Keeps the status bar readable over the dense sky dots. */}
+          <View
+            pointerEvents="none"
+            style={[
+              StyleSheet.absoluteFill,
+              {
+                bottom: undefined,
+                height: insets.top + SCRIM_FADE,
+                experimental_backgroundImage: `linear-gradient(180deg, ${BAND_BLUE} 0px, ${BAND_BLUE} ${insets.top}px, ${withAlpha(BAND_BLUE, 0)} ${insets.top + SCRIM_FADE}px)`,
+              },
+            ]}
+          />
+          {onBack ? (
+            <View style={[styles.authBack, { top: insets.top + 8 }]}>
+              <BandBackButton onPress={onBack} />
+            </View>
+          ) : null}
+        </View>
+        <View style={styles.authBodyWrap}>
+          <View style={styles.authBody}>{children}</View>
+          {footer ? <View style={styles.authFooter}>{footer}</View> : null}
+        </View>
       </KeyboardAwareScrollView>
     </View>
   );
@@ -447,27 +475,27 @@ const layoutStyles = (theme: Theme) =>
       paddingBottom: theme.spacing.xxl,
     },
 
-    authBand: {
-      position: "absolute",
-      top: 0,
-      left: 0,
-      right: 0,
-      backgroundColor: theme.colors.surface,
-      overflow: "hidden",
-    },
-    // Sits above the photo band: the icon color alone would not remain readable
-    // on every image, so it carries its own opaque background.
+    // Translucent white well over the blue band.
     authBack: {
       position: "absolute",
       left: theme.spacing.md,
       zIndex: 10,
-      borderRadius: theme.radius.control,
-      backgroundColor: theme.colors.surface,
-      ...theme.shadows.plate,
     },
-    authContent: {
+    authBackWell: {
+      width: 36,
+      height: 36,
+      borderRadius: 18,
+      alignItems: "center",
+      justifyContent: "center",
+      backgroundColor: "rgba(255,255,255,0.14)",
+      borderWidth: StyleSheet.hairlineWidth,
+      borderColor: "rgba(255,255,255,0.32)",
+    },
+    authContent: { flexGrow: 1 },
+    authBodyWrap: {
       flexGrow: 1,
       paddingHorizontal: theme.spacing.xl,
+      paddingTop: theme.spacing.sm,
     },
     authBody: { flexGrow: 1 },
     authFooter: { paddingTop: theme.spacing.xl },
@@ -498,7 +526,8 @@ const layoutStyles = (theme: Theme) =>
     authFooterActionLabel: {
       ...theme.type.supporting,
       fontWeight: "700",
-      color: theme.colors.accent,
+      color: theme.colors.link,
+      textDecorationLine: "underline",
     },
 
     header: { marginBottom: theme.spacing.lg },

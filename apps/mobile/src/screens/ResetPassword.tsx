@@ -1,10 +1,17 @@
 import { useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Alert, StyleSheet, View, type TextInput } from "react-native";
+import { StyleSheet, Text, View, type TextInput } from "react-native";
 import { authClient } from "../lib/auth";
 import { runAuthAction } from "../lib/authAction";
 import { useThemedStyles, type Theme } from "../theme";
-import { AuthHeading, AuthShell, Button, ErrorMsg, PasswordField } from "../ui";
+import {
+  AuthHeading,
+  AuthShell,
+  Button,
+  ConfirmSheet,
+  ErrorMsg,
+  PasswordField,
+} from "../ui";
 
 /**
  * Second step of the password reset. The code was already checked on the
@@ -28,6 +35,7 @@ export function ResetPassword({
   const [confirm, setConfirm] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [done, setDone] = useState(false);
   const [passwordError, setPasswordError] = useState<string | null>(null);
   const [confirmError, setConfirmError] = useState<string | null>(null);
   const passwordRef = useRef<TextInput>(null);
@@ -76,11 +84,7 @@ export function ResetPassword({
         }
         return;
       }
-      Alert.alert(
-        t("Your password was updated"),
-        t("Sign in with your new password."),
-      );
-      onDone();
+      setDone(true);
     });
   }
 
@@ -128,12 +132,27 @@ export function ResetPassword({
       </View>
 
       <Button title={t("Reset password")} onPress={submit} busy={busy} />
+
+      {/* Rendered here so the sheet stays inside the auth brand theme scope. */}
+      <ConfirmSheet
+        notice
+        visible={done}
+        title={t("Your password was updated")}
+        body={
+          <Text style={styles.noticeText}>
+            {t("Sign in with your new password.")}
+          </Text>
+        }
+        confirmLabel={t("Sign In")}
+        onConfirm={onDone}
+      />
     </AuthShell>
   );
 }
 
 const resetStyles = (theme: Theme) =>
   StyleSheet.create({
+    noticeText: { ...theme.type.body, color: theme.colors.textSecondary },
     errorSlot: { marginTop: theme.spacing.lg },
     fields: {
       marginTop: theme.spacing.xl,

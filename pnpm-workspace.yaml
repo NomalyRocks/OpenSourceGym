@@ -3,6 +3,7 @@ packages:
   - "packages/*"
 allowBuilds:
   "@scarf/scarf": false
+  "@shopify/react-native-skia": true
   esbuild: true
 overrides:
   # Transitive-only advisory fixes; drop an entry once every parent ships the
