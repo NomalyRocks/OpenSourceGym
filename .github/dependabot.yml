@@ -32,12 +32,18 @@ updates:
       # lockfile bump. Security alerts are unaffected by these ignores.
       - dependency-name: "expo"
         update-types: ["version-update:semver-major"]
+      # An Expo SDK pins one react-native minor (a 0.x minor is a breaking
+      # release) and an exact react; react-dom must match react exactly, so the
+      # web panel's react follows the SDK too.
       - dependency-name: "react-native"
-        update-types: ["version-update:semver-major"]
+        update-types:
+          ["version-update:semver-major", "version-update:semver-minor"]
       - dependency-name: "react"
-        update-types: ["version-update:semver-major"]
+        update-types:
+          ["version-update:semver-major", "version-update:semver-minor"]
       - dependency-name: "react-dom"
-        update-types: ["version-update:semver-major"]
+        update-types:
+          ["version-update:semver-major", "version-update:semver-minor"]
 
   - package-ecosystem: "github-actions"
     directory: "/"
