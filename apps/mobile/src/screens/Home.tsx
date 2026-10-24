@@ -60,6 +60,7 @@ export function Home({
   onOpenProfile,
   onRefreshed,
   unreadCount = 0,
+  isCurrentTab = true,
 }: {
   userName: string;
   onOpenQr: () => void;
@@ -68,6 +69,8 @@ export function Home({
   /** Called after a pull-to-refresh so the shell can re-check the ban */
   onRefreshed?: () => void;
   unreadCount?: number;
+  /** Whether Home is the settled tab; presence refreshes each time it becomes so */
+  isCurrentTab?: boolean;
 }) {
   const { t, i18n } = useTranslation();
   const styles = useThemedStyles(homeStyles);
@@ -156,13 +159,16 @@ export function Home({
     }
   }, []);
 
+  // Home stays mounted in the tab pager, so a scan on the scan tab would
+  // otherwise leave the indicator stale until the app is backgrounded.
   useEffect(() => {
+    if (!isCurrentTab) return;
     void loadPresence();
     const subscription = AppState.addEventListener("change", (state) => {
       if (state === "active") void loadPresence();
     });
     return () => subscription.remove();
-  }, [loadPresence]);
+  }, [isCurrentTab, loadPresence]);
 
   async function refresh() {
     setRefreshing(true);

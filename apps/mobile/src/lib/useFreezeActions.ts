@@ -21,6 +21,8 @@ export function useFreezeActions({
 }) {
   const { t } = useTranslation();
   const [sheet, setSheet] = useState<FreezeSheet>(null);
+  // Survives close so a fading-out sheet keeps its content instead of flipping.
+  const [kind, setKind] = useState<Exclude<FreezeSheet, null>>("freeze");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   // A ref guards double taps: state updates land after the second press.
@@ -28,6 +30,7 @@ export function useFreezeActions({
 
   function open(kind: Exclude<FreezeSheet, null>) {
     setError(null);
+    setKind(kind);
     setSheet(kind);
   }
 
@@ -67,6 +70,8 @@ export function useFreezeActions({
 
   return {
     sheet,
+    /** Last opened kind; render sheet content from this, not `sheet` */
+    kind,
     busy,
     error,
     allowance,

@@ -630,12 +630,12 @@ export function Profile({
       <ConfirmSheet
         visible={freezeActions.sheet !== null}
         title={
-          freezeActions.sheet === "resume"
+          freezeActions.kind === "resume"
             ? t("Resume membership")
             : t("Freeze membership")
         }
         body={
-          freezeActions.sheet === "resume" ? (
+          freezeActions.kind === "resume" ? (
             <Text style={styles.sheetText}>
               {t(
                 "Your remaining days start counting again from today. Your end date moves later by the days you were frozen.",
@@ -671,7 +671,7 @@ export function Profile({
           ) : null
         }
         confirmLabel={
-          freezeActions.sheet === "resume" ? t("Resume") : t("Freeze")
+          freezeActions.kind === "resume" ? t("Resume") : t("Freeze")
         }
         cancelLabel={t("Cancel")}
         busy={freezeActions.busy}

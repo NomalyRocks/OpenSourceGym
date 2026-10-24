@@ -346,6 +346,7 @@ function SignedInApp({
                 onOpenProfile={() => selectTab("profile")}
                 onRefreshed={onBanned}
                 unreadCount={center.unreadCount}
+                isCurrentTab={activeTab === "home"}
               />,
             )}
 

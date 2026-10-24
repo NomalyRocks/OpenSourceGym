@@ -103,8 +103,13 @@ export function ConfirmSheet({
     return () => clearTimeout(timer);
   }, [visible]);
 
+  // The sheet stays on screen while it fades out; taps then must not re-fire.
+  const confirm = () => {
+    if (visible) onConfirm();
+  };
+
   const cancel = () => {
-    if (busy) return;
+    if (busy || !visible) return;
     if (notice) onConfirm();
     else onCancel?.();
   };
@@ -118,7 +123,11 @@ export function ConfirmSheet({
       animationType="none"
       onRequestClose={cancel}
     >
-      <View style={styles.root} accessibilityViewIsModal>
+      <View
+        style={styles.root}
+        accessibilityViewIsModal
+        pointerEvents={visible ? "auto" : "none"}
+      >
         <Animated.View
           style={[
             StyleSheet.absoluteFill,
@@ -162,7 +171,7 @@ export function ConfirmSheet({
               title={confirmLabel}
               variant={confirmTone}
               busy={busy}
-              onPress={onConfirm}
+              onPress={confirm}
             />
             {notice ? null : (
               <Button
