@@ -151,8 +151,8 @@ importers:
         specifier: ~57.0.0
         version: 57.0.0(expo@57.0.2)(react@19.2.3)
       expo-secure-store:
-        specifier: ~57.0.0
-        version: 57.0.0(expo@57.0.2)
+        specifier: ~58.0.2
+        version: 58.0.2(expo@57.0.2)
       expo-splash-screen:
         specifier: ~57.0.10
         version: 57.0.10(expo@57.0.2)(typescript@6.0.3)
@@ -2627,8 +2627,8 @@ packages:
       expo: '*'
       react: '*'
 
-  expo-secure-store@57.0.0:
-    resolution: {integrity: sha512-vkP16rhW7b4bljW5BC4kKXBpNxQ0O1E9SpI5NIfh2biZnszLTpI/gUF4oBsvOY2nvkh7oXS2ERuUoA8cuS8FWQ==}
+  expo-secure-store@58.0.2:
+    resolution: {integrity: sha512-VupWWEuQF6IiQ06McSymtn7/tehs8ifThhFwAU4UK8poomZcaa2S0UVt/y7G2XozBdkI3xpiPSx+r0pS2zsuYQ==}
     peerDependencies:
       expo: '*'
 
@@ -7338,7 +7338,7 @@ snapshots:
       react: 19.2.7
     optional: true
 
-  expo-secure-store@57.0.0(expo@57.0.2):
+  expo-secure-store@58.0.2(expo@57.0.2):
     dependencies:
       expo: 57.0.2(@babel/core@7.29.7)(@expo/dom-webview@57.0.0)(react-dom@19.2.7(react@19.2.3))(react-native-worklets@0.10.1(@babel/core@7.29.7)(@react-native/metro-config@0.86.0(@babel/core@7.29.7))(react-native@0.86.0(@babel/core@7.29.7)(@react-native/metro-config@0.86.0(@babel/core@7.29.7))(@types/react@19.2.17)(react@19.2.3))(react@19.2.3))(react-native@0.86.0(@babel/core@7.29.7)(@react-native/metro-config@0.86.0(@babel/core@7.29.7))(@types/react@19.2.17)(react@19.2.3))(react@19.2.3)(typescript@6.0.3)
 
