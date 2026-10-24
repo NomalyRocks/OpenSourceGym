@@ -40,6 +40,12 @@
     "plugins": [
       "expo-secure-store",
       [
+        "expo-splash-screen",
+        {
+          "backgroundColor": "#0055FF"
+        }
+      ],
+      [
         "expo-image-picker",
         {
           "photosPermission": "Gallery access is required to select a profile photo.",

@@ -5,6 +5,7 @@
   "dependencies": {
     "@better-auth/expo": "^1.6.23",
     "@opengym/shared": "workspace:*",
+    "@shopify/react-native-skia": "2.6.2",
     "better-auth": "^1.6.23",
     "expo": "~57.0.2",
     "expo-application": "~57.0.0",
@@ -22,12 +23,15 @@
     "expo-location": "~57.0.2",
     "expo-network": "~57.0.0",
     "expo-secure-store": "~57.0.0",
+    "expo-splash-screen": "~57.0.10",
     "expo-status-bar": "~57.0.0",
     "i18next": "^26.3.6",
     "react": "19.2.3",
     "react-i18next": "^17.0.9",
     "react-native": "0.86.0",
-    "react-native-safe-area-context": "~5.7.0"
+    "react-native-reanimated": "4.5.1",
+    "react-native-safe-area-context": "~5.7.0",
+    "react-native-worklets": "0.10.1"
   },
   "devDependencies": {
     "@expo/config-plugins": "^57.0.7",

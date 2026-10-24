@@ -81,6 +81,7 @@ export function Login({
 
   return (
     <AuthShell
+      band="tall"
       footer={
         <AuthFooterLink
           prompt={t("Don't have an account?")}
@@ -156,6 +157,6 @@ const loginStyles = (theme: Theme) =>
       paddingHorizontal: theme.spacing.xxs,
       marginBottom: theme.spacing.xs,
     },
-    forgotLabel: { ...theme.type.supporting, color: theme.colors.accent },
+    forgotLabel: { ...theme.type.supporting, color: theme.colors.link },
     pressed: { opacity: 0.6 },
   });

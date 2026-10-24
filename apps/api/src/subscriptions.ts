@@ -12,6 +12,7 @@ import {
   planLegacySubscriptionRepairs,
   planSubscriptionCancellation,
   previewFreezeCredit,
+  summarizeGymAccess,
   summarizeSubscriptionTimeline,
   type SubscriptionSummary,
   type SubscriptionTimelineRecord,
@@ -423,6 +424,7 @@ export async function getSubscriptionSummary(
 
   let summary: SubscriptionSummary;
   let gymIds: ObjectId[];
+  let gymWindows: Map<string, SubscriptionSummary>;
   if (openFreeze) {
     // Periods that ended before the freeze began cannot cover now, and the
     // credit only touches periods ending after it began.
@@ -447,6 +449,11 @@ export async function getSubscriptionSummary(
       for (const id of period.gymIds) seen.set(id.toHexString(), id);
     }
     gymIds = [...seen.values()];
+    gymWindows = summarizeGymAccess(
+      previewed,
+      gymIds.map((id) => id.toHexString()),
+      now,
+    );
   } else {
     const docs = await subscriptionCollection()
       .find({ userId: owner, endsAt: { $gte: now } })
@@ -456,6 +463,15 @@ export async function getSubscriptionSummary(
     gymIds = summary.active
       ? await listActiveSubscriptionGymIds(userId, now)
       : [];
+    gymWindows = summarizeGymAccess(
+      docs.map((doc) => ({
+        startsAt: doc.startsAt,
+        endsAt: doc.endsAt,
+        gymIds: doc.gymIds ?? [],
+      })),
+      gymIds.map((id) => id.toHexString()),
+      now,
+    );
   }
   const gymDocs =
     gymIds.length > 0
@@ -470,11 +486,21 @@ export async function getSubscriptionSummary(
     endsAt: summary.endsAt?.toISOString() ?? null,
     remainingDays: summary.remainingDays,
     gymIds: gymDocs.map((gym) => gym._id.toHexString()),
-    gyms: gymDocs.map((gym) => ({
-      id: gym._id.toHexString(),
-      name: gym.name,
-      active: gym.active,
-    })),
+    gyms: gymDocs.map((gym) => {
+      const id = gym._id.toHexString();
+      // A listed gym is covered by a current period, so its own summary is
+      // active; fall back to the chain-level window if that ever fails to hold.
+      const own = gymWindows.get(id);
+      const window = own?.active ? own : summary;
+      return {
+        id,
+        name: gym.name,
+        active: gym.active,
+        startsAt: window.startsAt?.toISOString() ?? "",
+        endsAt: window.endsAt?.toISOString() ?? "",
+        remainingDays: window.remainingDays,
+      };
+    }),
     freeze: openFreeze
       ? { startedAt: openFreeze.startedAt.toISOString() }
       : null,

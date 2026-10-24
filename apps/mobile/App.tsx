@@ -1,6 +1,7 @@
 import {
   useCallback,
   useEffect,
+  useMemo,
   useRef,
   useState,
   type ReactNode,
@@ -10,6 +11,7 @@ import {
   Animated,
   AppState,
   BackHandler,
+  ScrollView,
   StyleSheet,
   Text,
   View,
@@ -18,9 +20,13 @@ import {
 import { StatusBar } from "expo-status-bar";
 import { useTranslation } from "react-i18next";
 import type { MemberBan, MyProfile } from "@opengym/shared";
-import { SafeAreaProvider } from "react-native-safe-area-context";
+import {
+  SafeAreaProvider,
+  useSafeAreaInsets,
+} from "react-native-safe-area-context";
 import { api } from "./src/lib/api";
 import { authClient } from "./src/lib/auth";
+import { TabSwipeLockContext } from "./src/lib/tabSwipeLock";
 import { clearCalorieCalculatorState } from "./src/lib/calorieCalculatorStorage";
 import {
   checkDeviceIntegrity,
@@ -31,6 +37,7 @@ import {
   type NotificationCenter,
 } from "./src/lib/notifications";
 import {
+  BrandThemeScope,
   ThemeProvider,
   useTheme,
   useThemedStyles,
@@ -43,6 +50,7 @@ import {
   LogoMark,
   Screen,
   StatusMessage,
+  authBandHeight,
   easing,
   useReducedMotion,
 } from "./src/ui";
@@ -54,7 +62,7 @@ import { ForgotPassword } from "./src/screens/ForgotPassword";
 import { ResetPassword } from "./src/screens/ResetPassword";
 import { VerifyResetCode } from "./src/screens/VerifyResetCode";
 import { Home } from "./src/screens/Home";
-import { Calendar } from "./src/screens/Calendar";
+import { Gyms } from "./src/screens/Gyms";
 import { GateScan } from "./src/screens/GateScan";
 import { Profile } from "./src/screens/Profile";
 import { Notifications } from "./src/screens/Notifications";
@@ -62,6 +70,7 @@ import { Settings } from "./src/screens/Settings";
 import { Tools } from "./src/screens/Tools";
 import {
   BottomTabBar,
+  TAB_ORDER,
   useTabBarSpace,
   type AppTab,
 } from "./src/components/BottomTabBar";
@@ -235,38 +244,53 @@ function SignedInApp({
 }) {
   const theme = useTheme();
   const styles = useThemedStyles(appStyles);
+  const { width: pageWidth } = useWindowDimensions();
   const [activeTab, setActiveTab] = useState<AppTab>("home");
   const [overlay, setOverlay] = useState<Overlay>(null);
   const [toolsFullscreen, setToolsFullscreen] = useState(false);
+  // Number of nested horizontal scrollers currently held by a finger.
+  const [swipeLocks, setSwipeLocks] = useState(0);
+  const swipeLock = useMemo(
+    () => ({
+      lock: () => setSwipeLocks((n) => n + 1),
+      unlock: () => setSwipeLocks((n) => Math.max(0, n - 1)),
+    }),
+    [],
+  );
   const [visited, setVisited] = useState<Record<AppTab, boolean>>({
     home: true,
-    calendar: false,
+    gyms: false,
     scan: false,
     tools: false,
     profile: false,
   });
   const reducedMotion = useReducedMotion();
   const tabBarSpace = useTabBarSpace();
-  const opacity = useRef(new Animated.Value(1)).current;
+  const scrollX = useRef(new Animated.Value(0)).current;
+  const pager = useRef<ScrollView>(null);
 
   useEffect(() => {
     setVisited((current) =>
       current[activeTab] ? current : { ...current, [activeTab]: true },
     );
-    if (reducedMotion) {
-      opacity.setValue(1);
-      return;
-    }
-    opacity.setValue(0.74);
-    const animation = Animated.timing(opacity, {
-      toValue: 1,
-      duration: theme.motion.standard,
-      easing: easing.out,
-      useNativeDriver: true,
+  }, [activeTab]);
+
+  // Rotation or a window resize changes the page width: stay on the active tab.
+  useEffect(() => {
+    pager.current?.scrollTo({
+      x: TAB_ORDER.indexOf(activeTab) * pageWidth,
+      animated: false,
     });
-    animation.start();
-    return () => animation.stop();
-  }, [activeTab, opacity, reducedMotion, theme.motion.standard]);
+    // Only the width matters; tab changes scroll through selectTab/swipes.
+  }, [pageWidth]);
+
+  function selectTab(tab: AppTab) {
+    setActiveTab(tab);
+    pager.current?.scrollTo({
+      x: TAB_ORDER.indexOf(tab) * pageWidth,
+      animated: !reducedMotion,
+    });
+  }
 
   // The Android back button closes the pushed screen; system behavior remains on tabs.
   useEffect(() => {
@@ -281,60 +305,101 @@ function SignedInApp({
     return () => subscription.remove();
   }, [overlay]);
 
+  const page = (tab: AppTab, content: ReactNode) => (
+    <View key={tab} style={[styles.page, { width: pageWidth }]}>
+      {content}
+    </View>
+  );
+
   return (
     <View style={styles.root}>
       <BottomInsetProvider value={toolsFullscreen ? 0 : tabBarSpace}>
-        <Animated.View style={[styles.flex, { opacity }]}>
-          <View style={activeTab === "home" ? styles.flex : styles.hidden}>
-            <Home
-              userName={userName}
-              onOpenQr={() => setActiveTab("scan")}
-              onOpenNotifications={() => setOverlay("notifications")}
-              onOpenProfile={() => setActiveTab("profile")}
-              onRefreshed={onBanned}
-              unreadCount={center.unreadCount}
-            />
-          </View>
+        <TabSwipeLockContext.Provider value={swipeLock}>
+          <Animated.ScrollView
+            ref={pager}
+            horizontal
+            pagingEnabled
+            bounces={false}
+            overScrollMode="never"
+            showsHorizontalScrollIndicator={false}
+            scrollEnabled={!toolsFullscreen && !overlay && swipeLocks === 0}
+            scrollEventThrottle={16}
+            onScroll={Animated.event(
+              [{ nativeEvent: { contentOffset: { x: scrollX } } }],
+              { useNativeDriver: true },
+            )}
+            onMomentumScrollEnd={(event) => {
+              const index = Math.round(
+                event.nativeEvent.contentOffset.x / pageWidth,
+              );
+              const tab = TAB_ORDER[index];
+              if (tab) setActiveTab(tab);
+            }}
+            style={styles.flex}
+          >
+            {page(
+              "home",
+              <Home
+                userName={userName}
+                onOpenQr={() => selectTab("scan")}
+                onOpenNotifications={() => setOverlay("notifications")}
+                onOpenProfile={() => selectTab("profile")}
+                onRefreshed={onBanned}
+                unreadCount={center.unreadCount}
+                isCurrentTab={activeTab === "home"}
+              />,
+            )}
 
-          {visited.calendar ? (
-            <View
-              style={activeTab === "calendar" ? styles.flex : styles.hidden}
-            >
-              <Calendar active={activeTab === "calendar"} />
-            </View>
-          ) : null}
+            {page(
+              "gyms",
+              visited.gyms ? <Gyms active={activeTab === "gyms"} /> : null,
+            )}
 
-          {/* The camera mounts only while its tab is active. */}
-          {activeTab === "scan" ? (
-            integrity === null ? (
-              <View style={styles.loading}>
-                <ActivityIndicator color={theme.colors.accent} size="large" />
-              </View>
-            ) : integrity.compromised ? (
-              <DeviceBlocked onHome={() => setActiveTab("home")} />
-            ) : (
-              <GateScan onBanned={onBanned} />
-            )
-          ) : null}
+            {/* The camera mounts only while its tab is the settled active page. */}
+            {page(
+              "scan",
+              activeTab === "scan" ? (
+                integrity === null ? (
+                  <View style={styles.loading}>
+                    <ActivityIndicator
+                      color={theme.colors.accent}
+                      size="large"
+                    />
+                  </View>
+                ) : integrity.compromised ? (
+                  <DeviceBlocked onHome={() => selectTab("home")} />
+                ) : (
+                  <GateScan onBanned={onBanned} />
+                )
+              ) : null,
+            )}
 
-          {visited.tools ? (
-            <View style={activeTab === "tools" ? styles.flex : styles.hidden}>
-              <Tools onFullscreenChange={setToolsFullscreen} />
-            </View>
-          ) : null}
+            {page(
+              "tools",
+              visited.tools ? (
+                <Tools onFullscreenChange={setToolsFullscreen} />
+              ) : null,
+            )}
 
-          {visited.profile ? (
-            <View style={activeTab === "profile" ? styles.flex : styles.hidden}>
-              <Profile
-                fallbackName={userName}
-                onOpenSettings={() => setOverlay("settings")}
-              />
-            </View>
-          ) : null}
-        </Animated.View>
+            {page(
+              "profile",
+              visited.profile ? (
+                <Profile
+                  fallbackName={userName}
+                  onOpenSettings={() => setOverlay("settings")}
+                />
+              ) : null,
+            )}
+          </Animated.ScrollView>
+        </TabSwipeLockContext.Provider>
 
         {toolsFullscreen ? null : (
-          <BottomTabBar activeTab={activeTab} onTabChange={setActiveTab} />
+          <BottomTabBar
+            activeTab={activeTab}
+            onTabChange={selectTab}
+            scrollX={scrollX}
+            pageWidth={pageWidth}
+          />
         )}
       </BottomInsetProvider>
 
@@ -354,6 +419,8 @@ function SignedInApp({
 function AppContent() {
   const theme = useTheme();
   const styles = useThemedStyles(appStyles);
+  const insets = useSafeAreaInsets();
+  const { height: windowHeight } = useWindowDimensions();
   const { ready: themeReady } = useThemeMode();
   const { data: session, isPending } = authClient.useSession();
   const [localizationReady, setLocalizationReady] = useState(false);
@@ -473,12 +540,21 @@ function AppContent() {
   return (
     <View style={styles.root}>
       <StatusBar style={theme.statusBarStyle} />
-      {body}
-      {splashDone && bootReady && !session ? (
-        <LanguageSwitcher floating />
-      ) : null}
+      {session ? (
+        body
+      ) : (
+        <BrandThemeScope>
+          {body}
+          {splashDone && bootReady ? <LanguageSwitcher floating /> : null}
+        </BrandThemeScope>
+      )}
       {splashDone ? null : (
-        <Splash ready={bootReady} onFinish={() => setSplashDone(true)} />
+        <Splash
+          ready={bootReady}
+          onFinish={() => setSplashDone(true)}
+          exitTo={session ? "fade" : "band"}
+          bandHeight={authBandHeight("tall", insets.top, windowHeight)}
+        />
       )}
     </View>
   );
@@ -517,6 +593,7 @@ const appStyles = (theme: Theme) =>
   StyleSheet.create({
     root: { flex: 1, backgroundColor: theme.colors.background },
     flex: { flex: 1 },
+    page: { overflow: "hidden" },
     hidden: { display: "none" },
     loading: {
       flex: 1,

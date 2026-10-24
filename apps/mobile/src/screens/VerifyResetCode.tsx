@@ -147,6 +147,6 @@ const verifyResetStyles = (theme: Theme) =>
       alignItems: "center",
       justifyContent: "center",
     },
-    resendLabel: { ...theme.type.supporting, color: theme.colors.accent },
+    resendLabel: { ...theme.type.supporting, color: theme.colors.link },
     pressed: { opacity: 0.6 },
   });

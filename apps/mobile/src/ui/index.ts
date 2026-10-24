@@ -1,9 +1,11 @@
 export { KeyboardAwareScrollView, useKeyboardReveal } from "./keyboardAware";
+export { ConfirmSheet, SheetFacts } from "./sheet";
 export { easing, useEnter, useReducedMotion } from "./motion";
 export {
   AuthFooterLink,
   AuthHeading,
   AuthShell,
+  authBandHeight,
   BackButton,
   BottomInsetProvider,
   Divider,

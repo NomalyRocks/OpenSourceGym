@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
-  Alert,
   Linking,
   Pressable,
   StyleSheet,
@@ -27,13 +26,16 @@ import {
   saveCalorieCalculatorState,
 } from "../lib/calorieCalculatorStorage";
 import { Avatar } from "../components/Avatar";
-import { GymList } from "../components/GymList";
+import { useFreezeActions } from "../lib/useFreezeActions";
+import { useSignOut } from "../lib/useSignOut";
 import { errorMessage } from "../i18n/errors";
 import { dateLocale } from "../i18n/format";
 import {
   CameraGlyph,
+  ClockGlyph,
   ChevronRightGlyph,
   GearGlyph,
+  LogOutGlyph,
   ShieldGlyph,
 } from "../components/icons";
 import {
@@ -43,8 +45,8 @@ import {
   type Theme,
 } from "../theme";
 import {
-  Badge,
   Button,
+  ConfirmSheet,
   Divider,
   IconButton,
   Plate,
@@ -52,6 +54,7 @@ import {
   ScrollScreen,
   SectionHeading,
   SettingRow,
+  SheetFacts,
   Skeleton,
   StatusMessage,
 } from "../ui";
@@ -110,6 +113,27 @@ export function Profile({
     }
     setLoading(false);
   }, [t]);
+
+  const freezeActions = useFreezeActions({
+    allowance: subscription?.freezeAllowance ?? null,
+    onChanged: () => load(),
+  });
+  const signOutAction = useSignOut();
+
+  const [signOutOpen, setSignOutOpen] = useState(false);
+  const [removePhotoOpen, setRemovePhotoOpen] = useState(false);
+
+  function openSignOut() {
+    signOutAction.clearError();
+    setSignOutOpen(true);
+  }
+
+  async function confirmSignOut() {
+    // On success the session ends and the whole shell unmounts.
+    const ended = await signOutAction.signOut();
+    if (!ended) return;
+    setSignOutOpen(false);
+  }
 
   useEffect(() => {
     void load();
@@ -276,14 +300,8 @@ export function Profile({
   }
 
   function confirmRemoveProfilePhoto() {
-    Alert.alert(t("Remove photo"), t("Remove your profile photo?"), [
-      { text: t("Cancel"), style: "cancel" },
-      {
-        text: t("Remove"),
-        style: "destructive",
-        onPress: () => void removeProfilePhoto(),
-      },
-    ]);
+    setPhotoError(null);
+    setRemovePhotoOpen(true);
   }
 
   async function removeProfilePhoto() {
@@ -296,6 +314,7 @@ export function Profile({
       setProfile((current) =>
         current ? { ...current, profilePhotoUrl: null } : current,
       );
+      setRemovePhotoOpen(false);
     } catch (error) {
       setPhotoError(
         errorMessage(
@@ -312,14 +331,16 @@ export function Profile({
   const profileName = profile?.name ?? fallbackName;
   const profilePhotoUrl = profile?.profilePhotoUrl ?? null;
   const active = subscription?.active === true;
-  const formatDate = (value?: string | null) =>
-    value
-      ? new Date(value).toLocaleDateString(locale, {
-          day: "numeric",
-          month: "short",
-          year: "numeric",
-        })
-      : "—";
+  const freeze = subscription?.freeze ?? null;
+  // An older API may omit the allowance: then no freeze row is shown.
+  const freezeAllowance = subscription?.freezeAllowance ?? null;
+  const noFreezesLeft =
+    active &&
+    freezeAllowance != null &&
+    freezeAllowance.maxPerYear > 0 &&
+    freezeAllowance.usedInLastYear >= freezeAllowance.maxPerYear;
+  const showFreezeRow =
+    freeze != null || freezeAllowance?.canFreeze === true || noFreezesLeft;
 
   return (
     <ScrollScreen refreshing={refreshing} onRefresh={refresh}>
@@ -430,61 +451,6 @@ export function Profile({
       </View>
 
       <View style={styles.section}>
-        <SectionHeading
-          title={t("Membership")}
-          trailing={
-            loading ? null : (
-              <Badge
-                label={active ? t("Active") : t("Inactive")}
-                tone={active ? "success" : "error"}
-              />
-            )
-          }
-        />
-        <Plate>
-          {loading ? (
-            <Skeleton height={18} />
-          ) : (
-            <>
-              <View style={styles.factRow}>
-                <Text style={styles.factLabel}>{t("Start")}</Text>
-                <Text style={styles.factValue}>
-                  {formatDate(subscription?.startsAt)}
-                </Text>
-              </View>
-              <Divider />
-              <View style={styles.factRow}>
-                <Text style={styles.factLabel}>{t("End")}</Text>
-                <Text style={styles.factValue}>
-                  {formatDate(subscription?.endsAt)}
-                </Text>
-              </View>
-              {active ? (
-                <>
-                  <Divider />
-                  <View style={styles.factRow}>
-                    <Text style={styles.factLabel}>{t("Days left")}</Text>
-                    <Text style={styles.factValue}>
-                      {subscription?.remainingDays ?? 0}
-                    </Text>
-                  </View>
-                  {subscription && subscription.gyms.length > 0 ? (
-                    <>
-                      <Divider />
-                      <View style={styles.gymsBlock}>
-                        <Text style={styles.factLabel}>{t("Gyms")}</Text>
-                        <GymList gyms={subscription.gyms} />
-                      </View>
-                    </>
-                  ) : null}
-                </>
-              ) : null}
-            </>
-          )}
-        </Plate>
-      </View>
-
-      <View style={styles.section}>
         <SectionHeading title={t("Body info")} />
         <Plate>
           <Text style={styles.metricsHint}>
@@ -583,8 +549,136 @@ export function Profile({
               <ChevronRightGlyph size={18} color={theme.colors.textTertiary} />
             }
           />
+          {showFreezeRow ? (
+            <>
+              <Divider inset={theme.spacing.md + 34 + theme.spacing.sm} />
+              <SettingRow
+                icon={(color) => <ClockGlyph size={19} color={color} />}
+                title={freeze ? t("Resume membership") : t("Freeze membership")}
+                subtitle={
+                  noFreezesLeft && !freeze
+                    ? t("No freezes left this year.")
+                    : freezeAllowance
+                      ? t("{{used}} of {{max}} freezes used this year.", {
+                          used: freezeAllowance.usedInLastYear,
+                          max: freezeAllowance.maxPerYear,
+                        })
+                      : undefined
+                }
+                disabled={
+                  freezeActions.busy || (noFreezesLeft && freeze == null)
+                }
+                onPress={
+                  freeze ? freezeActions.openResume : freezeActions.openFreeze
+                }
+              />
+            </>
+          ) : null}
+          <Divider inset={theme.spacing.md + 34 + theme.spacing.sm} />
+          <SettingRow
+            icon={(color) => <LogOutGlyph size={19} color={color} />}
+            title={t("Sign out")}
+            tone="danger"
+            disabled={signOutAction.busy}
+            onPress={openSignOut}
+          />
         </Plate>
+        <StatusMessage
+          text={freezeActions.error}
+          style={styles.accountMessage}
+        />
+        <StatusMessage
+          text={signOutAction.error}
+          style={styles.accountMessage}
+        />
       </View>
+
+      <ConfirmSheet
+        visible={signOutOpen}
+        title={t("Sign out")}
+        body={
+          <Text style={styles.sheetText}>
+            {t("Are you sure you want to sign out of your account?")}
+          </Text>
+        }
+        confirmLabel={t("Sign out")}
+        confirmTone="danger"
+        cancelLabel={t("Cancel")}
+        busy={signOutAction.busy}
+        error={signOutAction.error}
+        onConfirm={() => void confirmSignOut()}
+        onCancel={() => setSignOutOpen(false)}
+      />
+
+      <ConfirmSheet
+        visible={removePhotoOpen}
+        title={t("Remove photo")}
+        body={
+          <Text style={styles.sheetText}>
+            {t("Remove your profile photo?")}
+          </Text>
+        }
+        confirmLabel={t("Remove")}
+        confirmTone="danger"
+        cancelLabel={t("Cancel")}
+        busy={photoBusy}
+        error={removePhotoOpen ? photoError : null}
+        onConfirm={() => void removeProfilePhoto()}
+        onCancel={() => setRemovePhotoOpen(false)}
+      />
+
+      <ConfirmSheet
+        visible={freezeActions.sheet !== null}
+        title={
+          freezeActions.kind === "resume"
+            ? t("Resume membership")
+            : t("Freeze membership")
+        }
+        body={
+          freezeActions.kind === "resume" ? (
+            <Text style={styles.sheetText}>
+              {t(
+                "Your remaining days start counting again from today. Your end date moves later by the days you were frozen.",
+              )}
+            </Text>
+          ) : freezeAllowance ? (
+            <>
+              <Text style={styles.sheetText}>
+                {t(
+                  "Your remaining days stop counting while frozen. The end date moves later by the frozen days, up to {{maxDays}} days.",
+                  { maxDays: freezeAllowance.maxDays },
+                )}
+              </Text>
+              <Text style={styles.sheetText}>
+                {t("Your next turnstile entry ends the freeze automatically.")}
+              </Text>
+              <SheetFacts
+                rows={[
+                  {
+                    label: t("Maximum length"),
+                    value: t("{{n}} days", { n: freezeAllowance.maxDays }),
+                  },
+                  {
+                    label: t("Used this year"),
+                    value: t("{{used}} of {{max}}", {
+                      used: freezeAllowance.usedInLastYear,
+                      max: freezeAllowance.maxPerYear,
+                    }),
+                  },
+                ]}
+              />
+            </>
+          ) : null
+        }
+        confirmLabel={
+          freezeActions.kind === "resume" ? t("Resume") : t("Freeze")
+        }
+        cancelLabel={t("Cancel")}
+        busy={freezeActions.busy}
+        error={freezeActions.error}
+        onConfirm={() => void freezeActions.confirm()}
+        onCancel={freezeActions.close}
+      />
     </ScrollScreen>
   );
 }
@@ -642,24 +736,12 @@ const profileStyles = (theme: Theme) =>
       color: theme.colors.error,
     },
 
+    sheetText: { ...theme.type.body, color: theme.colors.textSecondary },
+    accountMessage: { marginTop: theme.spacing.sm },
     messages: { gap: theme.spacing.xs, marginTop: theme.spacing.sm },
     section: { marginTop: theme.spacing.xl },
 
-    gymsBlock: { paddingVertical: theme.spacing.xs, gap: theme.spacing.xxs },
-    factRow: {
-      minHeight: 40,
-      flexDirection: "row",
-      alignItems: "center",
-      justifyContent: "space-between",
-      gap: theme.spacing.md,
-    },
     factLabel: { ...theme.type.supporting, color: theme.colors.textSecondary },
-    factValue: {
-      ...theme.type.supporting,
-      ...tabularNumbers,
-      fontWeight: "600",
-      color: theme.colors.textPrimary,
-    },
 
     metricsHint: {
       ...theme.type.supporting,

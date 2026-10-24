@@ -7,7 +7,9 @@ import type {
   GateScanResponse,
   MyBodyMetrics,
   MyDeletionRequest,
+  MyBusyHours,
   MyEntriesResponse,
+  MyPresence,
   MyOccupancyResponse,
   MySubscription,
   MyWeightHistoryResponse,
@@ -67,9 +69,15 @@ import {
   getOccupancy,
   hasInsideRecord,
   isInside,
+  loadMemberPresence,
   markInside,
   markOutside,
 } from "../occupancy.js";
+import {
+  buildBusyHours,
+  busyHoursQueryRange,
+  zonedDayHour,
+} from "../busyHours.js";
 import { enqueueEntryEvent } from "../eventQueue.js";
 import { logAudit } from "../audit.js";
 import { logMemberAudit } from "../memberScope.js";
@@ -198,6 +206,31 @@ const myEntriesQuerySchema = z.object({
 });
 
 /**
+ * Match fragment for allowed entry-direction scans (no exits, no refusals).
+ * Direction is persisted on current records; legacy records without it are
+ * judged by the current out-device ids.
+ */
+async function inboundEntryMatch(): Promise<Record<string, unknown>> {
+  const outDevices = await db
+    .collection("devices")
+    .find({ direction: "out" }, { projection: { _id: 1 } })
+    .toArray();
+  const outDeviceIds = outDevices.map((device) => device._id.toString());
+  return {
+    allowed: true,
+    $or: [
+      { direction: "in" },
+      {
+        direction: { $exists: false },
+        ...(outDeviceIds.length > 0
+          ? { deviceId: { $nin: outDeviceIds } }
+          : {}),
+      },
+    ],
+  };
+}
+
+/**
  * Attendance layer for the mobile calendar: the member's OWN entry days.
  *
  * Only allowed scans in the entry direction count; otherwise an exit-gate scan
@@ -225,11 +258,7 @@ meRouter.get(
     const timeZone = env.reportsTimeZone;
     const { start, end } = entryQueryWindow(from, to);
 
-    const outDevices = await db
-      .collection("devices")
-      .find({ direction: "out" }, { projection: { _id: 1 } })
-      .toArray();
-    const outDeviceIds = outDevices.map((device) => device._id.toString());
+    const inboundMatch = await inboundEntryMatch();
 
     const rows = await db
       .collection("entry_events")
@@ -237,19 +266,8 @@ meRouter.get(
         {
           $match: {
             userId: req.user.id,
-            allowed: true,
             at: { $gte: start, $lte: end },
-            $or: [
-              // Direction is persisted (current record), valid even if the device was deleted.
-              { direction: "in" },
-              // Legacy record: no direction, so consult the current device id list.
-              {
-                direction: { $exists: false },
-                ...(outDeviceIds.length > 0
-                  ? { deviceId: { $nin: outDeviceIds } }
-                  : {}),
-              },
-            ],
+            ...inboundMatch,
           },
         },
         {
@@ -271,6 +289,94 @@ meRouter.get(
       days: toEntryDays(rows, from, to),
       timeZone,
     };
+    res.json(body);
+  }),
+);
+
+// Own "am I inside" state plus the latest allowed entry, for the mobile home.
+meRouter.get(
+  "/presence",
+  requireRole("owner", "admin", "staff", "member"),
+  authed(async (req, res) => {
+    // The caller is looking at themselves, so no gym scope applies.
+    const presence = await loadMemberPresence([req.user.id], {
+      role: "owner",
+      gymIds: [],
+    });
+    const last = await db
+      .collection("entry_events")
+      .find({ userId: req.user.id, ...(await inboundEntryMatch()) })
+      .sort({ at: -1, _id: -1 })
+      .limit(1)
+      .next();
+    let lastEntry: MyPresence["lastEntry"] = null;
+    if (last && typeof last.gymId === "string") {
+      const gym = await findGym(last.gymId);
+      lastEntry = {
+        gymId: last.gymId,
+        gymName: gym?.name ?? "",
+        at: new Date(last.at).toISOString(),
+      };
+    }
+    const body: MyPresence = {
+      inside: presence.get(req.user.id) ?? null,
+      lastEntry,
+    };
+    res.json(body);
+  }),
+);
+
+// Typical hourly traffic at a gym the member currently has access to.
+meRouter.get(
+  "/gyms/:gymId/busy-hours",
+  requireRole("owner", "admin", "staff", "member"),
+  authed(async (req, res) => {
+    const gymId = String(req.params.gymId);
+    const allowed = (await listActiveSubscriptionGymIds(req.user.id)).some(
+      (id) => id.toHexString() === gymId,
+    );
+    const gym = allowed ? await findGym(gymId) : null;
+    // Unknown, malformed and out-of-subscription ids answer identically.
+    if (!gym) {
+      sendApiError(
+        res,
+        403,
+        "GYM_OUT_OF_SCOPE",
+        "This gym is outside your scope.",
+      );
+      return;
+    }
+    const timeZone = env.reportsTimeZone;
+    const now = new Date();
+    const today = zonedDayHour(now, timeZone).day;
+    const cacheKey = `og:busyhours:${gymId}:${today}`;
+    const cached = await redis.get(cacheKey);
+    if (cached) {
+      res.json(JSON.parse(cached) as MyBusyHours);
+      return;
+    }
+    const { start, end } = busyHoursQueryRange(today);
+    const events = await db
+      .collection("entry_events")
+      .find(
+        {
+          gymId,
+          at: { $gte: start, $lte: end },
+          ...(await inboundEntryMatch()),
+        },
+        { projection: { at: 1 } },
+      )
+      .toArray();
+    const body = buildBusyHours({
+      gymId,
+      timeZone,
+      now,
+      gymCreatedAt: gym.createdAt,
+      entryTimes: events.map((event) => new Date(event.at)),
+    });
+    await redis.set(cacheKey, JSON.stringify(body), {
+      expiration: { type: "EX", value: 3600 },
+    });
     res.json(body);
   }),
 );

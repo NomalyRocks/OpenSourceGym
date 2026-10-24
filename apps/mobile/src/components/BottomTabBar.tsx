@@ -1,19 +1,12 @@
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import { Animated, Pressable, StyleSheet, Text, View } from "react-native";
 import { useTranslation } from "react-i18next";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTheme, useThemedStyles, withAlpha, type Theme } from "../theme";
 import type { MobileTranslationKey } from "../i18n/resources";
-import { easing, useReducedMotion } from "../ui";
-import {
-  CalendarGlyph,
-  HomeGlyph,
-  PersonGlyph,
-  QrGlyph,
-  ToolsGlyph,
-} from "./icons";
+import { GymGlyph, HomeGlyph, PersonGlyph, QrGlyph, ToolsGlyph } from "./icons";
 
-export type AppTab = "home" | "calendar" | "scan" | "tools" | "profile";
+export type AppTab = "home" | "gyms" | "scan" | "tools" | "profile";
 
 /** The bar's own height (padding + item height). */
 const BAR_HEIGHT = 72;
@@ -24,12 +17,21 @@ const FLOAT_GAP = 12;
  * Vertical space reserved for the floating bar.
  *
  * Passed to `BottomInsetProvider`; `Screen` and `ScrollScreen` add it to their
- * bottom spacing so the last row does not remain behind the glass.
+ * bottom spacing so the last row does not remain behind the bar.
  */
 export function useTabBarSpace(): number {
   const insets = useSafeAreaInsets();
   return BAR_HEIGHT + Math.max(insets.bottom, FLOAT_GAP) + FLOAT_GAP;
 }
+
+/** Tab order shared with the pager in App.tsx. */
+export const TAB_ORDER: readonly AppTab[] = [
+  "home",
+  "gyms",
+  "scan",
+  "tools",
+  "profile",
+];
 
 const tabs: ReadonlyArray<{
   id: AppTab;
@@ -38,9 +40,9 @@ const tabs: ReadonlyArray<{
 }> = [
   { id: "home", label: "Home", icon: (c) => <HomeGlyph color={c} /> },
   {
-    id: "calendar",
-    label: "Calendar",
-    icon: (c) => <CalendarGlyph color={c} />,
+    id: "gyms",
+    label: "Gyms",
+    icon: (c) => <GymGlyph color={c} />,
   },
   { id: "scan", label: "Scan QR", icon: (c) => <QrGlyph color={c} /> },
   { id: "tools", label: "Tools", icon: (c) => <ToolsGlyph color={c} /> },
@@ -48,49 +50,29 @@ const tabs: ReadonlyArray<{
 ];
 
 /**
- * Floating, softly rounded, translucent tab bar.
+ * Floating, softly rounded, opaque tab bar.
  *
- * True background blur (`backdrop-filter`) is unavailable in React Native 0.86—
- * `filter` applies only to the element's own content. The glass effect therefore
- * uses layers: a translucent surface, a highlight along the top edge, and a shadow.
- * Content passing underneath keeps the surface from looking like a lifeless slab.
- *
- * If `expo-blur` is added, the only change is wrapping the outer `View` with
- * `<BlurView intensity={…} tint={theme.name}>` (requires a native rebuild).
+ * Opaque `surface` with a hairline border, a faint highlight along the top
+ * edge and the raised shadow; it floats above the content instead of blending in.
  */
 export function BottomTabBar({
   activeTab,
   onTabChange,
+  scrollX,
+  pageWidth,
 }: {
   activeTab: AppTab;
   onTabChange: (tab: AppTab) => void;
+  /** Horizontal offset of the tab pager; the indicator follows it live. */
+  scrollX: Animated.Value;
+  /** Width of one pager page. */
+  pageWidth: number;
 }) {
   const { t } = useTranslation();
   const theme = useTheme();
   const styles = useThemedStyles(tabBarStyles);
   const insets = useSafeAreaInsets();
-  const reduced = useReducedMotion();
   const [barWidth, setBarWidth] = useState(0);
-  const indicator = useRef(new Animated.Value(0)).current;
-  const activeIndex = Math.max(
-    0,
-    tabs.findIndex((tab) => tab.id === activeTab),
-  );
-
-  useEffect(() => {
-    if (reduced) {
-      indicator.setValue(activeIndex);
-      return;
-    }
-    const animation = Animated.timing(indicator, {
-      toValue: activeIndex,
-      duration: theme.motion.standard,
-      easing: easing.inOut,
-      useNativeDriver: true,
-    });
-    animation.start();
-    return () => animation.stop();
-  }, [activeIndex, indicator, reduced, theme.motion.standard]);
 
   // The indicator pill slides within the 4 px inset.
   const cellWidth = barWidth > 0 ? (barWidth - 8) / tabs.length : 0;
@@ -101,7 +83,7 @@ export function BottomTabBar({
       style={[styles.bar, { bottom: Math.max(insets.bottom, FLOAT_GAP) }]}
       onLayout={(event) => setBarWidth(event.nativeEvent.layout.width)}
     >
-      {/* Glass edge: a thin internal highlight across the top. */}
+      {/* Top edge: a thin internal highlight across the top. */}
       <View style={styles.rim} pointerEvents="none" />
 
       {cellWidth > 0 ? (
@@ -113,9 +95,10 @@ export function BottomTabBar({
               width: cellWidth,
               transform: [
                 {
-                  translateX: indicator.interpolate({
-                    inputRange: tabs.map((_, index) => index),
+                  translateX: scrollX.interpolate({
+                    inputRange: tabs.map((_, index) => index * pageWidth),
                     outputRange: tabs.map((_, index) => index * cellWidth),
+                    extrapolate: "clamp",
                   }),
                 },
               ],
@@ -168,14 +151,10 @@ const tabBarStyles = (theme: Theme) =>
       alignItems: "stretch",
       padding: 4,
       borderRadius: 24,
-      // Translucent, but opaque enough to keep labels readable.
-      backgroundColor: withAlpha(
-        theme.colors.surface,
-        theme.name === "dark" ? 0.9 : 0.88,
-      ),
-      // Border in dark mode, shadow in light mode—both would look like a ghost card.
-      borderWidth: theme.name === "dark" ? StyleSheet.hairlineWidth : 0,
-      borderColor: withAlpha(theme.colors.textPrimary, 0.12),
+      // Fully opaque so content scrolling underneath never shows through.
+      backgroundColor: theme.colors.surface,
+      borderWidth: StyleSheet.hairlineWidth,
+      borderColor: theme.colors.outline,
       ...theme.shadows.raised,
     },
     rim: {

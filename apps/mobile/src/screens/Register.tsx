@@ -229,7 +229,7 @@ export function Register({
         />
         <PasswordField
           inputRef={refs.password}
-          label={t("Password (min. 8 characters)")}
+          label={t("Password")}
           value={password}
           error={fieldErrors.password}
           helperText={t("Use at least 8 characters.")}
@@ -301,6 +301,6 @@ const registerStyles = (theme: Theme) =>
     consentLinkLabel: {
       ...theme.type.supporting,
       fontWeight: "700",
-      color: theme.colors.accent,
+      color: theme.colors.link,
     },
   });
