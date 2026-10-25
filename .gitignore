@@ -7,8 +7,6 @@ dist/
 !.env.production.example
 *.log
 .DS_Store
-PRD.md
-ROADMAP.md
 
 # Simulator device tokens (produced by fleet.mjs setup)
 agents/sim/devices.json
