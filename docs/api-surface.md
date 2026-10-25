@@ -404,10 +404,10 @@ TODO: unverified - BetterAuth may expose additional enabled email/password, sess
 
 ### `POST /api/me/gate-scan`
 
-- Source: `apps/api/src/routes/me.ts:245`
+- Source: `apps/api/src/features/gate/router.ts:58`
 - Auth: `requireRole("admin", "staff", "member")`; `mustChangePassword` gate applies.
 - Body: `{ qr: string min 1 max 200; lat?: number; lng?: number; mocked?: boolean }`.
-- Headers: optional `x-device-fingerprint` must match regex `/^[a-f0-9]{64}$/` to be used; otherwise session token SHA-256 is fallback for location-drift detection (`apps/api/src/routes/me.ts:178`).
+- Headers: optional `x-device-fingerprint` must match regex `/^[a-f0-9]{64}$/` to be used; otherwise session token SHA-256 is fallback for location-drift detection (`apps/api/src/features/gate/checks.ts:53`).
 - Success: `200` JSON, `GateScanResponse` (`packages/shared/src/index.ts:152`): `{ ok: true; deviceName: string; direction: "in" | "out"; openMs: number }`, with `openMs` currently `500`.
 - Errors: common `requireRole`; `400 INVALID_REQUEST "Invalid request."`; `429 RATE_LIMITED "Too many requests. Please wait a moment."`; `403 INVALID_QR "Invalid QR code. Scan the code on the turnstile again."`; `403 UNKNOWN_DEVICE "This turnstile is no longer registered. Contact reception."`; `403 SHARING_BLOCKED "Unusual activity was detected on your account. Entry has been temporarily disabled. Contact reception."`; `403 MOCK_LOCATION "A mock location was detected. Close location spoofing applications and try again."`; `403 NO_ACTIVE_SUBSCRIPTION "You do not have an active subscription. Contact gym reception."`; `403 LOCATION_REQUIRED "Location information could not be obtained. Enable location services and try again."`; `403 OUT_OF_RANGE "You do not appear to be at the gym location. Entry is only permitted at the gym."`; `403 DEVICE_OFFLINE "No turnstile connection. Contact reception."`; terminal errors.
 - Rate limit: per-user `30` gate scans per `60s`; additional member+device open lock TTL `3000ms`.
