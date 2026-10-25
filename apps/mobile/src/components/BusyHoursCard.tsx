@@ -7,20 +7,43 @@ import { tabularNumbers, useThemedStyles, type Theme } from "../theme";
 import { Plate, Skeleton } from "../ui";
 
 const CHART_HEIGHT = 56;
+/** A failed fetch is retried on the next focus or gym change after this long. */
+const FAILURE_TTL_MS = 60_000;
+
+type CacheEntry = MyBusyHours | { failedAt: number };
+
+/** Current hour (0..23) in `timeZone`, the zone the buckets are cut in. */
+function hourIn(timeZone: string): number {
+  try {
+    const hour = new Intl.DateTimeFormat("en-US", {
+      hour: "numeric",
+      hourCycle: "h23",
+      timeZone,
+    })
+      .formatToParts(new Date())
+      .find((part) => part.type === "hour")?.value;
+    const parsed = Number(hour);
+    if (Number.isInteger(parsed) && parsed >= 0 && parsed < 24) return parsed;
+  } catch {
+    // Unknown zone or no Intl time zone data: fall back to device time.
+  }
+  return new Date().getHours();
+}
 
 /** Typical hourly traffic of one gym today; cached per gym in state. */
 export function BusyHoursCard({
   gymId,
   refreshToken,
+  focused,
 }: {
   gymId: string | null;
   refreshToken: number;
+  /** Whether the hosting screen is visible; regaining focus retries failures. */
+  focused: boolean;
 }) {
   const { t } = useTranslation();
   const styles = useThemedStyles(busyStyles);
-  const [cache, setCache] = useState<Record<string, MyBusyHours | "failed">>(
-    {},
-  );
+  const [cache, setCache] = useState<Record<string, CacheEntry>>({});
   const [seenToken, setSeenToken] = useState(refreshToken);
 
   // Pull-to-refresh drops the cache so the figures are fetched again.
@@ -33,21 +56,27 @@ export function BusyHoursCard({
 
   const entry = gymId ? cache[gymId] : undefined;
   useEffect(() => {
-    if (!gymId || entry !== undefined) return;
+    if (!gymId || !focused) return;
+    if (entry !== undefined) {
+      if (!("failedAt" in entry)) return;
+      if (Date.now() - entry.failedAt < FAILURE_TTL_MS) return;
+    }
     let cancelled = false;
     api<MyBusyHours>(`/api/me/gyms/${encodeURIComponent(gymId)}/busy-hours`)
       .then((result) => {
         if (!cancelled) setCache((c) => ({ ...c, [gymId]: result }));
       })
       .catch(() => {
-        if (!cancelled) setCache((c) => ({ ...c, [gymId]: "failed" }));
+        if (!cancelled) {
+          setCache((c) => ({ ...c, [gymId]: { failedAt: Date.now() } }));
+        }
       });
     return () => {
       cancelled = true;
     };
-  }, [gymId, entry]);
+  }, [gymId, entry, focused]);
 
-  if (!gymId || entry === "failed") return null;
+  if (!gymId || (entry && "failedAt" in entry)) return null;
   if (!entry) {
     return (
       <Plate>
@@ -58,7 +87,7 @@ export function BusyHoursCard({
   }
   if (entry.sampleDays === 0) return null;
 
-  const nowHour = new Date().getHours();
+  const nowHour = hourIn(entry.timeZone);
   const traffic = entry.hours.filter((h) => h.avgEntries > 0);
   const shown =
     traffic.length > 0

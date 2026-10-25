@@ -324,6 +324,21 @@ function SignedInApp({
             showsHorizontalScrollIndicator={false}
             scrollEnabled={!toolsFullscreen && !overlay && swipeLocks === 0}
             scrollEventThrottle={16}
+            onScrollBeginDrag={() => {
+              // Mount the neighbours before they slide in, not after the swipe.
+              const index = TAB_ORDER.indexOf(activeTab);
+              const next = [TAB_ORDER[index - 1], TAB_ORDER[index + 1]];
+              setVisited((current) =>
+                next.every((tab) => !tab || current[tab])
+                  ? current
+                  : {
+                      ...current,
+                      ...Object.fromEntries(
+                        next.filter(Boolean).map((tab) => [tab, true]),
+                      ),
+                    },
+              );
+            }}
             onScroll={Animated.event(
               [{ nativeEvent: { contentOffset: { x: scrollX } } }],
               { useNativeDriver: true },

@@ -20,6 +20,9 @@ import {
 import { Badge, Plate } from "../ui";
 import { occupancyColor } from "./GymCard";
 
+const WATCHDOG_MS = 1500;
+const WATCHDOG_MAX_HOLD_MS = 10_000;
+
 /**
  * Full-width paging cards — one gym per page — with tappable page dots. The
  * scroller breaks out of the screen gutter so each page is exactly the window
@@ -48,6 +51,8 @@ export function MembershipPager({
   const multiple = gyms.length > 1;
   const tabLock = useTabSwipeLock();
   const held = useRef(false);
+  // Time the current touch went down; null while no finger is on the card.
+  const touchedAt = useRef<number | null>(null);
   const watchdog = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const unlock = useCallback(() => {
@@ -58,18 +63,32 @@ export function MembershipPager({
     tabLock.unlock();
   }, [tabLock]);
 
-  // Safety net: a missed end event must never leave the tabs locked.
+  // Safety net: a missed end event must never leave the tabs locked. A finger
+  // that is still down keeps the lock, up to a cap in case its end was lost.
   const armWatchdog = useCallback(() => {
     if (watchdog.current) clearTimeout(watchdog.current);
-    watchdog.current = setTimeout(unlock, 1500);
+    watchdog.current = setTimeout(function check() {
+      const since = touchedAt.current;
+      if (since != null && Date.now() - since < WATCHDOG_MAX_HOLD_MS) {
+        watchdog.current = setTimeout(check, WATCHDOG_MS);
+        return;
+      }
+      unlock();
+    }, WATCHDOG_MS);
   }, [unlock]);
 
   const lock = useCallback(() => {
+    touchedAt.current = Date.now();
     armWatchdog();
     if (held.current) return;
     held.current = true;
     tabLock.lock();
   }, [armWatchdog, tabLock]);
+
+  const release = useCallback(() => {
+    touchedAt.current = null;
+    unlock();
+  }, [unlock]);
 
   useEffect(() => unlock, [unlock]);
   // With a single gym there is nothing to page: tab swipes work over the card.
@@ -82,8 +101,8 @@ export function MembershipPager({
       <View
         style={styles.breakout}
         onTouchStart={multiple ? lock : undefined}
-        onTouchEnd={multiple ? unlock : undefined}
-        onTouchCancel={multiple ? unlock : undefined}
+        onTouchEnd={multiple ? release : undefined}
+        onTouchCancel={multiple ? release : undefined}
       >
         <ScrollView
           ref={scroller}

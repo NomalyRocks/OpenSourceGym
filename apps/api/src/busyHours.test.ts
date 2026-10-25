@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
+  BUSY_HOURS_MIN_COUNT,
   buildBusyHours,
   sameWeekdayLabels,
   zonedDayHour,
@@ -63,10 +64,33 @@ describe("busy hours", () => {
       timeZone: TZ,
       now,
       gymCreatedAt: new Date("2026-01-12T00:00:00Z"),
-      entryTimes: [new Date("2026-01-23T07:00:00Z")],
+      entryTimes: [
+        new Date("2026-01-23T07:00:00Z"),
+        new Date("2026-01-23T07:10:00Z"),
+        new Date("2026-01-16T07:20:00Z"),
+      ],
     });
     assert.equal(result.sampleDays, 2);
-    assert.equal(result.hours[10]?.avgEntries, 0.5);
+    assert.equal(result.hours[10]?.avgEntries, 1.5);
+  });
+
+  it("suppresses buckets below the minimum raw count", () => {
+    const result = buildBusyHours({
+      gymId: "g",
+      timeZone: TZ,
+      now,
+      gymCreatedAt: old,
+      entryTimes: [
+        new Date("2026-01-23T07:05:00Z"), // 10:xx local, 2 entries
+        new Date("2026-01-16T07:10:00Z"),
+        new Date("2026-01-23T08:05:00Z"), // 11:xx local, 3 entries
+        new Date("2026-01-16T08:10:00Z"),
+        new Date("2026-01-09T08:20:00Z"),
+      ],
+    });
+    assert.equal(BUSY_HOURS_MIN_COUNT, 3);
+    assert.equal(result.hours[10]?.avgEntries, 0);
+    assert.equal(result.hours[11]?.avgEntries, 0.8);
   });
 
   it("returns zeros and sampleDays 0 with no history", () => {

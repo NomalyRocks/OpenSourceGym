@@ -207,7 +207,14 @@ export function Home({
   // A frozen membership is paused, not running out: stay calm and neutral.
   const frozen = freeze != null;
   const expiringSoon = active && !frozen && remainingDays <= 7;
+  const pagerShown =
+    subscriptionLoaded && !subscriptionError && active && gyms.length > 0;
   const currentGym = gyms[Math.min(pageIndex, Math.max(0, gyms.length - 1))];
+
+  // A remounted pager starts at page 0, so the busy-hours card must follow.
+  useEffect(() => {
+    if (!pagerShown) setPageIndex(0);
+  }, [pagerShown]);
 
   // Quietest gym right now, only when it is actually quiet and there is a
   // choice or a figure worth stating; gyms without capacity data are skipped.
@@ -343,7 +350,11 @@ export function Home({
 
       {active && currentGym ? (
         <View style={styles.busyHours}>
-          <BusyHoursCard gymId={currentGym.id} refreshToken={refreshToken} />
+          <BusyHoursCard
+            gymId={currentGym.id}
+            refreshToken={refreshToken}
+            focused={isCurrentTab}
+          />
         </View>
       ) : null}
 

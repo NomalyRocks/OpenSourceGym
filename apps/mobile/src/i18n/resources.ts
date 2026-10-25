@@ -254,13 +254,6 @@ const tr = {
   "Have a good workout": "İyi antrenmanlar",
   "See you next time": "Görüşmek üzere",
   "{{device}}": "{{device}}",
-  "A {{direction}} record was created for {{device}}.":
-    "{{device}} için {{direction}} kaydı oluşturuldu.",
-  exit: "çıkış",
-  entry: "giriş",
-  "The camera will reopen shortly for a new scan.":
-    "Yeni tarama için kamera birazdan yeniden açılacak.",
-  "Entry could not be completed": "Geçiş tamamlanamadı",
   "Your location could not be determined. Move somewhere with a clearer view of the sky and try again.":
     "Konumunuz belirlenemedi. Gökyüzünü daha net gören bir yere geçip tekrar deneyin.",
   "Wait a few seconds for the location to be found, then scan again.":

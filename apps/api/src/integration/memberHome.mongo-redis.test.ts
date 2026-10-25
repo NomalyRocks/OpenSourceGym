@@ -285,11 +285,32 @@ test(
 
       // The profile is cached per gym and local day for one hour.
       const today = zonedDayHour(new Date(), timeZone).day;
-      const ttl = await redis.ttl(`og:busyhours:${A}:${today}`);
+      const ttl = await redis.ttl(`og:busyhours:v2:${A}:${today}`);
       assert.ok(ttl > 0 && ttl <= 3600);
       await addEntry(member.id, A, weekAgo);
       const cached = await get(member.cookie, `/gyms/${A}/busy-hours`);
       assert.deepEqual(cached.body, busy.body);
+
+      // A frozen member whose raw period ended during the freeze keeps the
+      // gym GET /subscription lists, and busy hours follow the same scope.
+      const lapsedFrozen = await createUser("LapsedFrozen");
+      await addSub(lapsedFrozen.id, -10, -2, [gymA]);
+      await db.collection("subscription_freezes").insertOne({
+        userId: new ObjectId(lapsedFrozen.id),
+        startedAt: new Date(t0 - 5 * DAY),
+        startedBy: "test",
+        maxDays: 30,
+        endedAt: null,
+      });
+      const lapsedSub = await get(lapsedFrozen.cookie, "/subscription");
+      assert.equal(lapsedSub.status, 200);
+      assert.deepEqual(lapsedSub.body.gymIds, [A]);
+      const lapsedBusy = await get(
+        lapsedFrozen.cookie,
+        `/gyms/${A}/busy-hours`,
+      );
+      assert.equal(lapsedBusy.status, 200);
+      assert.equal(lapsedBusy.body.gymId, A);
     } finally {
       await db.dropDatabase().catch(() => undefined);
       await redis.flushDb().catch(() => undefined);

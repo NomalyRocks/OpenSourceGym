@@ -675,7 +675,10 @@ export interface MyBusyHours {
   weekday: number;
   /** How many past same-weekday days were averaged (0 when there is no history) */
   sampleDays: number;
-  /** Always 24 rows, hour 0..23: average allowed entry scans in that hour */
+  /**
+   * Always 24 rows, hour 0..23: average allowed entry scans in that hour. An
+   * hour with fewer than 3 entries across all sample days reports 0 (privacy).
+   */
   hours: { hour: number; avgEntries: number }[];
 }
 
