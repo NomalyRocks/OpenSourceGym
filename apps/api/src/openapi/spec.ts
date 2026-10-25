@@ -1129,7 +1129,7 @@ export const openApiDocument: OpenApiDocument = createDocument({
         summary: "Get a gym's typical entry traffic by hour",
         ...requiredRole(
           "owner | admin | staff | member",
-          "Average allowed entries per hour over the last four same-weekday days; the gym must be in the caller's active subscription, otherwise (or for an unknown id) GYM_OUT_OF_SCOPE",
+          "Average allowed entries per hour over the last four same-weekday days; hours with fewer than 3 entries in total report 0. The gym must be one GET /api/me/subscription lists (a frozen member keeps the gyms of the freeze-credited preview), otherwise (or for an unknown id) GYM_OUT_OF_SCOPE",
         ),
         requestParams: { path: gymPathParams },
         responses: protectedResponses({

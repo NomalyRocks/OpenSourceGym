@@ -52,7 +52,7 @@ import {
 import {
   checkEntrySubscription,
   getSubscriptionSummary,
-  listActiveSubscriptionGymIds,
+  listUsableSubscriptionGymIds,
   SubscriptionLockTimeoutError,
 } from "../subscriptions.js";
 import {
@@ -326,13 +326,14 @@ meRouter.get(
   }),
 );
 
-// Typical hourly traffic at a gym the member currently has access to.
+// Typical hourly traffic at a gym the member currently has access to — the
+// gyms GET /subscription lists, so a frozen member keeps theirs.
 meRouter.get(
   "/gyms/:gymId/busy-hours",
   requireRole("owner", "admin", "staff", "member"),
   authed(async (req, res) => {
     const gymId = String(req.params.gymId);
-    const allowed = (await listActiveSubscriptionGymIds(req.user.id)).some(
+    const allowed = (await listUsableSubscriptionGymIds(req.user.id)).some(
       (id) => id.toHexString() === gymId,
     );
     const gym = allowed ? await findGym(gymId) : null;
@@ -349,7 +350,7 @@ meRouter.get(
     const timeZone = env.reportsTimeZone;
     const now = new Date();
     const today = zonedDayHour(now, timeZone).day;
-    const cacheKey = `og:busyhours:${gymId}:${today}`;
+    const cacheKey = `og:busyhours:v2:${gymId}:${today}`;
     const cached = await redis.get(cacheKey);
     if (cached) {
       res.json(JSON.parse(cached) as MyBusyHours);
@@ -1255,7 +1256,7 @@ meRouter.get(
     if (req.user.role === "owner") {
       gyms = await listActiveGyms();
     } else if (req.user.role === "member") {
-      const ids = await listActiveSubscriptionGymIds(req.user.id);
+      const ids = await listUsableSubscriptionGymIds(req.user.id);
       gyms = (await findGymsByIds(ids.map((id) => id.toHexString()))).filter(
         (gym) => gym.active,
       );

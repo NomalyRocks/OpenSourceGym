@@ -607,7 +607,11 @@ export function Profile({
         busy={signOutAction.busy}
         error={signOutAction.error}
         onConfirm={() => void confirmSignOut()}
-        onCancel={() => setSignOutOpen(false)}
+        onCancel={() => {
+          // A failed attempt must not linger as the inline account message.
+          signOutAction.clearError();
+          setSignOutOpen(false);
+        }}
       />
 
       <ConfirmSheet

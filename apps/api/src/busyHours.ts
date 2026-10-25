@@ -3,6 +3,13 @@ import type { MyBusyHours } from "@opengym/shared";
 /** How many past same-weekday days the profile averages. */
 export const BUSY_HOURS_SAMPLE_DAYS = 4;
 
+/**
+ * Hour buckets with fewer raw entries than this over all sample days report 0.
+ * At a small gym an off-peak 0.25 means "one person comes at this hour on this
+ * weekday", which can confirm a regular's routine (KVKK).
+ */
+export const BUSY_HOURS_MIN_COUNT = 3;
+
 const DAY_MS = 86_400_000;
 
 function zonedFormatter(timeZone: string): Intl.DateTimeFormat {
@@ -56,7 +63,8 @@ export function sameWeekdayLabels(
  * Average allowed entries per local hour over the recent same-weekday days.
  * A sample day counts only once the gym existed (its local creation day or
  * later); entries on other days are ignored. Fewer than four sample days, or
- * none, simply divide by what there is.
+ * none, simply divide by what there is. Buckets below
+ * {@link BUSY_HOURS_MIN_COUNT} are suppressed to 0.
  */
 export function buildBusyHours(input: {
   gymId: string;
@@ -85,7 +93,9 @@ export function buildBusyHours(input: {
     hours: counts.map((count, hour) => ({
       hour,
       avgEntries:
-        sampleDays === 0 ? 0 : Math.round((count / sampleDays) * 10) / 10,
+        sampleDays === 0 || count < BUSY_HOURS_MIN_COUNT
+          ? 0
+          : Math.round((count / sampleDays) * 10) / 10,
     })),
   };
 }
