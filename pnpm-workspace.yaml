@@ -10,3 +10,10 @@ overrides:
   # patched range on its own.
   # GHSA-5p4m-2wfm-xmqj — quadratic CPU in !!omap resolution.
   "js-yaml@^4.0.0": "^4.3.1"
+  # GHSA-w3rx-r6r6-pgpr, GHSA-5p2g-fcmc-qvqq — image-size parser infinite loops.
+  # @expo/metro pins metro 0.84.4, the last patch that still depends on
+  # image-size; 0.84.5+ ships its own reader. Aligns with react-native's metro.
+  "metro@0.84.4": "0.84.6"
+  # GHSA-w5hq-g745-h8pq — uuid buffer bounds check, pulled in by xcode (iOS
+  # prebuild), which only calls uuid.v4().
+  "uuid@<11.1.1": "^11.1.1"
