@@ -9,3 +9,7 @@ apps/mobile/android/app/build/
 apps/mobile/android/app/.cxx/
 apps/mobile/.expo/
 apps/mobile/ios/build/
+
+# Turkish product docs are hand-formatted
+PRD.md
+ROADMAP.md
