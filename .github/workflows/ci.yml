@@ -46,6 +46,14 @@ jobs:
       - name: Typecheck
         run: pnpm typecheck
 
+      # Dependabot bumps single expo-* packages past what the installed SDK
+      # supports (e.g. expo-secure-store 58 on SDK 57); the validator catches it.
+      - name: Expo SDK alignment
+        run: pnpm --filter @opengym/mobile exec expo install --check
+        env:
+          CI: "1"
+          EXPO_NO_TELEMETRY: "1"
+
       - name: Test
         run: pnpm test
 
