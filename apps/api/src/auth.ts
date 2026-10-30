@@ -3,6 +3,7 @@ import { APIError, createAuthMiddleware } from "better-auth/api";
 import { mongodbAdapter } from "better-auth/adapters/mongodb";
 import { emailOTP, twoFactor } from "better-auth/plugins";
 import { expo } from "@better-auth/expo";
+import { createHash } from "node:crypto";
 import { MongoServerError } from "mongodb";
 import { db, userCollection } from "./db.js";
 import { redis } from "./redis.js";
@@ -63,6 +64,21 @@ function normalizePhoneForApi(value: unknown): string {
 
 const DEV_TEST_EMAIL_DOMAIN = "@test.com";
 const DEV_TEST_OTP = "111111";
+
+// better-auth's email-OTP attempt counter is a find-then-update, so parallel
+// wrong guesses all read the same count and share one slot; the only other cap
+// is the per-IP rule, which rotates away with many IPs. This atomic per-email
+// counter is the real ceiling on guessing a 6-digit code. It is keyed by email
+// only (not OTP type) and is never reset when a new code is requested.
+const OTP_ATTEMPT_LIMIT = 5;
+const OTP_ATTEMPT_WINDOW_SECONDS = 600;
+const OTP_ATTEMPT_PATHS = new Set([
+  "/email-otp/check-verification-otp",
+  "/email-otp/verify-email",
+  "/email-otp/reset-password",
+  "/sign-in/email-otp",
+]);
+const otpAttemptStorage = createAuthSecondaryStorage(redis);
 
 function isDevTestEmail(email: string): boolean {
   return (
@@ -249,6 +265,53 @@ export const auth = betterAuth({
         ctx.body.kvkkAccepted === true
       ) {
         ctx.body.dataProcessingAccepted = true;
+      }
+      if (
+        OTP_ATTEMPT_PATHS.has(ctx.path) &&
+        typeof ctx.body?.email === "string"
+      ) {
+        const email = ctx.body.email.trim().toLowerCase();
+        if (!isDevTestEmail(email)) {
+          const attempts = await otpAttemptStorage.increment!(
+            `og:otp-attempts:${email}`,
+            OTP_ATTEMPT_WINDOW_SECONDS,
+          );
+          if (attempts > OTP_ATTEMPT_LIMIT) {
+            // Log a hash prefix, not the address: enough to correlate a
+            // lockout campaign without writing personal data to the logs.
+            console.warn("otp attempt cap exceeded", {
+              emailHash: createHash("sha256")
+                .update(email)
+                .digest("hex")
+                .slice(0, 12),
+            });
+            throw new APIError("TOO_MANY_REQUESTS", {
+              code: "OTP_ATTEMPTS_EXCEEDED",
+              message: "Too many verification attempts",
+            });
+          }
+        }
+      }
+    }),
+    // A correct code proves possession of the mailbox, so a real user's
+    // check + reset flow is not charged twice against the cap.
+    after: createAuthMiddleware(async (ctx) => {
+      if (
+        !OTP_ATTEMPT_PATHS.has(ctx.path) ||
+        typeof ctx.body?.email !== "string"
+      ) {
+        return;
+      }
+      const returned: unknown = ctx.context.returned;
+      if (
+        returned instanceof Error ||
+        (returned instanceof Response && !returned.ok)
+      ) {
+        return;
+      }
+      const email = ctx.body.email.trim().toLowerCase();
+      if (!isDevTestEmail(email)) {
+        await redis.del(`og:otp-attempts:${email}`);
       }
     }),
   },

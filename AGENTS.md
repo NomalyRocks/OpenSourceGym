@@ -45,7 +45,7 @@ MONGODB_URI=mongodb://127.0.0.1:27018/opengym-ui-demo REDIS_URL=redis://127.0.0.
 ### Auth (BetterAuth — `apps/api/src/auth.ts`)
 
 - Email+password with required email verification via 6-digit OTP (`emailOTP` plugin); `expo()` plugin for the mobile deep-link scheme `opengym://`.
-- Mongo adapter + Redis secondary storage (sessions) + Redis-backed rate limiting with per-route rules (signup, signin, OTP send/verify).
+- Mongo adapter + Redis secondary storage (sessions) + Redis-backed rate limiting with per-route rules (signup, signin, OTP send/verify) plus an atomic per-email cap of 5 OTP verification attempts per 10 minutes (`og:otp-attempts:<email>`, `hooks.before` in `auth.ts`; better-auth's own attempt counter is not atomic).
 - Custom user fields: `firstName`, `lastName`, normalized public `phone`, internal/non-returned `phoneE164`, `role` (`owner|admin|staff|member`, `input: false`), `gymIds` (admin/staff gym scope; empty for owner and member), `mustChangePassword`, data processing and privacy consent flags (`dataProcessingAccepted`, `privacyAccepted` + timestamps). The `user.create.before` hook rejects signup without both consents, normalizes/uniquifies phones, and stamps consent timestamps.
 - The BetterAuth catch-all is mounted **before** `express.json()` in `apps/api/src/index.ts` — moving it after breaks auth request bodies.
 - First boot seeds the chain `owner` `admin@opengym.local` (and no gym) with `mustChangePassword: true` (`apps/api/src/seed.ts`). The password comes from `resolveInitialAdminPassword()` (`apps/api/src/initialAdmin.ts`): `admin1234` in development, and in production the operator-supplied `INITIAL_ADMIN_PASSWORD` — there is no production default, so an unset value fails startup, and the value is never logged.
