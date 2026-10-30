@@ -6,6 +6,7 @@ import { expo } from "@better-auth/expo";
 import { MongoServerError } from "mongodb";
 import { db, userCollection } from "./db.js";
 import { redis } from "./redis.js";
+import { createAuthSecondaryStorage } from "./authStorage.js";
 import { sendMail } from "./mailer.js";
 import { env } from "./env.js";
 import { enforceSessionPolicy } from "./sharing.js";
@@ -153,42 +154,28 @@ export const auth = betterAuth({
   ],
   database: databaseAdapter,
 
-  secondaryStorage: {
-    get: (key) => redis.get(key),
-    set: async (key, value, ttl) => {
-      if (ttl) {
-        await redis.set(key, value, {
-          expiration: { type: "EX", value: ttl },
-        });
-      } else {
-        await redis.set(key, value);
-      }
-    },
-    delete: async (key) => {
-      await redis.del(key);
-    },
-  },
+  secondaryStorage: createAuthSecondaryStorage(redis),
 
   emailAndPassword: {
     enabled: true,
     requireEmailVerification: true,
     minPasswordLength: 8,
     revokeSessionsOnPasswordReset: true,
-    // BetterAuth's own revokeSessionsOnPasswordReset only deletes tokens in the
-    // Redis "active-sessions-<userId>" list. Phase 6 enforceSessionPolicy
-    // eviction (sharing.ts) deletes that list completely without rewriting
-    // surviving sessions, so surviving Redis session blobs are never deleted
-    // for users whose list is already empty, and findSession accepts them as
-    // valid without consulting Mongo. revokeUserSessions() reads tokens from
-    // Mongo (the source of truth), so it does not depend on that list. It does
-    // not touch mustChangePassword—it was added only for session revocation.
-    // BetterAuth runs this hook AFTER writing the password hash to Mongo but
-    // BEFORE its own revokeSessionsOnPasswordReset fallback (internalAdapter.
-    // deleteUserSessions). If revokeUserSessions() throws here, the entire route
-    // aborts: the user is told the password did not change even though the hash
-    // was updated, and BetterAuth's fallback session revocation never runs.
-    // Therefore, swallow and only log the error so the request succeeds and the
-    // fallback can run and clear the sessions.
+    // BetterAuth's own revokeSessionsOnPasswordReset (internalAdapter.
+    // deleteUserSessions) deletes the Mongo session rows but only the Redis
+    // blobs whose tokens are in the "active-sessions-<userId>" list. Phase 6
+    // enforceSessionPolicy eviction (sharing.ts) and concurrent sign-ins can
+    // leave a live blob out of that list, and findSession accepts a Redis blob
+    // as valid without consulting Mongo. Since better-auth 1.7 that revocation
+    // runs inside the reset transaction BEFORE this hook, so the Mongo rows are
+    // already gone here; the session.delete.after database hook below is what
+    // deletes each removed row's Redis blob. revokeUserSessions() remains as a
+    // second sweep: it clears the list key and any session row still in Mongo,
+    // but a sign-in racing the reset within milliseconds can still leave a
+    // blob. It does not touch mustChangePassword—it was added only for session
+    // revocation.
+    // The password hash is already written when this runs, so a throw would
+    // tell the user the password did not change; swallow and only log errors.
     onPasswordReset: async ({ user }) => {
       try {
         await revokeUserSessions(user.id);
@@ -363,6 +350,15 @@ export const auth = betterAuth({
           } catch (err) {
             console.error("session policy enforcement failed:", err);
           }
+        },
+      },
+      // BetterAuth deletes Redis session blobs only for tokens listed in
+      // "active-sessions-<userId>" (see onPasswordReset above). Delete the blob
+      // of every Mongo session row it removes, so an unlisted token cannot
+      // outlive a password reset or other bulk revocation.
+      delete: {
+        after: async (session) => {
+          await redis.del(session.token).catch(console.error);
         },
       },
     },
