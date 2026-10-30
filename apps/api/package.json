@@ -16,7 +16,7 @@
     "@aws-sdk/client-s3": "^3.1085.0",
     "@better-auth/expo": "^1.6.23",
     "@opengym/shared": "workspace:*",
-    "better-auth": "^1.6.23",
+    "better-auth": "^1.7.7",
     "express": "^5.3.0",
     "libphonenumber-js": "^1.13.8",
     "mongodb": "^7.4.0",

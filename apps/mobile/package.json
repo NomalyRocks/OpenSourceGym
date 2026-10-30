@@ -6,7 +6,7 @@
     "@better-auth/expo": "^1.6.23",
     "@opengym/shared": "workspace:*",
     "@shopify/react-native-skia": "2.6.2",
-    "better-auth": "^1.6.23",
+    "better-auth": "^1.7.7",
     "expo": "~57.0.2",
     "expo-application": "~57.0.0",
     "expo-camera": "~57.0.1",
