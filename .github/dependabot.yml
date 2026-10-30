@@ -44,6 +44,23 @@ updates:
       - dependency-name: "react-dom"
         update-types:
           ["version-update:semver-major", "version-update:semver-minor"]
+      # Every expo-* module's major version tracks the SDK (expo-secure-store 58
+      # belongs to SDK 58), so a major bump means leaving SDK 57.
+      - dependency-name: "expo-*"
+        update-types: ["version-update:semver-major"]
+      # @expo/* tooling (e.g. @expo/config-plugins) is versioned with the SDK too.
+      - dependency-name: "@expo/*"
+        update-types: ["version-update:semver-major"]
+      # Native libs that Expo SDK 57 pins in bundledNativeModules.json. Move them
+      # with `expo install --fix`; the CI `expo install --check` gate enforces it.
+      # Exact SDK pins are ignored entirely.
+      - dependency-name: "@shopify/react-native-skia"
+      - dependency-name: "react-native-reanimated"
+      - dependency-name: "react-native-worklets"
+      # The SDK pins a ~ range here, so only patch bumps stay safe.
+      - dependency-name: "react-native-safe-area-context"
+        update-types:
+          ["version-update:semver-major", "version-update:semver-minor"]
 
   - package-ecosystem: "github-actions"
     directory: "/"
