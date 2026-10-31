@@ -12,14 +12,14 @@
   },
   "dependencies": {
     "@opengym/shared": "workspace:*",
-    "better-auth": "^1.6.23",
-    "i18next": "^26.3.6",
-    "lucide-react": "^1.57.0",
+    "better-auth": "^1.7.14",
+    "i18next": "^26.5.11",
+    "lucide-react": "^1.63.0",
     "qrcode": "^1.5.4",
-    "react": "^19.1.0",
-    "react-dom": "^19.1.0",
-    "react-i18next": "^17.0.9",
-    "react-router-dom": "^7.18.2"
+    "react": "^19.2.9",
+    "react-dom": "^19.2.9",
+    "react-i18next": "^17.1.9",
+    "react-router-dom": "^7.18.5"
   },
   "devDependencies": {
     "@types/node": "^24.13.2",
