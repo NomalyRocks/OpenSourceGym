@@ -19,10 +19,11 @@ export async function api<T>(
   options: { method?: string; body?: unknown } = {},
 ): Promise<T> {
   const fp = await getDeviceFingerprint();
+  const cookie = await authClient.getCookie();
   const res = await fetch(`${API_URL}${path}`, {
     method: options.method ?? "GET",
     headers: {
-      Cookie: authClient.getCookie(),
+      Cookie: cookie,
       ...(fp ? { "X-Device-Fingerprint": fp } : {}),
       ...(options.body !== undefined
         ? { "Content-Type": "application/json" }
@@ -60,10 +61,11 @@ export async function uploadBinary<T>(
   }
 
   const fp = await getDeviceFingerprint();
+  const cookie = await authClient.getCookie();
   const res = await expoFetch(`${API_URL}${path}`, {
     method: "PUT",
     headers: {
-      Cookie: authClient.getCookie(),
+      Cookie: cookie,
       "Content-Type": contentType,
       ...(fp ? { "X-Device-Fingerprint": fp } : {}),
     },
