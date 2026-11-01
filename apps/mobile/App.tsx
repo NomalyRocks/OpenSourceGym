@@ -485,7 +485,7 @@ function AppContent() {
 
   const bootReady = localizationReady && themeReady && !isPending;
 
-  let body: ReactNode = null;
+  let body: ReactNode;
   if (!bootReady) {
     body = <View style={styles.loading} />;
   } else if (session) {

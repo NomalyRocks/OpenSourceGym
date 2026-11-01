@@ -72,6 +72,10 @@ updates:
       - dependency-name: "react-native-safe-area-context"
         update-types:
           ["version-update:semver-major", "version-update:semver-minor"]
+      # Node typings must match the runtime (engines: node >= 22, CI on Node 22);
+      # a newer @types/node major would type APIs the runtime does not have.
+      - dependency-name: "@types/node"
+        update-types: ["version-update:semver-major"]
 
   - package-ecosystem: "github-actions"
     directory: "/"

@@ -348,7 +348,7 @@ export function CalorieCalculator({ onClose }: { onClose: () => void }) {
     (async () => {
       // Device cache uses a member-specific key, so the ID is needed first: if
       // the profile cannot be read, the flow starts empty.
-      let profile: MyProfile | null = null;
+      let profile: MyProfile;
       try {
         profile = await api<MyProfile>("/api/me/profile");
       } catch {
