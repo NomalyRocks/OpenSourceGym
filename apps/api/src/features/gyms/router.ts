@@ -40,12 +40,12 @@ import {
   dateRangeFilter,
   findPage,
   pageQuerySchema,
+  toInvalidCursorResponse,
 } from "../../lib/pagination.js";
 import { countFrozenMembers } from "../freeze/frozenMembers.js";
 import { countActiveMembers, countRenewalsDue } from "../reports/reports.js";
 import { devicesRouter } from "../devices/router.js";
 import { gymReportsRouter } from "../reports/router.js";
-import { toInvalidCursorResponse } from "../admin/router.js";
 
 /**
  * Mounted at /api/admin/gyms. Gym CRUD is owner-only; everything under

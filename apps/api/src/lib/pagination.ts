@@ -1,6 +1,8 @@
 import { ObjectId } from "mongodb";
 import type { Collection, Document, WithId } from "mongodb";
+import type { Response } from "express";
 import { z } from "zod";
+import { sendApiError } from "../core/apiError.js";
 
 export const DEFAULT_PAGE_LIMIT = 50;
 export const MAX_PAGE_LIMIT = 100;
@@ -177,4 +179,19 @@ export function dateRangeFilter(
   if (from) range.$gte = from;
   if (to) range.$lte = to;
   return { [field]: range };
+}
+
+/**
+ * Converts findPage's malformed-cursor error to 400 and leaves other errors to
+ * the terminal error handler. Express 5 catches rejected promises in async
+ * routes, so rethrowing is safe.
+ */
+export function toInvalidCursorResponse(res: Response) {
+  return (err: unknown): null => {
+    if (err instanceof InvalidCursorError) {
+      sendApiError(res, 400, "INVALID_REQUEST", "Invalid pagination cursor.");
+      return null;
+    }
+    throw err;
+  };
 }
