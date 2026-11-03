@@ -16,16 +16,16 @@ Source of truth: checked source under `apps/api/src` and shared types under `pac
 
 ## Auth Model
 
-- BetterAuth is mounted at `app.all("/api/auth/{*splat}", toNodeHandler(auth))` before `express.json()` at `apps/api/src/index.ts:23`.
+- BetterAuth is mounted at `app.all("/api/auth/{*splat}", toNodeHandler(auth))` before `express.json()` at `apps/api/src/index.ts`.
 - Sessions are cookie-based. The mobile client uses BetterAuth Expo support and sends the Cookie header manually; server-side session lookup reads request headers via `fromNodeHeaders(req.headers)`.
-- Roles are `admin | staff | member` (`packages/shared/src/index.ts:7`).
-- Protected REST routes use `requireRole(...roles)` (`apps/api/src/middleware.ts:45`). It fetches the BetterAuth session, then re-reads the user from Mongo on every request (`apps/api/src/middleware.ts:47`) so role and `mustChangePassword` changes are fresh even when Redis session cache exists.
+- Roles are `admin | staff | member` (`packages/shared/src/index.ts`).
+- Protected REST routes use `requireRole(...roles)` (`apps/api/src/core/middleware.ts`). It fetches the BetterAuth session, then re-reads the user from Mongo on every request (`apps/api/src/core/middleware.ts`) so role and `mustChangePassword` changes are fresh even when Redis session cache exists.
 - Common `requireRole` errors: `401 { code: "AUTH_REQUIRED", message: "Authentication is required." }`, `403 { code: "FORBIDDEN", message: "You do not have permission for this operation." }`, `403 { code: "PASSWORD_CHANGE_REQUIRED", message: "You must change your password before continuing." }`.
-- `mustChangePassword` gate applies to every `requireRole` route except router-local path `"/initial-password"` and `"/profile"` (`apps/api/src/middleware.ts:82`). Because `req.path` is router-local, this exempts `POST /api/admin/initial-password` and `GET /api/me/profile`.
+- `mustChangePassword` gate applies to every `requireRole` route except router-local path `"/initial-password"` and `"/profile"` (`apps/api/src/core/middleware.ts`). Because `req.path` is router-local, this exempts `POST /api/admin/initial-password` and `GET /api/me/profile`.
 
 ## Error Shapes and Codes
 
-Application errors use `ApiErrorResponse` (`packages/shared/src/index.ts:146`):
+Application errors use `ApiErrorResponse` (`packages/shared/src/index.ts`):
 
 ```ts
 {
@@ -34,24 +34,24 @@ Application errors use `ApiErrorResponse` (`packages/shared/src/index.ts:146`):
 }
 ```
 
-`sendApiError()` writes that body with the supplied status (`apps/api/src/apiError.ts:5`). The terminal Express error handler also emits:
+`sendApiError()` writes that body with the supplied status (`apps/api/src/core/apiError.ts`). The terminal Express error handler also emits:
 
-- `400 INVALID_REQUEST "Invalid request body."` for JSON parse failure (`apps/api/src/index.ts:78`)
-- `413 PAYLOAD_TOO_LARGE "The photo can be at most 10 MB."` for oversized `/api/me/profile-photo` bodies (`apps/api/src/index.ts:57`)
-- `500 INTERNAL_ERROR "An unexpected error occurred. Please try again."` for unhandled errors (`apps/api/src/index.ts:82`)
+- `400 INVALID_REQUEST "Invalid request body."` for JSON parse failure (`apps/api/src/index.ts`)
+- `413 PAYLOAD_TOO_LARGE "The photo can be at most 10 MB."` for oversized `/api/me/profile-photo` bodies (`apps/api/src/index.ts`)
+- `500 INTERNAL_ERROR "An unexpected error occurred. Please try again."` for unhandled errors (`apps/api/src/index.ts`)
 
-Distinct `ApiErrorCode` values from shared types (`packages/shared/src/index.ts:91`): `INVALID_QR`, `UNKNOWN_DEVICE`, `DEVICE_OFFLINE`, `NO_ACTIVE_SUBSCRIPTION`, `LOCATION_REQUIRED`, `OUT_OF_RANGE`, `MOCK_LOCATION`, `SHARING_BLOCKED`, `AUTH_REQUIRED`, `FORBIDDEN`, `PASSWORD_CHANGE_REQUIRED`, `INTERNAL_ERROR`, `PAYLOAD_TOO_LARGE`, `PROFILE_PHOTO_MISSING`, `PROFILE_PHOTO_INVALID`, `PROFILE_PHOTO_BUSY`, `PROFILE_PHOTO_RATE_LIMITED`, `PROFILE_PHOTO_UNAVAILABLE`, `INVALID_REQUEST`, `RATE_LIMITED`, `DELETION_MEMBER_ONLY`, `DELETION_ALREADY_PENDING`, `DELETION_NOT_PENDING`, `INVALID_DEVICE_NAME`, `DEVICE_NOT_FOUND`, `PASSWORD_TOO_SHORT`, `CURRENT_PASSWORD_INVALID`, `SEARCH_QUERY_TOO_SHORT`, `INVALID_USER_OR_ROLE`, `SELF_ROLE_CHANGE`, `MFA_REQUIRED`, `MFA_LOCKED`, `MFA_INVALID`, `USER_NOT_FOUND`, `INVALID_SUBSCRIPTION`, `SUBSCRIPTION_BUSY`, `INVALID_USER`, `GYM_NAME_REQUIRED`, `INVALID_LOCATION`, `INVALID_CAPACITY`, `INVALID_AUTO_EXIT`, `INVALID_SHARING_SETTINGS`, `DELETION_REQUEST_NOT_FOUND`, `DELETION_REQUEST_RESOLVED`, `DELETION_CLEANUP_FAILED`, `INVALID_PHONE_NUMBER`, `PHONE_ALREADY_EXISTS`.
+Distinct `ApiErrorCode` values from shared types (`packages/shared/src/index.ts`): `INVALID_QR`, `UNKNOWN_DEVICE`, `DEVICE_OFFLINE`, `NO_ACTIVE_SUBSCRIPTION`, `LOCATION_REQUIRED`, `OUT_OF_RANGE`, `MOCK_LOCATION`, `SHARING_BLOCKED`, `AUTH_REQUIRED`, `FORBIDDEN`, `PASSWORD_CHANGE_REQUIRED`, `INTERNAL_ERROR`, `PAYLOAD_TOO_LARGE`, `PROFILE_PHOTO_MISSING`, `PROFILE_PHOTO_INVALID`, `PROFILE_PHOTO_BUSY`, `PROFILE_PHOTO_RATE_LIMITED`, `PROFILE_PHOTO_UNAVAILABLE`, `INVALID_REQUEST`, `RATE_LIMITED`, `DELETION_MEMBER_ONLY`, `DELETION_ALREADY_PENDING`, `DELETION_NOT_PENDING`, `INVALID_DEVICE_NAME`, `DEVICE_NOT_FOUND`, `PASSWORD_TOO_SHORT`, `CURRENT_PASSWORD_INVALID`, `SEARCH_QUERY_TOO_SHORT`, `INVALID_USER_OR_ROLE`, `SELF_ROLE_CHANGE`, `MFA_REQUIRED`, `MFA_LOCKED`, `MFA_INVALID`, `USER_NOT_FOUND`, `INVALID_SUBSCRIPTION`, `SUBSCRIPTION_BUSY`, `INVALID_USER`, `GYM_NAME_REQUIRED`, `INVALID_LOCATION`, `INVALID_CAPACITY`, `INVALID_AUTO_EXIT`, `INVALID_SHARING_SETTINGS`, `DELETION_REQUEST_NOT_FOUND`, `DELETION_REQUEST_RESOLVED`, `DELETION_CLEANUP_FAILED`, `INVALID_PHONE_NUMBER`, `PHONE_ALREADY_EXISTS`.
 
-BetterAuth errors are generated by BetterAuth. Local hooks add `INVALID_PHONE_NUMBER`, `PHONE_ALREADY_EXISTS`, and the message `"Data processing notice and privacy policy acceptance are required."` during signup (`apps/api/src/auth.ts:29`, `apps/api/src/auth.ts:69`, `apps/api/src/auth.ts:238`). TODO: unverified - exact BetterAuth HTTP error body shape/status mapping is in external library code not present in this workspace.
+BetterAuth errors are generated by BetterAuth. Local hooks add `INVALID_PHONE_NUMBER`, `PHONE_ALREADY_EXISTS`, and the message `"Data processing notice and privacy policy acceptance are required."` during signup (`apps/api/src/auth/auth.ts`, `apps/api/src/auth/auth.ts`, `apps/api/src/auth/auth.ts`). TODO: unverified - exact BetterAuth HTTP error body shape/status mapping is in external library code not present in this workspace.
 
 ## Health
 
 ### `GET /health`
 
-- Source: `apps/api/src/index.ts:32`
+- Source: `apps/api/src/index.ts`
 - Auth: public.
 - Params/body: none.
-- Success: `200` JSON, `HealthResponse` (`packages/shared/src/index.ts:1`): `{ status: "ok"; service: string; timestamp: string }`.
+- Success: `200` JSON, `HealthResponse` (`packages/shared/src/index.ts`): `{ status: "ok"; service: string; timestamp: string }`.
 - Errors: terminal `500 INTERNAL_ERROR` only for unexpected failures.
 - Rate limit: none.
 - Audit-logged: no.
@@ -60,7 +60,7 @@ BetterAuth errors are generated by BetterAuth. Local hooks add `INVALID_PHONE_NU
 
 ### `GET /api/legal`
 
-- Source: route in `apps/api/src/index.ts`, config resolver in `apps/api/src/legal.ts`.
+- Source: route in `apps/api/src/index.ts`, config resolver in `apps/api/src/features/settings/legal.ts`.
 - Auth: public (no session required) — the mobile signup screen renders consent links before a session exists.
 - Params/body: none.
 - Success: `200` JSON, `LegalConfig`: `{ dataProcessingUrl: string | null; privacyUrl: string | null; version: number }`. URLs come from `settings.legal`; both default to `null` and `version` defaults to `1` when the admin has not configured them. No personal data is returned.
@@ -70,9 +70,9 @@ BetterAuth errors are generated by BetterAuth. Local hooks add `INVALID_PHONE_NU
 
 ## BetterAuth Router (`/api/auth/*`)
 
-Mount source: `apps/api/src/index.ts:24`. Auth config source: `apps/api/src/auth.ts:124`.
+Mount source: `apps/api/src/index.ts`. Auth config source: `apps/api/src/auth/auth.ts`.
 
-Global BetterAuth rate limit: enabled, Redis secondary storage, default `60` requests per `60` seconds (`apps/api/src/auth.ts:363`). Custom rules:
+Global BetterAuth rate limit: enabled, Redis secondary storage, default `60` requests per `60` seconds (`apps/api/src/auth/auth.ts`). Custom rules:
 
 - `/sign-up/email`: `3/60s`, bypassed in development for `@test.com`.
 - `/sign-in/email`: `5/60s`, bypassed in development for `@test.com`.
@@ -84,11 +84,11 @@ Global BetterAuth rate limit: enabled, Redis secondary storage, default `60` req
 - `/two-factor/verify-totp`: `5/60s`.
 - `/two-factor/verify-otp`: `5/60s`.
 
-Configured BetterAuth features: email/password auth (`apps/api/src/auth.ts:152`), email verification required, email OTP plugin (`apps/api/src/auth.ts:318`), Expo plugin (`apps/api/src/auth.ts:317`), two-factor plugin (`apps/api/src/auth.ts:348`). Locally configured user signup input fields: `firstName: string`, `lastName: string`, `phone: string`, `dataProcessingAccepted: boolean`, `privacyAccepted: boolean`; `role`, `mustChangePassword`, `phoneE164`, consent timestamps are not input fields (`apps/api/src/auth.ts:186`).
+Configured BetterAuth features: email/password auth (`apps/api/src/auth/auth.ts`), email verification required, email OTP plugin (`apps/api/src/auth/auth.ts`), Expo plugin (`apps/api/src/auth/auth.ts`), two-factor plugin (`apps/api/src/auth/auth.ts`). Locally configured user signup input fields: `firstName: string`, `lastName: string`, `phone: string`, `dataProcessingAccepted: boolean`, `privacyAccepted: boolean`; `role`, `mustChangePassword`, `phoneE164`, consent timestamps are not input fields (`apps/api/src/auth/auth.ts`).
 
 ### `POST /api/auth/sign-up/email`
 
-- Source: BetterAuth generated route configured at `apps/api/src/auth.ts:152`; mounted by `apps/api/src/index.ts:24`.
+- Source: BetterAuth generated route configured at `apps/api/src/auth/auth.ts`; mounted by `apps/api/src/index.ts`.
 - Auth: public.
 - Body: TODO: unverified - BetterAuth email signup body, plus local required additional fields `firstName`, `lastName`, `phone`, `dataProcessingAccepted`, `privacyAccepted`; password min length `8`. Local signup hook requires both consent booleans and normalizes phone to E.164.
 - Success: TODO: unverified - BetterAuth signup response. Email verification OTP is sent on signup (`sendVerificationOnSignUp: true`).
@@ -98,17 +98,17 @@ Configured BetterAuth features: email/password auth (`apps/api/src/auth.ts:152`)
 
 ### `POST /api/auth/sign-in/email`
 
-- Source: BetterAuth generated route configured at `apps/api/src/auth.ts:152`; mounted by `apps/api/src/index.ts:24`.
+- Source: BetterAuth generated route configured at `apps/api/src/auth/auth.ts`; mounted by `apps/api/src/index.ts`.
 - Auth: public.
-- Body: TODO: unverified - BetterAuth email/password signin body. `x-device-fingerprint` header may be recorded if it is 64 lowercase hex characters (`apps/api/src/auth.ts:291`).
+- Body: TODO: unverified - BetterAuth email/password signin body. `x-device-fingerprint` header may be recorded if it is 64 lowercase hex characters (`apps/api/src/auth/auth.ts`).
 - Success: TODO: unverified - BetterAuth signin/session response and cookie.
-- Errors: BetterAuth errors; session policy enforcement logs but does not fail signin (`apps/api/src/auth.ts:303`).
+- Errors: BetterAuth errors; session policy enforcement logs but does not fail signin (`apps/api/src/auth/auth.ts`).
 - Rate limit: `5/60s`, development `@test.com` bypass.
 - Audit-logged: no.
 
 ### `POST /api/auth/sign-out`
 
-- Source: TODO: unverified - BetterAuth email/password/session generated route; mounted by `apps/api/src/index.ts:24`.
+- Source: TODO: unverified - BetterAuth email/password/session generated route; mounted by `apps/api/src/index.ts`.
 - Auth: session required by BetterAuth.
 - Body: TODO: unverified.
 - Success/errors: TODO: unverified - BetterAuth contract.
@@ -117,7 +117,7 @@ Configured BetterAuth features: email/password auth (`apps/api/src/auth.ts:152`)
 
 ### `GET /api/auth/get-session`
 
-- Source: TODO: unverified - BetterAuth session generated route; mounted by `apps/api/src/index.ts:24`.
+- Source: TODO: unverified - BetterAuth session generated route; mounted by `apps/api/src/index.ts`.
 - Auth: optional/session-aware BetterAuth route.
 - Query/body: TODO: unverified.
 - Success/errors: TODO: unverified - BetterAuth contract.
@@ -126,7 +126,7 @@ Configured BetterAuth features: email/password auth (`apps/api/src/auth.ts:152`)
 
 ### `POST /api/auth/change-password`
 
-- Source: BetterAuth generated route used by local initial-password handler at `apps/api/src/routes/admin.ts:95`; mounted by `apps/api/src/index.ts:24`.
+- Source: BetterAuth generated route used by local initial-password handler at `apps/api/src/features/members/router.ts`; mounted by `apps/api/src/index.ts`.
 - Auth: session required by BetterAuth.
 - Body: TODO: unverified - local caller passes `{ currentPassword: string; newPassword: string; revokeOtherSessions: boolean }`.
 - Success/errors: TODO: unverified - BetterAuth contract.
@@ -135,15 +135,15 @@ Configured BetterAuth features: email/password auth (`apps/api/src/auth.ts:152`)
 
 ### `POST /api/auth/email-otp/send-verification-otp`
 
-- Source: emailOTP plugin configured at `apps/api/src/auth.ts:318`; mounted by `apps/api/src/index.ts:24`.
+- Source: emailOTP plugin configured at `apps/api/src/auth/auth.ts`; mounted by `apps/api/src/index.ts`.
 - Auth: public/session-aware per BetterAuth plugin. TODO: unverified.
-- Body/success/errors: TODO: unverified - BetterAuth emailOTP contract. OTP length is `6`, expiry `600` seconds, stored hashed, resend rotates OTP (`apps/api/src/auth.ts:320`).
+- Body/success/errors: TODO: unverified - BetterAuth emailOTP contract. OTP length is `6`, expiry `600` seconds, stored hashed, resend rotates OTP (`apps/api/src/auth/auth.ts`).
 - Rate limit: `3/60s`, development `@test.com` bypass.
 - Audit-logged: no.
 
 ### `POST /api/auth/email-otp/verify-email`
 
-- Source: emailOTP plugin configured at `apps/api/src/auth.ts:318`; mounted by `apps/api/src/index.ts:24`.
+- Source: emailOTP plugin configured at `apps/api/src/auth/auth.ts`; mounted by `apps/api/src/index.ts`.
 - Auth: public/session-aware per BetterAuth plugin. TODO: unverified.
 - Body/success/errors: TODO: unverified - BetterAuth emailOTP contract.
 - Rate limit: `5/60s`, development `@test.com` bypass.
@@ -151,7 +151,7 @@ Configured BetterAuth features: email/password auth (`apps/api/src/auth.ts:152`)
 
 ### `POST /api/auth/email-otp/request-password-reset`
 
-- Source: emailOTP plugin configured at `apps/api/src/auth.ts:318`; mounted by `apps/api/src/index.ts:24`.
+- Source: emailOTP plugin configured at `apps/api/src/auth/auth.ts`; mounted by `apps/api/src/index.ts`.
 - Auth: public.
 - Body/success/errors: TODO: unverified - BetterAuth emailOTP contract.
 - Rate limit: `3/60s`, development `@test.com` bypass.
@@ -159,23 +159,23 @@ Configured BetterAuth features: email/password auth (`apps/api/src/auth.ts:152`)
 
 ### `POST /api/auth/email-otp/reset-password`
 
-- Source: emailOTP plugin configured at `apps/api/src/auth.ts:318`; mounted by `apps/api/src/index.ts:24`.
+- Source: emailOTP plugin configured at `apps/api/src/auth/auth.ts`; mounted by `apps/api/src/index.ts`.
 - Auth: public with OTP token/code per plugin. TODO: unverified.
-- Body/success/errors: TODO: unverified - BetterAuth emailOTP contract. Password reset revokes sessions (`apps/api/src/auth.ts:156`) and also calls `revokeUserSessions()` best-effort (`apps/api/src/auth.ts:174`).
+- Body/success/errors: TODO: unverified - BetterAuth emailOTP contract. Password reset revokes sessions (`apps/api/src/auth/auth.ts`) and also calls `revokeUserSessions()` best-effort (`apps/api/src/auth/auth.ts`).
 - Rate limit: `5/60s`, development `@test.com` bypass.
 - Audit-logged: no.
 
 ### `POST /api/auth/two-factor/send-otp`
 
-- Source: twoFactor plugin configured at `apps/api/src/auth.ts:348`; mounted by `apps/api/src/index.ts:24`.
+- Source: twoFactor plugin configured at `apps/api/src/auth/auth.ts`; mounted by `apps/api/src/index.ts`.
 - Auth: session required by BetterAuth. TODO: unverified.
-- Body/success/errors: TODO: unverified - BetterAuth twoFactor contract. Email OTP subject/text configured at `apps/api/src/auth.ts:352`.
+- Body/success/errors: TODO: unverified - BetterAuth twoFactor contract. Email OTP subject/text configured at `apps/api/src/auth/auth.ts`.
 - Rate limit: `3/60s`.
 - Audit-logged: no.
 
 ### `POST /api/auth/two-factor/verify-totp`
 
-- Source: twoFactor plugin configured at `apps/api/src/auth.ts:348`; also called by admin role assignment at `apps/api/src/routes/admin.ts:209`.
+- Source: twoFactor plugin configured at `apps/api/src/auth/auth.ts`; also called by admin role assignment at `apps/api/src/features/members/router.ts`.
 - Auth: session required by BetterAuth.
 - Body: TODO: unverified - local caller passes `{ code: string }`.
 - Success/errors: TODO: unverified - BetterAuth twoFactor contract.
@@ -184,7 +184,7 @@ Configured BetterAuth features: email/password auth (`apps/api/src/auth.ts:152`)
 
 ### `POST /api/auth/two-factor/verify-otp`
 
-- Source: twoFactor plugin configured at `apps/api/src/auth.ts:348`; also called by admin role assignment at `apps/api/src/routes/admin.ts:211`.
+- Source: twoFactor plugin configured at `apps/api/src/auth/auth.ts`; also called by admin role assignment at `apps/api/src/features/members/router.ts`.
 - Auth: session required by BetterAuth.
 - Body: TODO: unverified - local caller passes `{ code: string }`.
 - Success/errors: TODO: unverified - BetterAuth twoFactor contract.
@@ -199,27 +199,27 @@ TODO: unverified - BetterAuth may expose additional enabled email/password, sess
 
 ### `POST /api/admin/devices/`
 
-- Source: `apps/api/src/routes/devices.ts:21`
+- Source: `apps/api/src/features/devices/router.ts`
 - Auth: `requireRole("admin")`; `mustChangePassword` gate applies.
 - Body: `{ name: string trim min 1 max 100; direction?: "in" | "out" default "in" }`.
-- Success: `200` JSON, `DeviceCreated` (`packages/shared/src/index.ts:177`): `{ id: string; name: string; direction: "in" | "out"; token: string; qrContent: string }`.
+- Success: `200` JSON, `DeviceCreated` (`packages/shared/src/index.ts`): `{ id: string; name: string; direction: "in" | "out"; token: string; qrContent: string }`.
 - Errors: common `requireRole`; `400 INVALID_DEVICE_NAME "Invalid device name."`; terminal errors.
 - Rate limit: none.
 - Audit-logged: yes, `device-created`.
 
 ### `GET /api/admin/devices/`
 
-- Source: `apps/api/src/routes/devices.ts:60`
+- Source: `apps/api/src/features/devices/router.ts`
 - Auth: `requireRole("admin", "staff")`; `mustChangePassword` gate applies.
 - Params/body: none.
-- Success: `200` JSON, `Device[]` (`packages/shared/src/index.ts:163`): each `{ id; name; direction; online; lastSeenAt; createdAt; uptime24h; qrContent }`.
+- Success: `200` JSON, `Device[]` (`packages/shared/src/index.ts`): each `{ id; name; direction; online; lastSeenAt; createdAt; uptime24h; qrContent }`.
 - Errors: common `requireRole`; terminal errors.
 - Rate limit: none.
 - Audit-logged: no.
 
 ### `DELETE /api/admin/devices/:id`
 
-- Source: `apps/api/src/routes/devices.ts:86`
+- Source: `apps/api/src/features/devices/router.ts`
 - Auth: `requireRole("admin")`; `mustChangePassword` gate applies.
 - Path params: `id: string` Mongo ObjectId.
 - Success: `200` JSON `{ ok: true }`.
@@ -231,7 +231,7 @@ TODO: unverified - BetterAuth may expose additional enabled email/password, sess
 
 ### `POST /api/admin/initial-password`
 
-- Source: `apps/api/src/routes/admin.ts:79`
+- Source: `apps/api/src/features/members/router.ts`
 - Auth: `requireRole("admin", "staff", "member")`; exempt from `mustChangePassword` gate.
 - Body: `{ currentPassword: string; newPassword: string min 8 }`.
 - Success: `200` JSON `{ ok: true }`.
@@ -241,17 +241,17 @@ TODO: unverified - BetterAuth may expose additional enabled email/password, sess
 
 ### `GET /api/admin/users`
 
-- Source: `apps/api/src/routes/admin.ts:118`
+- Source: `apps/api/src/features/members/router.ts`
 - Auth: `requireRole("admin", "staff")`; `mustChangePassword` gate applies.
-- Query: `q: string` trimmed min length 2. Searches phone, email, first/last/name; result limit `20` (`apps/api/src/userSearch.ts:3`).
-- Success: `200` JSON, `PublicUser[]` (`packages/shared/src/index.ts:9`).
+- Query: `q: string` trimmed min length 2. Searches phone, email, first/last/name; result limit `20` (`apps/api/src/features/members/userSearch.ts`).
+- Success: `200` JSON, `PublicUser[]` (`packages/shared/src/index.ts`).
 - Errors: common `requireRole`; `400 SEARCH_QUERY_TOO_SHORT "Enter at least two characters to search."`; terminal errors.
 - Rate limit: none.
 - Audit-logged: no.
 
 ### `POST /api/admin/users/:id/role`
 
-- Source: `apps/api/src/routes/admin.ts:148`
+- Source: `apps/api/src/features/members/router.ts`
 - Auth: `requireRole("admin")`; `mustChangePassword` gate applies.
 - Path params: `id: string` Mongo ObjectId.
 - Body: `{ role: "admin" | "staff" | "member"; mfaCode?: string min 1; mfaMethod?: "totp" | "otp" }`. `mfaCode` and `mfaMethod` are required only when caller has `twoFactorEnabled`.
@@ -262,37 +262,37 @@ TODO: unverified - BetterAuth may expose additional enabled email/password, sess
 
 ### `POST /api/admin/subscriptions`
 
-- Source: `apps/api/src/routes/admin.ts:259`
+- Source: `apps/api/src/features/subscriptions/router.ts`
 - Auth: `requireRole("admin", "staff")`; `mustChangePassword` gate applies.
 - Body: strict object `{ userId: string; months: 1 | 3 | 6 | 12; note?: string trim max 500 }`.
 - Success: `200` JSON `{ ok: true; id: string; startsAt: string; endsAt: string }`.
 - Errors: common `requireRole`; `400 INVALID_SUBSCRIPTION "Enter a valid user and subscription package."`; `404 USER_NOT_FOUND "User not found."`; `503 SUBSCRIPTION_BUSY "A subscription operation is in progress. Please try again."`; terminal errors.
-- Rate limit: no request limiter; per-user Redis subscription lock waits up to `5s` with `30s` lease (`apps/api/src/subscriptions.ts:15`).
+- Rate limit: no request limiter; per-user Redis subscription lock waits up to `5s` with `30s` lease (`apps/api/src/features/subscriptions/subscriptions.ts`).
 - Audit-logged: yes, `subscription-created`.
 
 ### `GET /api/admin/users/:id/subscriptions`
 
-- Source: `apps/api/src/routes/admin.ts:313`
+- Source: `apps/api/src/features/subscriptions/router.ts`
 - Auth: `requireRole("admin", "staff")`; `mustChangePassword` gate applies.
 - Path params: `id: string` Mongo ObjectId.
-- Success: `200` JSON, `Subscription[]` (`packages/shared/src/index.ts:38`), max `50` records by helper default.
+- Success: `200` JSON, `Subscription[]` (`packages/shared/src/index.ts`), max `50` records by helper default.
 - Errors: common `requireRole`; `400 INVALID_USER "Invalid user."`; terminal errors.
 - Rate limit: none.
 - Audit-logged: no.
 
 ### `GET /api/admin/settings`
 
-- Source: `apps/api/src/routes/admin.ts:338`
+- Source: `apps/api/src/features/settings/router.ts`
 - Auth: `requireRole("admin")`; `mustChangePassword` gate applies.
 - Params/body: none.
-- Success: `200` JSON, `GymSettings` (`packages/shared/src/index.ts:63`): `{ gymName; location: { lat; lng; radiusM } | null; capacity: number | null; autoExitHours: number; sharing: SharingConfig }`.
+- Success: `200` JSON, `GymSettings` (`packages/shared/src/index.ts`): `{ gymName; location: { lat; lng; radiusM } | null; capacity: number | null; autoExitHours: number; sharing: SharingConfig }`.
 - Errors: common `requireRole`; terminal errors.
 - Rate limit: none.
 - Audit-logged: no.
 
 ### `PUT /api/admin/settings`
 
-- Source: `apps/api/src/routes/admin.ts:385`
+- Source: `apps/api/src/features/settings/router.ts`
 - Auth: `requireRole("admin")`; `mustChangePassword` gate applies.
 - Body: `{ gymName: string trim min 1; location?: { lat: finite number coerced; lng: finite number coerced; radiusM: finite positive number coerced } | null; capacity?: finite positive number coerced | null; autoExitHours?: int coerced min 1 max 48 | null; sharing?: { memberMaxSessions: int min 1 max 10; staffMaxSessions: int min 1 max 20; signalThreshold: int min 1 max 20; signalWindowHours: int min 1 max 168; qrBlockHours: int min 1 max 168 } }`.
 - Success: `200` JSON `{ ok: true }`.
@@ -302,47 +302,47 @@ TODO: unverified - BetterAuth may expose additional enabled email/password, sess
 
 ### `GET /api/admin/stats`
 
-- Source: `apps/api/src/routes/admin.ts:426`
+- Source: `apps/api/src/features/gyms/router.ts`
 - Auth: `requireRole("admin", "staff")`; `mustChangePassword` gate applies.
 - Params/body: none.
-- Success: `200` JSON, `AdminStats` (`packages/shared/src/index.ts:228`): `{ activeMembers: number; renewalsDue: number }`.
+- Success: `200` JSON, `AdminStats` (`packages/shared/src/index.ts`): `{ activeMembers: number; renewalsDue: number }`.
 - Errors: common `requireRole`; terminal errors.
 - Rate limit: none.
 - Audit-logged: no.
 
 ### `GET /api/admin/audit`
 
-- Source: `apps/api/src/routes/admin.ts:445`
+- Source: `apps/api/src/features/audit/router.ts`
 - Auth: `requireRole("admin")`; `mustChangePassword` gate applies.
 - Params/body: none.
-- Success: `200` JSON, `AuditLogEntry[]` (`packages/shared/src/index.ts:77`), latest `100`.
+- Success: `200` JSON, `AuditLogEntry[]` (`packages/shared/src/index.ts`), latest `100`.
 - Errors: common `requireRole`; terminal errors.
 - Rate limit: none.
 - Audit-logged: no.
 
 ### `GET /api/admin/entry-events`
 
-- Source: `apps/api/src/routes/admin.ts:466`
+- Source: `apps/api/src/features/gyms/router.ts`
 - Auth: `requireRole("admin", "staff")`; `mustChangePassword` gate applies.
 - Params/body: none.
-- Success: `200` JSON, `EntryEvent[]` (`packages/shared/src/index.ts:185`), latest `100`.
+- Success: `200` JSON, `EntryEvent[]` (`packages/shared/src/index.ts`), latest `100`.
 - Errors: common `requireRole`; terminal errors.
 - Rate limit: none.
 - Audit-logged: no.
 
 ### `GET /api/admin/deletion-requests`
 
-- Source: `apps/api/src/routes/admin.ts:491`
+- Source: `apps/api/src/features/deletionRequests/router.ts`
 - Auth: `requireRole("admin")`; `mustChangePassword` gate applies.
 - Params/body: none.
-- Success: `200` JSON, `DeletionRequest[]` (`packages/shared/src/index.ts:236`), latest `100`.
+- Success: `200` JSON, `DeletionRequest[]` (`packages/shared/src/index.ts`), latest `100`.
 - Errors: common `requireRole`; terminal errors.
 - Rate limit: none.
 - Audit-logged: no.
 
 ### `POST /api/admin/deletion-requests/:id/approve`
 
-- Source: `apps/api/src/routes/admin.ts:516`
+- Source: `apps/api/src/features/deletionRequests/router.ts`
 - Auth: `requireRole("admin")`; `mustChangePassword` gate applies.
 - Path params: `id: string` Mongo ObjectId for deletion request.
 - Success: `200` JSON `{ ok: true }`.
@@ -352,7 +352,7 @@ TODO: unverified - BetterAuth may expose additional enabled email/password, sess
 
 ### `POST /api/admin/deletion-requests/:id/reject`
 
-- Source: `apps/api/src/routes/admin.ts:623`
+- Source: `apps/api/src/features/deletionRequests/router.ts`
 - Auth: `requireRole("admin")`; `mustChangePassword` gate applies.
 - Path params: `id: string` Mongo ObjectId for deletion request.
 - Success: `200` JSON `{ ok: true }`.
@@ -364,27 +364,27 @@ TODO: unverified - BetterAuth may expose additional enabled email/password, sess
 
 ### `GET /api/me/profile`
 
-- Source: `apps/api/src/routes/me.ts:40`
+- Source: `apps/api/src/features/me/profileRouter.ts`
 - Auth: `requireRole("admin", "staff", "member")`; exempt from `mustChangePassword` gate.
 - Params/body: none.
-- Success: `200` JSON, `MyProfile` (`packages/shared/src/index.ts:24`).
+- Success: `200` JSON, `MyProfile` (`packages/shared/src/index.ts`).
 - Errors: common `requireRole` except password gate; terminal errors.
 - Rate limit: none.
 - Audit-logged: no.
 
 ### `PUT /api/me/profile-photo`
 
-- Source: `apps/api/src/routes/me.ts:49`
+- Source: `apps/api/src/features/me/profileRouter.ts`
 - Auth: `requireRole("member")`; `mustChangePassword` gate applies.
 - Body: raw binary, any content type accepted by Express raw parser, max `10mb`; processing accepts declared `Content-Type` `image/jpeg`, `image/png`, or `image/webp`; input pixels max `40,000,000`; animated images rejected; output is normalized to 1024x1024 JPEG.
-- Success: `200` JSON, `ProfilePhotoResponse` (`packages/shared/src/index.ts:34`): `{ profilePhotoUrl: string | null }`.
+- Success: `200` JSON, `ProfilePhotoResponse` (`packages/shared/src/index.ts`): `{ profilePhotoUrl: string | null }`.
 - Errors: common `requireRole`; `413 PAYLOAD_TOO_LARGE "The photo can be at most 10 MB."`; `400 PROFILE_PHOTO_MISSING "No photo data was sent."`; `400 PROFILE_PHOTO_INVALID` with one of the processing messages from `profilePhoto.ts`; `409 PROFILE_PHOTO_BUSY "Another profile photo operation is in progress."`; `429 PROFILE_PHOTO_RATE_LIMITED "Too many profile photo upload attempts. Please try again later."`; `503 PROFILE_PHOTO_UNAVAILABLE` for R2 config/upload failures; terminal errors.
-- Rate limit: `10` uploads per user per `3600s` plus per-user operation lock TTL `30s` (`apps/api/src/profilePhoto.ts:15`).
+- Rate limit: `10` uploads per user per `3600s` plus per-user operation lock TTL `30s` (`apps/api/src/features/profilePhoto/profilePhoto.ts`).
 - Audit-logged: yes, `profile-photo-updated`.
 
 ### `DELETE /api/me/profile-photo`
 
-- Source: `apps/api/src/routes/me.ts:100`
+- Source: `apps/api/src/features/me/profileRouter.ts`
 - Auth: `requireRole("member")`; `mustChangePassword` gate applies.
 - Params/body: none.
 - Success: `200` JSON, `ProfilePhotoResponse`: `{ profilePhotoUrl: null }`.
@@ -394,48 +394,48 @@ TODO: unverified - BetterAuth may expose additional enabled email/password, sess
 
 ### `GET /api/me/subscription`
 
-- Source: `apps/api/src/routes/me.ts:130`
+- Source: `apps/api/src/features/me/activityRouter.ts`
 - Auth: `requireRole("admin", "staff", "member")`; `mustChangePassword` gate applies.
 - Params/body: none.
-- Success: `200` JSON, `MySubscription` (`packages/shared/src/index.ts:56`): `{ active: boolean; startsAt: string | null; endsAt: string | null; remainingDays: number }`.
+- Success: `200` JSON, `MySubscription` (`packages/shared/src/index.ts`): `{ active: boolean; startsAt: string | null; endsAt: string | null; remainingDays: number }`.
 - Errors: common `requireRole`; terminal errors.
 - Rate limit: none.
 - Audit-logged: no.
 
 ### `POST /api/me/gate-scan`
 
-- Source: `apps/api/src/features/gate/router.ts:58`
+- Source: `apps/api/src/features/gate/router.ts`
 - Auth: `requireRole("admin", "staff", "member")`; `mustChangePassword` gate applies.
 - Body: `{ qr: string min 1 max 200; lat?: number; lng?: number; mocked?: boolean }`.
-- Headers: optional `x-device-fingerprint` must match regex `/^[a-f0-9]{64}$/` to be used; otherwise session token SHA-256 is fallback for location-drift detection (`apps/api/src/features/gate/checks.ts:53`).
-- Success: `200` JSON, `GateScanResponse` (`packages/shared/src/index.ts:152`): `{ ok: true; deviceName: string; direction: "in" | "out"; openMs: number }`, with `openMs` currently `500`.
+- Headers: optional `x-device-fingerprint` must match regex `/^[a-f0-9]{64}$/` to be used; otherwise session token SHA-256 is fallback for location-drift detection (`apps/api/src/features/gate/checks.ts`).
+- Success: `200` JSON, `GateScanResponse` (`packages/shared/src/index.ts`): `{ ok: true; deviceName: string; direction: "in" | "out"; openMs: number }`, with `openMs` currently `500`.
 - Errors: common `requireRole`; `400 INVALID_REQUEST "Invalid request."`; `429 RATE_LIMITED "Too many requests. Please wait a moment."`; `403 INVALID_QR "Invalid QR code. Scan the code on the turnstile again."`; `403 UNKNOWN_DEVICE "This turnstile is no longer registered. Contact reception."`; `403 SHARING_BLOCKED "Unusual activity was detected on your account. Entry has been temporarily disabled. Contact reception."`; `403 MOCK_LOCATION "A mock location was detected. Close location spoofing applications and try again."`; `403 NO_ACTIVE_SUBSCRIPTION "You do not have an active subscription. Contact gym reception."`; `403 LOCATION_REQUIRED "Location information could not be obtained. Enable location services and try again."`; `403 OUT_OF_RANGE "You do not appear to be at the gym location. Entry is only permitted at the gym."`; `403 DEVICE_OFFLINE "No turnstile connection. Contact reception."`; terminal errors.
 - Rate limit: per-user `30` gate scans per `60s`; additional member+device open lock TTL `3000ms`.
 - Audit-logged: no `logAudit()` call. Entry attempts are written to `entry_events` via `enqueueEntryEvent()`.
 
 ### `GET /api/me/occupancy`
 
-- Source: `apps/api/src/routes/me.ts:410`
+- Source: `apps/api/src/features/me/activityRouter.ts`
 - Auth: `requireRole("admin", "staff", "member")`; `mustChangePassword` gate applies.
 - Params/body: none.
-- Success: `200` JSON, `OccupancyResponse` (`packages/shared/src/index.ts:219`): `{ inside: number; capacity: number | null; ratio: number | null }`.
+- Success: `200` JSON, `OccupancyResponse` (`packages/shared/src/index.ts`): `{ inside: number; capacity: number | null; ratio: number | null }`.
 - Errors: common `requireRole`; terminal errors.
 - Rate limit: none.
 - Audit-logged: no.
 
 ### `GET /api/me/deletion-request`
 
-- Source: `apps/api/src/routes/me.ts:427`
+- Source: `apps/api/src/features/me/deletionRequestRouter.ts`
 - Auth: `requireRole("admin", "staff", "member")`; `mustChangePassword` gate applies.
 - Params/body: none.
-- Success: `200` JSON, `MyDeletionRequest` (`packages/shared/src/index.ts:248`): `{ status: "none" | "pending" | "rejected"; requestedAt: string | null }`.
+- Success: `200` JSON, `MyDeletionRequest` (`packages/shared/src/index.ts`): `{ status: "none" | "pending" | "rejected"; requestedAt: string | null }`.
 - Errors: common `requireRole`; terminal errors.
 - Rate limit: none.
 - Audit-logged: no.
 
 ### `POST /api/me/deletion-request`
 
-- Source: `apps/api/src/routes/me.ts:455`
+- Source: `apps/api/src/features/me/deletionRequestRouter.ts`
 - Auth: `requireRole("admin", "staff", "member")`; handler additionally requires `req.user.role === "member"`; `mustChangePassword` gate applies.
 - Params/body: none.
 - Success: `200` JSON `{ ok: true }`.
@@ -445,7 +445,7 @@ TODO: unverified - BetterAuth may expose additional enabled email/password, sess
 
 ### `DELETE /api/me/deletion-request`
 
-- Source: `apps/api/src/routes/me.ts:496`
+- Source: `apps/api/src/features/me/deletionRequestRouter.ts`
 - Auth: `requireRole("admin", "staff", "member")`; `mustChangePassword` gate applies.
 - Params/body: none.
 - Success: `200` JSON `{ ok: true }`.
@@ -457,9 +457,9 @@ TODO: unverified - BetterAuth may expose additional enabled email/password, sess
 
 ### `WebSocket /api/device-gateway`
 
-- Source: `apps/api/src/gateway.ts:13`, attached at `apps/api/src/index.ts:101`.
-- Auth: device-gateway auth. Client must send first JSON text frame within `5000ms`: `{ type: "auth"; deviceId: string; token: string }` (`packages/shared/src/index.ts:198`). `deviceId` must be a valid Mongo ObjectId; token SHA-256 must timing-safe-equal stored `tokenHash`.
-- Success server message: `DeviceServerMessage` `{"type":"auth_ok","deviceName":string}` (`packages/shared/src/index.ts:204`).
+- Source: `apps/api/src/features/devices/gateway.ts`, attached at `apps/api/src/index.ts`.
+- Auth: device-gateway auth. Client must send first JSON text frame within `5000ms`: `{ type: "auth"; deviceId: string; token: string }` (`packages/shared/src/index.ts`). `deviceId` must be a valid Mongo ObjectId; token SHA-256 must timing-safe-equal stored `tokenHash`.
+- Success server message: `DeviceServerMessage` `{"type":"auth_ok","deviceName":string}` (`packages/shared/src/index.ts`).
 - Error server message: `{"type":"auth_error","message":"Device authentication failed."}` then socket close.
 - Other server messages after auth: `{"type":"open","openMs":number}` when `/api/me/gate-scan` opens the device.
 - Request body/query: none; WebSocket max payload `4096` bytes.
