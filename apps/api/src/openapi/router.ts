@@ -1,6 +1,6 @@
 import { createRequire } from "node:module";
 import { Router, type RequestHandler } from "express";
-import { env } from "../env.js";
+import { env } from "../core/env.js";
 import { openApiDocument } from "./spec.js";
 
 type SwaggerUi = {

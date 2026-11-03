@@ -1,13 +1,13 @@
 import { createHash } from "node:crypto";
 import type { GateRejectCode } from "@opengym/shared";
-import { db } from "../../db.js";
-import { redis } from "../../redis.js";
-import type { AuthedRequest } from "../../middleware.js";
-import { distanceMeters, evaluateGeofence } from "../../geo.js";
-import { isDeviceOnline } from "../../gateway.js";
-import { isInside } from "../../occupancy.js";
-import { recordSharingSignal, QR_LOC_KEY } from "../../sharing.js";
-import type { GymDoc } from "../../gyms.js";
+import { db } from "../../core/db.js";
+import { redis } from "../../core/redis.js";
+import type { AuthedRequest } from "../../core/middleware.js";
+import { distanceMeters, evaluateGeofence } from "../../lib/geo.js";
+import { isDeviceOnline } from "../devices/gateway.js";
+import { isInside } from "../gyms/occupancy.js";
+import { recordSharingSignal, QR_LOC_KEY } from "./sharing.js";
+import type { GymDoc } from "../gyms/gyms.js";
 
 const GATE_SCAN_RATE_LIMIT = 30;
 const GATE_SCAN_RATE_WINDOW_SECONDS = 60;

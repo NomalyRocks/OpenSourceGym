@@ -6,34 +6,40 @@ import type {
   ReadinessCheck,
   ReadinessResponse,
 } from "@opengym/shared";
-import { env } from "./env.js";
-import { connectRedis, redis } from "./redis.js";
-import { db, mongoClient } from "./db.js";
-import { auth } from "./auth.js";
-import { seedInitialAdmin } from "./seed.js";
-import { ensureIndexes } from "./indexes.js";
-import { adminRouter } from "./routes/admin.js";
-import { meRouter } from "./routes/me.js";
-import { gymsRouter } from "./routes/gyms.js";
-import { memberControlsRouter } from "./routes/memberControls.js";
-import { chainReportsRouter } from "./routes/reports.js";
+import { env } from "./core/env.js";
+import { connectRedis, redis } from "./core/redis.js";
+import { db, mongoClient } from "./core/db.js";
+import { auth } from "./auth/auth.js";
+import { seedInitialAdmin } from "./auth/seed.js";
+import { ensureIndexes } from "./core/indexes.js";
+import { adminRouter } from "./features/admin/router.js";
+import { meRouter } from "./features/me/router.js";
+import { gymsRouter } from "./features/gyms/router.js";
+import { memberControlsRouter } from "./features/members/controlsRouter.js";
+import { chainReportsRouter } from "./features/reports/router.js";
 import {
   startRenewalReminderScheduler,
   type RenewalReminderScheduler,
-} from "./renewalReminders.js";
-import { attachDeviceGateway } from "./gateway.js";
+} from "./features/reports/renewalReminders.js";
+import { attachDeviceGateway } from "./features/devices/gateway.js";
 import {
   startEntryEventConsumer,
   type EntryEventConsumer,
-} from "./eventQueue.js";
-import { startOccupancyReaper, type OccupancyReaper } from "./occupancy.js";
-import { startFreezeReaper, type FreezeReaper } from "./freeze.js";
-import { renameLegacyConsentFields } from "./consentFieldRename.js";
-import { getLegalConfig } from "./legal.js";
-import { backfillLegacyUserPhones } from "./phoneBackfill.js";
-import { repairLegacySubscriptionOverlaps } from "./subscriptions.js";
-import { assertProductionProfilePhotoConfig } from "./profilePhoto.js";
-import { sendApiError } from "./apiError.js";
+} from "./features/gate/eventQueue.js";
+import {
+  startOccupancyReaper,
+  type OccupancyReaper,
+} from "./features/gyms/occupancy.js";
+import {
+  startFreezeReaper,
+  type FreezeReaper,
+} from "./features/freeze/freeze.js";
+import { renameLegacyConsentFields } from "./repairs/consentFieldRename.js";
+import { getLegalConfig } from "./features/settings/legal.js";
+import { backfillLegacyUserPhones } from "./repairs/phoneBackfill.js";
+import { repairLegacySubscriptionOverlaps } from "./features/subscriptions/subscriptions.js";
+import { assertProductionProfilePhotoConfig } from "./features/profilePhoto/profilePhoto.js";
+import { sendApiError } from "./core/apiError.js";
 import { openApiRouter } from "./openapi/router.js";
 
 const app = express();

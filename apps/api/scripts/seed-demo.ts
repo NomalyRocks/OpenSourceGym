@@ -47,12 +47,12 @@ const [
   { gateQrContent },
   { INITIAL_ADMIN_EMAIL, INITIAL_ADMIN_PHONE, runAsInitialAdminSeed },
 ] = await Promise.all([
-  import("../src/auth.js"),
-  import("../src/db.js"),
-  import("../src/redis.js"),
-  import("../src/indexes.js"),
-  import("../src/gateQr.js"),
-  import("../src/initialAdmin.js"),
+  import("../src/auth/auth.js"),
+  import("../src/core/db.js"),
+  import("../src/core/redis.js"),
+  import("../src/core/indexes.js"),
+  import("../src/features/gate/gateQr.js"),
+  import("../src/auth/initialAdmin.js"),
 ]);
 const { createHash, randomBytes } = await import("node:crypto");
 

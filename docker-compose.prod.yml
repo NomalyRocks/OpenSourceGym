@@ -55,7 +55,7 @@ services:
       # Deliberately NOT `:?` required: it is needed only while no administrator
       # exists, and the operator is told to remove it once the account is set
       # up. A first boot without it fails inside the API with an actionable
-      # message (apps/api/src/initialAdmin.ts).
+      # message (apps/api/src/auth/initialAdmin.ts).
       INITIAL_ADMIN_PASSWORD: ${INITIAL_ADMIN_PASSWORD:-}
       BETTER_AUTH_URL: https://${DOMAIN}
       TRUSTED_ORIGINS: https://${DOMAIN}

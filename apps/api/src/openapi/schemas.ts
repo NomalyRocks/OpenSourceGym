@@ -1,10 +1,10 @@
 import { z } from "zod";
-import { legalDocumentUrlSchema } from "../legalUrl.js";
+import { legalDocumentUrlSchema } from "../features/settings/legalUrl.js";
 import {
   GEOFENCE_RADIUS_M_DEFAULT,
   GEOFENCE_RADIUS_M_MAX,
   GEOFENCE_RADIUS_M_MIN,
-} from "../geo.js";
+} from "../lib/geo.js";
 
 const withId = <T extends z.ZodType>(schema: T, id: string): T =>
   schema.meta({ id }) as T;

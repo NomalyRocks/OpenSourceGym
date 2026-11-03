@@ -4,10 +4,10 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "tsc -p tsconfig.json",
+    "build": "tsc -p tsconfig.build.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test": "tsx --test src/*.test.ts src/**/*.test.ts",
-    "lint": "eslint src",
+    "test": "tsx --test \"test/**/*.test.ts\"",
+    "lint": "eslint src test",
     "dev": "tsx watch --env-file-if-exists=../../.env src/index.ts",
     "start": "node dist/index.js",
     "seed:demo": "tsx --env-file-if-exists=../../.env scripts/seed-demo.ts"
