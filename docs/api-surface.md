@@ -283,9 +283,9 @@ TODO: unverified - BetterAuth may expose additional enabled email/password, sess
 ### `GET /api/admin/settings`
 
 - Source: `apps/api/src/features/settings/router.ts`
-- Auth: `requireRole("admin")`; `mustChangePassword` gate applies.
+- Auth: `requireRole("owner", "admin")`; `mustChangePassword` gate applies.
 - Params/body: none.
-- Success: `200` JSON, `GymSettings` (`packages/shared/src/index.ts`): `{ gymName; location: { lat; lng; radiusM } | null; capacity: number | null; autoExitHours: number; sharing: SharingConfig }`.
+- Success: `200` JSON, `ChainSettings` (`packages/shared/src/index.ts`): `{ chainName: string; legal: LegalConfig; freeze: FreezeConfig }`. `legal` is the stored value merged over `LEGAL_DEFAULTS`; `freeze` comes from `getFreezeConfig()`. Gym-specific settings live under `/api/admin/gyms/:gymId/settings`.
 - Errors: common `requireRole`; terminal errors.
 - Rate limit: none.
 - Audit-logged: no.
@@ -293,70 +293,72 @@ TODO: unverified - BetterAuth may expose additional enabled email/password, sess
 ### `PUT /api/admin/settings`
 
 - Source: `apps/api/src/features/settings/router.ts`
-- Auth: `requireRole("admin")`; `mustChangePassword` gate applies.
-- Body: `{ gymName: string trim min 1; location?: { lat: finite number coerced; lng: finite number coerced; radiusM: finite positive number coerced } | null; capacity?: finite positive number coerced | null; autoExitHours?: int coerced min 1 max 48 | null; sharing?: { memberMaxSessions: int min 1 max 10; staffMaxSessions: int min 1 max 20; signalThreshold: int min 1 max 20; signalWindowHours: int min 1 max 168; qrBlockHours: int min 1 max 168 } }`.
+- Auth: `requireRole("owner")`; `mustChangePassword` gate applies.
+- Body: `{ chainName: string trim min 1; legal?: { dataProcessingUrl: legal document URL | "" | null (empty string and null clear it); privacyUrl: same; version: int coerced min 1 max 1000000 }; freeze?: FreezeConfig }`. Omitted `legal` or `freeze` leaves the stored value unchanged. `FreezeConfig` is validated by `freezeConfigSchema` (`apps/api/src/features/freeze/freeze.ts`).
 - Success: `200` JSON `{ ok: true }`.
-- Errors: common `requireRole`; `400 GYM_NAME_REQUIRED "Gym name is required."`; `400 INVALID_LOCATION "Invalid location information."`; `400 INVALID_CAPACITY "Invalid capacity."`; `400 INVALID_AUTO_EXIT "Invalid automatic exit duration."`; `400 INVALID_SHARING_SETTINGS "Invalid sharing detection settings."`; terminal errors.
+- Errors: common `requireRole`; `400 INVALID_FREEZE_SETTINGS "Invalid subscription freeze settings."` (invalid `freeze`); `400 INVALID_LEGAL_SETTINGS "Invalid legal document settings."` (invalid `legal`); `400 GYM_NAME_REQUIRED "Chain name is required."` (any other validation failure); terminal errors.
 - Rate limit: none.
-- Audit-logged: yes, `settings-updated`.
+- Audit-logged: yes, `settings-updated` (details: `chainName` plus `legal` / `freeze` when sent; chain-level, no `gymId`).
 
-### `GET /api/admin/stats`
+### `GET /api/admin/gyms/:gymId/stats`
 
 - Source: `apps/api/src/features/gyms/router.ts`
-- Auth: `requireRole("admin", "staff")`; `mustChangePassword` gate applies.
-- Params/body: none.
-- Success: `200` JSON, `AdminStats` (`packages/shared/src/index.ts`): `{ activeMembers: number; renewalsDue: number }`.
-- Errors: common `requireRole`; terminal errors.
+- Auth: `requireGymAccess("owner", "admin", "staff")`; `owner` passes for every gym, `admin`/`staff` only for gyms in their re-read `gymIds`; `mustChangePassword` gate applies.
+- Path params: `gymId: string` gym id.
+- Body: none.
+- Success: `200` JSON, `AdminStats` (`packages/shared/src/index.ts`): `{ activeMembers: number; frozenMembers: number; renewalsDue: number }` for that gym. Frozen members are excluded from `activeMembers` and `renewalsDue` and counted in `frozenMembers`.
+- Errors: common `requireRole` gate errors; `403 GYM_OUT_OF_SCOPE "This gym is outside your scope."` (non-owner, including for an unknown gym); `404 GYM_NOT_FOUND "Gym not found."` (owner only); terminal errors.
 - Rate limit: none.
 - Audit-logged: no.
 
 ### `GET /api/admin/audit`
 
 - Source: `apps/api/src/features/audit/router.ts`
-- Auth: `requireRole("admin")`; `mustChangePassword` gate applies.
-- Params/body: none.
-- Success: `200` JSON, `AuditLogEntry[]` (`packages/shared/src/index.ts`), latest `100`.
-- Errors: common `requireRole`; terminal errors.
+- Auth: `requireRole("owner", "admin")`; `mustChangePassword` gate applies. An owner sees every row; an admin sees only rows whose `gymId` is in their `gymIds` (chain-level rows are hidden).
+- Query: `cursor?: string`; `limit?: int 1-100, default 50`; `action?: string max 64`; `gymId?: string max 64`; `from?: date`; `to?: date` (inclusive range on `at`).
+- Success: `200` JSON, `Page<AuditLogEntry>` (`packages/shared/src/index.ts`): `{ items: AuditLogEntry[]; nextCursor: string | null }`, newest first.
+- Errors: common `requireRole`; `400 INVALID_REQUEST "Invalid list query parameters."`; `400 INVALID_REQUEST "Invalid pagination cursor."`; `403 GYM_OUT_OF_SCOPE "This gym is outside your scope."` (admin filtering by a gym outside their scope); terminal errors.
 - Rate limit: none.
 - Audit-logged: no.
 
-### `GET /api/admin/entry-events`
+### `GET /api/admin/gyms/:gymId/entry-events`
 
 - Source: `apps/api/src/features/gyms/router.ts`
-- Auth: `requireRole("admin", "staff")`; `mustChangePassword` gate applies.
-- Params/body: none.
-- Success: `200` JSON, `EntryEvent[]` (`packages/shared/src/index.ts`), latest `100`.
-- Errors: common `requireRole`; terminal errors.
+- Auth: `requireGymAccess("owner", "admin", "staff")`; `owner` passes for every gym, `admin`/`staff` only for gyms in their re-read `gymIds`; `mustChangePassword` gate applies.
+- Path params: `gymId: string` gym id.
+- Query: `cursor?: string`; `limit?: int 1-100, default 50`; `deviceId?: string max 64`; `userId?: string max 64`; `allowed?: "true" | "false"`; `from?: date`; `to?: date` (inclusive range on `at`). Results are always limited to the path gym.
+- Success: `200` JSON, `Page<EntryEvent>` (`packages/shared/src/index.ts`): `{ items: EntryEvent[]; nextCursor: string | null }`, newest first. `EntryEvent` includes `gymId`, `reason` (null when allowed) and `distanceM` (null on older records or when a position was unknown).
+- Errors: common `requireRole` gate errors; `403 GYM_OUT_OF_SCOPE "This gym is outside your scope."`; `404 GYM_NOT_FOUND "Gym not found."` (owner only); `400 INVALID_REQUEST "Invalid list query parameters."`; `400 INVALID_REQUEST "Invalid pagination cursor."`; terminal errors.
 - Rate limit: none.
 - Audit-logged: no.
 
 ### `GET /api/admin/deletion-requests`
 
 - Source: `apps/api/src/features/deletionRequests/router.ts`
-- Auth: `requireRole("admin")`; `mustChangePassword` gate applies.
-- Params/body: none.
-- Success: `200` JSON, `DeletionRequest[]` (`packages/shared/src/index.ts`), latest `100`.
-- Errors: common `requireRole`; terminal errors.
+- Auth: `requireRole("owner")`; `mustChangePassword` gate applies.
+- Query: `cursor?: string`; `limit?: int 1-100, default 50`; `status?: "pending" | "approved" | "rejected"`.
+- Success: `200` JSON, `Page<DeletionRequest>` (`packages/shared/src/index.ts`): `{ items: DeletionRequest[]; nextCursor: string | null }`, newest request first.
+- Errors: common `requireRole`; `400 INVALID_REQUEST "Invalid list query parameters."`; `400 INVALID_REQUEST "Invalid pagination cursor."`; terminal errors.
 - Rate limit: none.
 - Audit-logged: no.
 
 ### `POST /api/admin/deletion-requests/:id/approve`
 
 - Source: `apps/api/src/features/deletionRequests/router.ts`
-- Auth: `requireRole("admin")`; `mustChangePassword` gate applies.
+- Auth: `requireRole("owner")`; `mustChangePassword` gate applies.
 - Path params: `id: string` Mongo ObjectId for deletion request.
 - Success: `200` JSON `{ ok: true }`.
-- Errors: common `requireRole`; `404 DELETION_REQUEST_NOT_FOUND "Deletion request not found."`; `409 DELETION_REQUEST_RESOLVED "The deletion request has already been resolved."`; `503 DELETION_CLEANUP_FAILED "The profile photo could not be deleted from storage. Please try again."`; terminal errors.
+- Errors: common `requireRole`; `404 DELETION_REQUEST_NOT_FOUND "Deletion request not found."`; `409 DELETION_REQUEST_RESOLVED "Deletion request has already been resolved."`; `503 DELETION_CLEANUP_FAILED "Profile photo could not be deleted from storage. Please try again."`; terminal errors.
 - Rate limit: none.
 - Audit-logged: yes, `account-deletion-approved`.
 
 ### `POST /api/admin/deletion-requests/:id/reject`
 
 - Source: `apps/api/src/features/deletionRequests/router.ts`
-- Auth: `requireRole("admin")`; `mustChangePassword` gate applies.
+- Auth: `requireRole("owner")`; `mustChangePassword` gate applies.
 - Path params: `id: string` Mongo ObjectId for deletion request.
 - Success: `200` JSON `{ ok: true }`.
-- Errors: common `requireRole`; `404 DELETION_REQUEST_NOT_FOUND "Deletion request not found."`; `409 DELETION_REQUEST_RESOLVED "The deletion request has already been resolved."`; terminal errors.
+- Errors: common `requireRole`; `404 DELETION_REQUEST_NOT_FOUND "Deletion request not found."`; `409 DELETION_REQUEST_RESOLVED "Deletion request has already been resolved."`; terminal errors.
 - Rate limit: none.
 - Audit-logged: yes, `account-deletion-rejected`.
 
