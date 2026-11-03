@@ -52,7 +52,7 @@ export interface GeofenceEvaluation {
 
 /**
  * Decides whether a scan is close enough to the gym. Pure so the rules can be
- * tested without Mongo; {@link module:features/me/router} supplies the configured
+ * tested without Mongo; {@link module:features/gate/checks} supplies the configured
  * location.
  *
  * An unconfigured gym location is a REJECTION, not a skip. The turnstile QR is

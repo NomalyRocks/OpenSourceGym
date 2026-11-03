@@ -40,9 +40,9 @@ public deployment.
 
 ## What is covered
 
-29 paths, 34 operations. Every route in `features/{members,subscriptions,settings,audit,deletionRequests}/router.ts`,
-`features/members/controlsRouter.ts`, `features/gyms/router.ts`, `features/devices/router.ts`
-and `features/me/*Router.ts`, plus `GET /health` and the two docs endpoints themselves.
+49 paths, 60 operations. Every route in `features/{members,subscriptions,settings,audit,deletionRequests}/router.ts`,
+`features/members/controlsRouter.ts`, `features/gyms/router.ts`, `features/devices/router.ts`,
+`features/gate/router.ts` and `features/me/*Router.ts`, plus `GET /health` and the two docs endpoints themselves.
 
 Operations are tagged by area:
 
