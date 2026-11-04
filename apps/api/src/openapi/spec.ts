@@ -5,7 +5,7 @@ import {
   type ZodOpenApiRequestBodyObject,
   type ZodOpenApiResponseObject,
 } from "zod-openapi";
-import { userDirectoryQuerySchema } from "../userDirectory.js";
+import { userDirectoryQuerySchema } from "../features/members/userDirectory.js";
 import {
   adminStatsSchema,
   apiErrorSchema,

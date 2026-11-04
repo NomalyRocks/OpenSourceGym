@@ -11,7 +11,7 @@ no separate docs server and no extra port.
 | Swagger UI    | `http://localhost:3000/api/docs`         |
 | Raw JSON spec | `http://localhost:3000/api/openapi.json` |
 
-Port `3000` is the API's own port (`PORT`, see `apps/api/src/env.ts`). Start it
+Port `3000` is the API's own port (`PORT`, see `apps/api/src/core/env.ts`). Start it
 the usual way — `pnpm dev` at the repo root, or `pnpm --filter @opengym/api dev`
 — and the docs come up with it. Mongo and Redis must be running
 (`docker compose up`), because the API refuses to boot without them.
@@ -40,8 +40,9 @@ public deployment.
 
 ## What is covered
 
-29 paths, 34 operations. Every route in `routes/admin.ts`, `routes/me.ts` and
-`routes/devices.ts`, plus `GET /health` and the two docs endpoints themselves.
+49 paths, 60 operations. Every route in `features/{members,subscriptions,settings,audit,deletionRequests}/router.ts`,
+`features/members/controlsRouter.ts`, `features/gyms/router.ts`, `features/devices/router.ts`,
+`features/gate/router.ts` and `features/me/*Router.ts`, plus `GET /health` and the two docs endpoints themselves.
 
 Operations are tagged by area:
 
@@ -73,7 +74,7 @@ cookie is not readable from JavaScript, by design.
 `express.json()`. Those routes are not introspectable from our side, so the
 spec **describes** a representative set (sign-up, sign-in, sign-out, session,
 e-mail OTP send/verify) derived from the plugin configuration in
-`apps/api/src/auth.ts`. Treat that section as documentation, not as a contract
+`apps/api/src/auth/auth.ts`. Treat that section as documentation, not as a contract
 generated from the running code.
 
 ## How it is built
@@ -96,7 +97,7 @@ Dependencies: `zod-openapi` (zod v4 compatible) and `swagger-ui-express`.
 
 **The schemas in `openapi/schemas.ts` are hand-mirrored from the zod validators
 inside the route modules — they are not the same objects.** Change a validator
-in `routes/admin.ts` and the spec will keep describing the old shape without
+in the owning `features/<domain>/router.ts` and the spec will keep describing the old shape without
 any error. Typecheck will not catch it. Nothing will.
 
 So when you touch a route's request or response shape, update

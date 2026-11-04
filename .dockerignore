@@ -30,4 +30,4 @@ docs/
 # The mobile app and tests, unused in the server images
 apps/mobile/
 **/*.test.ts
-apps/api/src/integration/
+apps/api/test/

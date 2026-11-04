@@ -3,32 +3,32 @@ import { randomUUID } from "node:crypto";
 import { ObjectId } from "mongodb";
 import { z } from "zod";
 import type { GateRejectCode, GateScanResponse } from "@opengym/shared";
-import { db } from "../../db.js";
-import { sendApiError } from "../../apiError.js";
-import { acquireLock, releaseLock } from "../../redis.js";
-import { authed, requireRole } from "../../middleware.js";
-import { distanceMeters } from "../../geo.js";
-import { isImpossibleTravel } from "../../travel.js";
-import { verifyGateQr } from "../../gateQr.js";
+import { db } from "../../core/db.js";
+import { sendApiError } from "../../core/apiError.js";
+import { acquireLock, releaseLock } from "../../core/redis.js";
+import { authed, requireRole } from "../../core/middleware.js";
+import { distanceMeters } from "../../lib/geo.js";
+import { isImpossibleTravel } from "./travel.js";
+import { verifyGateQr } from "./gateQr.js";
 import {
   checkEntryDuringFreeze,
   endFreeze,
   findOpenFreeze,
   settlePendingCredit,
-} from "../../freeze.js";
-import { checkEntrySubscription } from "../../subscriptions.js";
-import { canAccessGym, findGym } from "../../gyms.js";
-import { openDevice } from "../../gateway.js";
+} from "../freeze/freeze.js";
+import { checkEntrySubscription } from "../subscriptions/subscriptions.js";
+import { canAccessGym, findGym } from "../gyms/gyms.js";
+import { openDevice } from "../devices/gateway.js";
 import {
   closeInsideRecordsElsewhere,
   hasAutoExitMarker,
   hasInsideRecord,
   markInside,
   markOutside,
-} from "../../occupancy.js";
-import { enqueueEntryEvent } from "../../eventQueue.js";
-import { logMemberAudit } from "../../memberScope.js";
-import { isQrBlocked, recordSharingSignal } from "../../sharing.js";
+} from "../gyms/occupancy.js";
+import { enqueueEntryEvent } from "./eventQueue.js";
+import { logMemberAudit } from "../members/memberScope.js";
+import { isQrBlocked, recordSharingSignal } from "./sharing.js";
 import {
   checkAntiPassback,
   checkGymGeofence,
