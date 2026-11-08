@@ -3,9 +3,11 @@ import { useTranslation } from "react-i18next";
 import type {
   ChainSettings as ChainSettingsData,
   FreezeConfig,
+  CurrencyCode,
   LegalConfig,
 } from "@opengym/shared";
 import { api, isAbortError } from "../lib/api";
+import { ConfirmModal } from "../components/Modal";
 import { PageHeader } from "../components/PageHeader";
 import { errorMessage } from "../i18n/errors";
 import { useProfile } from "../lib/profile";
@@ -16,13 +18,17 @@ export function ChainSettings() {
   const { profile } = useProfile();
   const canEdit = profile?.role === "owner";
   const [settings, setSettings] = useState<ChainSettingsData | null>(null);
+  const [savedCurrency, setSavedCurrency] = useState<CurrencyCode | null>(null);
   const [msg, setMsg] = useState<{ kind: string; text: string } | null>(null);
-  const [busy, setBusy] = useState(false);
+  const [pending, setPending] = useState<ChainSettingsData | null>(null);
 
   useEffect(() => {
     const controller = new AbortController();
     api<ChainSettingsData>("/api/admin/settings", { signal: controller.signal })
-      .then(setSettings)
+      .then((loaded) => {
+        setSettings(loaded);
+        setSavedCurrency(loaded.currency);
+      })
       .catch((err) => {
         if (isAbortError(err)) return;
         setMsg({
@@ -33,22 +39,9 @@ export function ChainSettings() {
     return () => controller.abort();
   }, [t]);
 
-  async function save(e: React.FormEvent) {
+  function save(e: React.FormEvent) {
     e.preventDefault();
-    if (!settings) return;
-    setBusy(true);
-    setMsg(null);
-    try {
-      await api("/api/admin/settings", { method: "PUT", body: settings });
-      setMsg({ kind: "success", text: t("Settings saved.") });
-    } catch (err) {
-      setMsg({
-        kind: "error",
-        text: errorMessage(err, t, "Could not save changes."),
-      });
-    } finally {
-      setBusy(false);
-    }
+    if (settings) setPending(settings);
   }
 
   const legal: LegalConfig = settings?.legal ?? {
@@ -89,6 +82,33 @@ export function ChainSettings() {
               required
             />
           </div>
+          {canEdit && (
+            <div className="field">
+              <label htmlFor="chain-currency">{t("Currency")}</label>
+              <select
+                id="chain-currency"
+                value={settings?.currency ?? "TRY"}
+                onChange={(e) =>
+                  settings &&
+                  setSettings({
+                    ...settings,
+                    currency: e.target.value as CurrencyCode,
+                  })
+                }
+              >
+                {["TRY", "USD", "EUR", "GBP"].map((currency) => (
+                  <option value={currency} key={currency}>
+                    {currency}
+                  </option>
+                ))}
+              </select>
+              <p className="hint">
+                {t(
+                  "Currency changes only affect new sales. Existing sales and payments keep their currency.",
+                )}
+              </p>
+            </div>
+          )}
           <h2 style={{ marginTop: 28 }}>{t("Legal documents")}</h2>
           <p className="hint" style={{ marginBottom: 14 }}>
             {t(
@@ -198,12 +218,47 @@ export function ChainSettings() {
           </div>
 
           {canEdit && (
-            <button type="submit" disabled={busy || !settings}>
-              {busy ? t("Saving…") : t("Save")}
+            <button type="submit" disabled={!settings}>
+              {t("Save")}
             </button>
           )}
         </fieldset>
       </form>
+      {pending && (
+        <ConfirmModal
+          title={t("Confirm chain settings")}
+          confirmLabel={t("Save")}
+          errorFallback="Could not save changes."
+          onClose={() => setPending(null)}
+          onConfirm={async () => {
+            await api("/api/admin/settings", { method: "PUT", body: pending });
+            setSavedCurrency(pending.currency);
+            setPending(null);
+            setMsg({ kind: "success", text: t("Settings saved.") });
+          }}
+        >
+          <dl className="modal-summary">
+            <dt>{t("Chain name")}</dt>
+            <dd>{pending.chainName}</dd>
+            <dt>{t("Currency")}</dt>
+            <dd>
+              {savedCurrency} → {pending.currency}
+            </dd>
+          </dl>
+          <p className="hint">
+            {t(
+              "Currency changes only affect new sales. Existing sales and payments keep their currency.",
+            )}
+          </p>
+          {savedCurrency !== pending.currency && (
+            <p className="msg warn">
+              {t(
+                "Catalog prices are not converted. Reprice the catalog before making new sales.",
+              )}
+            </p>
+          )}
+        </ConfirmModal>
+      )}
     </div>
   );
 }

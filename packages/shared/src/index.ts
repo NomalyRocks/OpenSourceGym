@@ -129,16 +129,218 @@ export interface Subscription {
   gymIds: string[];
   createdBy: string;
   createdAt: string;
+  /**
+   * What was sold. Null for periods created before pricing existed, and for
+   * periods the (non-owner) caller has no gym in common with.
+   */
+  sale: SubscriptionSale | null;
+  /** Sum of non-voided payments; null while `sale` is null */
+  paidMinor: number | null;
+  /** `sale.priceMinor - paidMinor`; null while `sale` is null */
+  balanceMinor: number | null;
 }
 
+/** The four classic month counts the seeded packages are keyed by */
 export type SubscriptionMonths = 1 | 3 | 6 | 12;
 
-export interface CreateSubscriptionRequest {
+/** ISO 4217 currencies a chain can price in; all use two minor digits */
+export type CurrencyCode = "TRY" | "USD" | "EUR" | "GBP";
+
+/** Calendar months (1..24, clamped month arithmetic) or whole 24 h days (1..366) */
+export interface PackageDuration {
+  unit: "month" | "day";
+  value: number;
+}
+
+/** A catalog package (`/api/admin/packages`); chain-wide, never deleted */
+export interface Package {
+  id: string;
+  name: string;
+  duration: PackageDuration;
+  /** Minor units; null until the owner has set a price */
+  priceMinor: number | null;
+  /** Inactive packages are hidden from new sales; past sales keep their snapshot */
+  active: boolean;
+  /** Set only on the seeded classic 1/3/6/12 month packages */
+  legacyMonths: SubscriptionMonths | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** GET /api/admin/packages; currency is available to every staff role. */
+export interface PackageListResponse {
+  packages: Package[];
+  currency: CurrencyCode;
+}
+
+/** POST /api/admin/packages (owner) */
+export interface CreatePackageRequest {
+  /** 1..80 characters */
+  name: string;
+  duration: PackageDuration;
+  /** 0..10_000_000_000 minor units, or null for "not priced yet" */
+  priceMinor: number | null;
+}
+
+/** PATCH /api/admin/packages/:id (owner) — partial, at least one field */
+export interface UpdatePackageRequest {
+  name?: string;
+  duration?: PackageDuration;
+  priceMinor?: number | null;
+  active?: boolean;
+}
+
+/** Snapshot of what a period was sold as; later catalog edits never touch it */
+export interface SubscriptionSale {
+  /** Null for a custom grant */
+  packageId: string | null;
+  packageName: string;
+  duration: PackageDuration;
+  /** Catalog price at sale time; null for a custom grant or an unpriced package */
+  listPriceMinor: number | null;
+  /** What the member owes */
+  priceMinor: number;
+  currency: CurrencyCode;
+  /** Optional promise date for the remainder */
+  nextPaymentDue: string | null;
+}
+
+interface CreateSubscriptionBase {
   userId: string;
-  months: SubscriptionMonths;
   /** Non-empty; every id must be an active gym the caller has access to */
   gymIds: string[];
+  nextPaymentDue?: string | null;
   note?: string;
+  /** Client-generated UUID; a repeat returns the existing period instead of a second one */
+  requestId: string;
+}
+
+/** Catalog sale (owner/admin/staff). `priceMinor` is an owner/admin-only override. */
+export interface CreatePackageSaleRequest extends CreateSubscriptionBase {
+  packageId: string;
+  priceMinor?: number;
+  /** Refuse catalog price drift when no price override is supplied. */
+  expectedPriceMinor?: number;
+}
+
+/** Custom grant (owner/admin only): a day count with its own price */
+export interface CreateCustomSaleRequest extends CreateSubscriptionBase {
+  custom: {
+    /** 1..366 */
+    days: number;
+    priceMinor: number;
+    /** Up to 80 characters; defaults to "<days> days" */
+    label?: string;
+  };
+}
+
+/** POST /api/admin/subscriptions */
+export type CreateSubscriptionRequest =
+  CreatePackageSaleRequest | CreateCustomSaleRequest;
+
+/** PATCH /api/admin/subscriptions/:id/sale (owner/admin) */
+export interface UpdateSubscriptionSaleRequest {
+  /** Null clears the promise date */
+  nextPaymentDue: string | null;
+}
+
+export type PaymentMethod = "cash" | "card" | "transfer" | "other";
+
+/** One recorded payment. Append-only: the only mutation is a void. */
+export interface Payment {
+  id: string;
+  subscriptionId: string;
+  /** Null after the member's account was deleted */
+  userId: string | null;
+  /** Gym where the money was taken */
+  gymId: string;
+  amountMinor: number;
+  currency: CurrencyCode;
+  method: PaymentMethod;
+  paidAt: string;
+  note: string | null;
+  recordedBy: string;
+  recordedByName: string | null;
+  /** Snapshot, survives period deletion */
+  packageName: string;
+  void: { at: string; by: string; reason: string | null } | null;
+}
+
+/** POST /api/admin/subscriptions/:id/payments (owner/admin/staff) */
+export interface RecordPaymentRequest {
+  amountMinor: number;
+  method: PaymentMethod;
+  /** In the caller's scope and on the period's gymIds */
+  gymId: string;
+  /** Up to 200 characters */
+  note?: string;
+  /** Client-generated UUID; a repeat returns the existing payment */
+  requestId: string;
+}
+
+/** POST /api/admin/payments/:id/void (owner/admin) */
+export interface VoidPaymentRequest {
+  /** 3..200 characters */
+  reason: string;
+}
+
+/** Result of recording or voiding a payment, with the period's new standing */
+export interface PaymentResult {
+  payment: Payment;
+  paidMinor: number;
+  balanceMinor: number;
+}
+
+/** One currency's slice of the daily cash report */
+export interface CashTotals {
+  currency: CurrencyCode;
+  totalMinor: number;
+  count: number;
+  byMethod: { method: PaymentMethod; totalMinor: number; count: number }[];
+  byStaff: {
+    userId: string;
+    name: string | null;
+    totalMinor: number;
+    count: number;
+  }[];
+}
+
+export interface CashReportPayment extends Payment {
+  memberName: string | null;
+}
+
+/** GET /api/admin/gyms/:gymId/reports/cash (owner/admin) */
+export interface CashReport {
+  /** Local day (`YYYY-MM-DD`) in `timeZone` */
+  day: string;
+  timeZone: string;
+  /** Non-voided payments, one entry per currency (normally exactly one) */
+  totals: CashTotals[];
+  /** True when the combined payment and voided row list was capped */
+  truncated: boolean;
+  payments: CashReportPayment[];
+  /** Payments recorded that day and voided since; excluded from `totals` */
+  voided: CashReportPayment[];
+}
+
+/** One period with an outstanding balance (`GET .../reports/debtors`) */
+export interface DebtorRow {
+  subscriptionId: string;
+  userId: string;
+  firstName: string;
+  lastName: string;
+  email: string;
+  phone: string;
+  packageName: string;
+  startsAt: string;
+  endsAt: string;
+  priceMinor: number;
+  paidMinor: number;
+  balanceMinor: number;
+  currency: CurrencyCode;
+  nextPaymentDue: string | null;
+  /** `nextPaymentDue` is in the past */
+  overdue: boolean;
 }
 
 /**
@@ -182,6 +384,21 @@ export interface MySubscription {
   freeze: { startedAt: string } | null;
   /** What the member may do from the app (POST/DELETE /api/me/freeze) */
   freezeAllowance: MyFreezeAllowance;
+  /** Package and balance for the subscription card; null when nothing was ever priced */
+  billing: MyBilling | null;
+}
+
+/**
+ * What the member owes at the gym. Never says who recorded a payment. The
+ * balance spans every priced period (past ones included) in `currency`.
+ */
+export interface MyBilling {
+  /** Package of the period covering now; null when none does */
+  packageName: string | null;
+  balanceMinor: number;
+  currency: CurrencyCode;
+  /** Earliest promise date among the periods with a balance */
+  nextPaymentDue: string | null;
 }
 
 /**
@@ -274,6 +491,8 @@ export interface ChainSettings {
   legal: LegalConfig;
   /** Subscription freeze rules; omitted on PUT leaves them unchanged */
   freeze: FreezeConfig;
+  /** Currency of new sales (default TRY); omitted on PUT leaves it unchanged */
+  currency: CurrencyCode;
 }
 
 /** Chain-wide subscription freeze rules (owner-editable, `settings._id: "chain"`) */
@@ -499,7 +718,29 @@ export type ApiErrorCode =
   | "NOT_FROZEN"
   /** Freezing needs a period that is running right now */
   | "NO_ACTIVE_PERIOD"
-  | "INVALID_FREEZE_SETTINGS";
+  | "INVALID_FREEZE_SETTINGS"
+  | "INVALID_CURRENCY"
+  | "PACKAGE_NOT_FOUND"
+  | "INVALID_PACKAGE"
+  /** Staff tried a price override or a custom grant */
+  | "PRICE_OVERRIDE_FORBIDDEN"
+  /** The catalog package has no price and no override was given */
+  | "PACKAGE_PRICE_UNSET"
+  | "PACKAGE_PRICE_CHANGED"
+  | "PACKAGE_INACTIVE"
+  /** The same requestId was already used for a different record */
+  | "REQUEST_ID_CONFLICT"
+  | "INVALID_PAYMENT"
+  /** The period predates pricing: it has no sale and takes no payments */
+  | "SUBSCRIPTION_UNPRICED"
+  /** The payment's gym is not on the period's gymIds */
+  | "PAYMENT_GYM_NOT_ON_PERIOD"
+  | "PAYMENT_EXCEEDS_BALANCE"
+  | "PAYMENT_NOT_FOUND"
+  | "PAYMENT_ALREADY_VOIDED"
+  /** Cancelling needs the period's payments voided first */
+  | "SUBSCRIPTION_HAS_PAYMENTS"
+  | "INVALID_DAY";
 
 export interface ApiErrorResponse {
   code: ApiErrorCode;
@@ -872,4 +1113,5 @@ export interface ChainSummary {
 }
 
 /** CSV export datasets */
-export type ExportDataset = "members" | "subscriptions" | "entries";
+export type ExportDataset =
+  "members" | "subscriptions" | "entries" | "payments";

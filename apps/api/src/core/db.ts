@@ -1,6 +1,7 @@
 import { MongoClient, MongoServerError, ObjectId } from "mongodb";
 import type { Collection, Db, WithId } from "mongodb";
 import type {
+  CurrencyCode,
   FreezeConfig,
   GymLocation,
   LegalConfig,
@@ -93,6 +94,8 @@ export interface ChainSettingsDocument {
   legal?: Partial<LegalConfig>;
   /** Subscription freeze rules; absent means the defaults in freeze.ts */
   freeze?: Partial<FreezeConfig>;
+  /** Currency of new sales; absent means TRY */
+  currency?: CurrencyCode;
 }
 
 export function chainSettingsCollection(

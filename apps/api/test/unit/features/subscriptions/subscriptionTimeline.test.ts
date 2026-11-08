@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { ObjectId } from "mongodb";
 import {
+  addDuration,
   addUtcCalendarMonthsClamped,
   calculateFreezeCreditMs,
   evaluateEntryAccess,
@@ -77,6 +78,64 @@ describe("UTC subscription month calculation", () => {
     );
     assert.equal(expired.startsAt.toISOString(), now.toISOString());
     assert.equal(expired.endsAt.toISOString(), "2025-04-15T10:00:00.000Z");
+  });
+});
+
+describe("package durations", () => {
+  const start = new Date("2025-01-31T10:00:00.000Z");
+
+  it("adds calendar months with clamping, up to 24", () => {
+    assert.equal(
+      addDuration(start, { unit: "month", value: 1 }).toISOString(),
+      "2025-02-28T10:00:00.000Z",
+    );
+    assert.equal(
+      addDuration(start, { unit: "month", value: 24 }).toISOString(),
+      "2027-01-31T10:00:00.000Z",
+    );
+    assert.equal(
+      addUtcCalendarMonthsClamped(
+        new Date("2024-01-31T00:00:00.000Z"),
+        13,
+      ).toISOString(),
+      "2025-02-28T00:00:00.000Z",
+    );
+  });
+
+  it("adds exactly days x 24 h, independent of month lengths", () => {
+    assert.equal(
+      addDuration(start, { unit: "day", value: 14 }).toISOString(),
+      "2025-02-14T10:00:00.000Z",
+    );
+    assert.equal(
+      addDuration(start, { unit: "day", value: 366 }).getTime() -
+        start.getTime(),
+      366 * 86_400_000,
+    );
+  });
+
+  it("stacks a day package after the latest period", () => {
+    const now = new Date("2025-01-15T10:00:00.000Z");
+    const period = calculateSubscriptionPeriod(
+      now,
+      new Date("2025-01-20T10:00:00.000Z"),
+      { unit: "day", value: 10 },
+    );
+    assert.equal(period.startsAt.toISOString(), "2025-01-20T10:00:00.000Z");
+    assert.equal(period.endsAt.toISOString(), "2025-01-30T10:00:00.000Z");
+  });
+
+  it("matches the legacy month count for the classic packages", () => {
+    const now = new Date("2025-01-15T10:00:00.000Z");
+    for (const months of [1, 3, 6, 12]) {
+      assert.deepEqual(
+        calculateSubscriptionPeriod(now, null, {
+          unit: "month",
+          value: months,
+        }),
+        calculateSubscriptionPeriod(now, null, months),
+      );
+    }
   });
 });
 

@@ -656,6 +656,133 @@ const tr = {
     "Bu salondaki turnike okutmaları, reddedilenler dahil.",
   "Create gyms, rename them or switch them off.":
     "Salon oluşturun, adlandırın veya devre dışı bırakın.",
+  "Enter a nonnegative amount with at most two decimals.":
+    "En fazla iki ondalık basamak içeren, negatif olmayan bir tutar girin.",
+  Actions: "İşlemler",
+  Packages: "Paketler",
+  Package: "Paket",
+  Billing: "Ücret ve ödemeler",
+  "Daily cash": "Günlük kasa",
+  Debtors: "Borçlular",
+  Price: "Fiyat",
+  Paid: "Ödenen",
+  Balance: "Bakiye",
+  Overdue: "Gecikmiş",
+  "Price not set": "Fiyat belirlenmedi",
+  Duration: "Süre",
+  "Duration unit": "Süre birimi",
+  Months: "Ay",
+  Days: "Gün",
+  "{{count}} months": "{{count}} ay",
+  "{{count}} days": "{{count}} gün",
+  "Create package": "Paket oluştur",
+  "Edit package": "Paketi düzenle",
+  "Confirm package changes": "Paket değişikliklerini onayla",
+  "Past sales keep their original price and duration.":
+    "Önceki satışlar ilk fiyat ve sürelerini korur.",
+  "Manage the chain catalog. Inactive packages remain in past sales.":
+    "Zincirin paket kataloğunu yönetin. Pasif paketler geçmiş satışlarda korunur.",
+  "No packages.": "Paket yok.",
+  "Deactivate package": "Paketi pasifleştir",
+  "Activate package": "Paketi etkinleştir",
+  Confirm: "Onayla",
+  "Custom day grant": "Özel gün paketi",
+  "Select a package": "Paket seçin",
+  "Label (optional)": "Etiket (isteğe bağlı)",
+  "List price": "Liste fiyatı",
+  "Override price": "Fiyatı değiştir",
+  "Sale price": "Satış fiyatı",
+  "Next payment date (optional)": "Sonraki ödeme tarihi (isteğe bağlı)",
+  "Next payment date": "Sonraki ödeme tarihi",
+  "Take a payment now": "Şimdi ödeme kaydet",
+  "Payment amount": "Ödeme tutarı",
+  "Payment method": "Ödeme yöntemi",
+  "Payment gym": "Ödemenin alındığı salon",
+  "Select a gym": "Salon seçin",
+  "Payment note (optional)": "Ödeme notu (isteğe bağlı)",
+  Cash: "Nakit",
+  Card: "Kart",
+  Transfer: "Havale",
+  Other: "Diğer",
+  Payment: "Ödeme",
+  Payments: "Ödemeler",
+  "Confirm sale": "Satışı onayla",
+  "No payment now": "Şimdi ödeme yok",
+  "Prices are in {{currency}}. Unpriced packages require an owner or administrator.":
+    "Fiyatlar {{currency}} cinsindedir. Fiyatı belirlenmemiş paketler için işletme sahibi veya yönetici gerekir.",
+  "The package price changed. Review the refreshed catalog and confirm the sale again.":
+    "Paket fiyatı değişti. Güncel kataloğu inceleyip satışı yeniden onaylayın.",
+  "List shortened — use the CSV export for every row":
+    "Liste kısaltıldı — tüm satırlar için CSV dışa aktarımını kullanın",
+  "Catalog prices are not converted. Reprice the catalog before making new sales.":
+    "Katalog fiyatları dönüştürülmez. Yeni satış yapmadan önce katalog fiyatlarını yeniden belirleyin.",
+  "The period was created. Retry to record the payment, or close and record it from the period.":
+    "Dönem oluşturuldu. Ödemeyi kaydetmek için tekrar deneyin veya kapatıp dönem üzerinden kaydedin.",
+  "This creates an additional sold period after {{date}}.":
+    "Bu işlem {{date}} sonrasına ek bir satış dönemi oluşturur.",
+  "Record payment": "Ödeme kaydet",
+  "Confirm payment": "Ödemeyi onayla",
+  "Could not record the payment.": "Ödeme kaydedilemedi.",
+  "Payment must be greater than zero and cannot exceed the balance.":
+    "Ödeme sıfırdan büyük olmalı ve bakiyeyi aşmamalıdır.",
+  "Void payment": "Ödemeyi iptal et",
+  "Confirm void": "Ödeme iptalini onayla",
+  "Could not void the payment.": "Ödeme iptal edilemedi.",
+  "Void reason (3–200 characters)": "İptal gerekçesi (3–200 karakter)",
+  "Void reason": "İptal gerekçesi",
+  Void: "İptal et",
+  Voided: "İptal edildi",
+  "Refund the money in person. Voiding only changes the records.":
+    "Para iadesini yüz yüze yapın. İptal işlemi yalnızca kayıtları değiştirir.",
+  "Edit next payment date": "Sonraki ödeme tarihini düzenle",
+  "Confirm next payment date": "Sonraki ödeme tarihini onayla",
+  "No payment date": "Ödeme tarihi yok",
+  "Leave blank to clear the payment date.":
+    "Ödeme tarihini kaldırmak için boş bırakın.",
+  "Hide payments": "Ödemeleri gizle",
+  "No payments.": "Ödeme yok.",
+  "Recorded by": "Kaydeden",
+  "Deleted member": "Silinmiş üye",
+  "Payments recorded at this gym, excluding voided records.":
+    "Bu salonda kaydedilen ödemeler; iptal edilen kayıtlar hariç.",
+  Day: "Gün",
+  Refresh: "Yenile",
+  "Payments (CSV)": "Ödemeler (CSV)",
+  "Report time zone": "Rapor saat dilimi",
+  Total: "Toplam",
+  "{{count}} payments": "{{count}} ödeme",
+  "By method": "Yönteme göre",
+  "By staff": "Personele göre",
+  "Voided payments": "İptal edilen ödemeler",
+  "Outstanding periods, overdue first. A balance never blocks entry.":
+    "Bakiyesi olan dönemler; gecikenler önce gösterilir. Borç, girişi engellemez.",
+  "No outstanding balances.": "Ödenmemiş bakiye yok.",
+  Currency: "Para birimi",
+  "Currency changes only affect new sales. Existing sales and payments keep their currency.":
+    "Para birimi değişikliği yalnızca yeni satışları etkiler. Mevcut satış ve ödemeler kendi para birimlerini korur.",
+  "Confirm chain settings": "Zincir ayarlarını onayla",
+  "Invalid currency.": "Geçersiz para birimi.",
+  "Package not found.": "Paket bulunamadı.",
+  "Enter valid package details.": "Geçerli paket bilgileri girin.",
+  "Only owners and administrators can override prices or create custom grants.":
+    "Fiyatı yalnızca işletme sahibi ve yöneticiler değiştirebilir veya özel paket oluşturabilir.",
+  "Set a package price before selling it.":
+    "Satıştan önce paket fiyatını belirleyin.",
+  "This package is inactive.": "Bu paket pasif.",
+  "This request ID has already been used for another record.":
+    "Bu istek kimliği başka bir kayıt için kullanılmış.",
+  "Enter valid payment details.": "Geçerli ödeme bilgileri girin.",
+  "This period has no sale and cannot take payments.":
+    "Bu dönemin satış kaydı yoktur; ödeme alınamaz.",
+  "Choose a payment gym that is on this period.":
+    "Bu dönemin kapsadığı bir ödeme salonu seçin.",
+  "The payment exceeds the outstanding balance.":
+    "Ödeme tutarı kalan bakiyeyi aşıyor.",
+  "Payment not found.": "Ödeme bulunamadı.",
+  "This payment has already been voided.": "Bu ödeme zaten iptal edilmiş.",
+  "Void the period’s payments before cancelling it. Refund the money in person first.":
+    "Dönemi iptal etmeden önce ödemelerini iptal edin. Önce para iadesini yüz yüze yapın.",
+  "Choose a valid calendar day.": "Geçerli bir takvim günü seçin.",
 } as const;
 
 const en = Object.fromEntries(Object.keys(tr).map((key) => [key, key])) as {

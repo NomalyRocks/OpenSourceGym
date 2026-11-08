@@ -3,32 +3,19 @@ import { useTranslation } from "react-i18next";
 import { Pencil, Plus } from "lucide-react";
 import type {
   CancelSubscriptionResponse,
-  CreateSubscriptionRequest,
   SetSubscriptionGymsRequest,
   PublicUser,
   Subscription,
-  SubscriptionMonths,
 } from "@opengym/shared";
 import { api, isAbortError } from "../lib/api";
 import { Avatar } from "./Avatar";
+import { NewPeriodModal } from "./NewPeriodModal";
+import { PeriodBilling } from "./PeriodBilling";
 import { Modal, useDateFormatter } from "./Modal";
-import { useGymId, useGyms } from "../lib/gyms";
+import { useGyms } from "../lib/gyms";
 import { dateLocale } from "../i18n/format";
 import { errorMessage } from "../i18n/errors";
 import type { WebTranslationKey } from "../i18n/resources";
-
-const subscriptionMonthOptions: readonly SubscriptionMonths[] = [1, 3, 6, 12];
-
-const monthsKeys = {
-  1: "1 month",
-  3: "3 months",
-  6: "6 months",
-  12: "12 months",
-} as const satisfies Record<SubscriptionMonths, WebTranslationKey>;
-
-function monthsKey(months: SubscriptionMonths): WebTranslationKey {
-  return monthsKeys[months];
-}
 
 function subscriptionStatus(subscription: Subscription): {
   label: WebTranslationKey;
@@ -42,24 +29,6 @@ function subscriptionStatus(subscription: Subscription): {
     return { label: "Active", className: "ok" };
   }
   return { label: "Expired", className: "member" };
-}
-
-// Mirrors the server's addUtcCalendarMonthsClamped so the preview matches what
-// POST /api/admin/subscriptions will create (UTC months, day clamped).
-function addUtcMonthsClamped(date: Date, months: number): Date {
-  const targetMonthIndex = date.getUTCMonth() + months;
-  const targetYear = date.getUTCFullYear() + Math.floor(targetMonthIndex / 12);
-  const targetMonth = targetMonthIndex % 12;
-  const lastDay = new Date(
-    Date.UTC(targetYear, targetMonth + 1, 0),
-  ).getUTCDate();
-  const result = new Date(date.getTime());
-  result.setUTCFullYear(
-    targetYear,
-    targetMonth,
-    Math.min(date.getUTCDate(), lastDay),
-  );
-  return result;
 }
 
 /** Active or scheduled periods (not yet ended), earliest first. */
@@ -87,209 +56,6 @@ function sameGymSet(a: string[], b: string[]): boolean {
 type LaterChange =
   | { target: Subscription; kind: "unchanged" | "empty" }
   | { target: Subscription; kind: "update"; next: string[] };
-
-// Creates a NEW sequential period after the member's latest one. Two steps
-// (form, then confirm) so an accidental click cannot sell an extra period.
-function NewPeriodModal({
-  member,
-  subs,
-  onClose,
-  onSwitchToEdit,
-  onGranted,
-}: {
-  member: PublicUser;
-  subs: Subscription[];
-  onClose: () => void;
-  /** Opens the edit-gyms modal for the current period. */
-  onSwitchToEdit: (subscription: Subscription) => void;
-  onGranted: (startsAt: string, endsAt: string) => void;
-}) {
-  const { t } = useTranslation();
-  const formatDate = useDateFormatter();
-  const { gyms } = useGyms();
-  const selectedGymId = useGymId();
-  const activeGyms = gyms.filter((g) => g.active);
-  const [step, setStep] = useState<"form" | "confirm">("form");
-  const [months, setMonths] = useState<SubscriptionMonths>(1);
-  // Defaults to the gym currently selected in the panel.
-  const [gymIds, setGymIds] = useState<string[]>(
-    activeGyms.some((g) => g.id === selectedGymId) ? [selectedGymId] : [],
-  );
-  const [error, setError] = useState<string | null>(null);
-  const [submitting, setSubmitting] = useState(false);
-  // Synchronous guard: state updates are async, so a fast double click could
-  // otherwise fire two POSTs before `submitting` disables the button.
-  const submittingRef = useRef(false);
-
-  const ongoing = ongoingPeriods(subs);
-  const current = ongoing[0] ?? null;
-  const latestEnd = subs.reduce(
-    (max, s) => Math.max(max, new Date(s.endsAt).getTime()),
-    Number.NEGATIVE_INFINITY,
-  );
-  const startsAt = new Date(Math.max(Date.now(), latestEnd));
-  const endsAt = addUtcMonthsClamped(startsAt, months);
-
-  const toggleGym = (id: string) =>
-    setGymIds((prev) =>
-      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id],
-    );
-
-  function next() {
-    setError(null);
-    if (gymIds.length === 0) {
-      setError(t("Select at least one gym."));
-      return;
-    }
-    setStep("confirm");
-  }
-
-  async function confirm() {
-    if (submittingRef.current) return;
-    submittingRef.current = true;
-    setSubmitting(true);
-    setError(null);
-    try {
-      const request: CreateSubscriptionRequest = {
-        userId: member.id,
-        months,
-        gymIds,
-        note: t("{{months}}-month plan", { months }),
-      };
-      const created = await api<{ startsAt: string; endsAt: string }>(
-        "/api/admin/subscriptions",
-        { method: "POST", body: request },
-      );
-      onGranted(created.startsAt, created.endsAt);
-    } catch (err) {
-      setError(errorMessage(err, t, "Could not grant the subscription."));
-      submittingRef.current = false;
-      setSubmitting(false);
-    }
-  }
-
-  const warning = ongoing.length > 0 && (
-    <div className="msg warn">
-      <strong>
-        {t(
-          "This adds a NEW {{months}}-month period after {{date}}, and the member will be charged for an extra period.",
-          { months, date: formatDate(new Date(latestEnd)) },
-        )}
-      </strong>{" "}
-      {t(
-        "To give access to another gym on an existing period, change that period's gyms instead.",
-      )}
-      {step === "form" && current && (
-        <div style={{ marginTop: 10 }}>
-          <button
-            type="button"
-            className="ghost"
-            onClick={() => onSwitchToEdit(current)}
-          >
-            {t("Edit gyms of the current period")}
-          </button>
-        </div>
-      )}
-    </div>
-  );
-
-  return (
-    <Modal
-      title={t("New subscription period")}
-      busy={submitting}
-      onClose={onClose}
-    >
-      {error && <div className="msg error">{error}</div>}
-      {warning}
-      {step === "form" ? (
-        <>
-          <div className="field">
-            <label htmlFor="new-period-months">{t("Plan")}</label>
-            <select
-              id="new-period-months"
-              value={months}
-              onChange={(e) =>
-                setMonths(Number(e.target.value) as SubscriptionMonths)
-              }
-            >
-              {subscriptionMonthOptions.map((option) => (
-                <option key={option} value={option}>
-                  {t(monthsKey(option))}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div className="field">
-            <label>{t("Gyms")}</label>
-            <div className="row">
-              {activeGyms.map((g) => (
-                <label key={g.id} className="check">
-                  <input
-                    type="checkbox"
-                    checked={gymIds.includes(g.id)}
-                    onChange={() => toggleGym(g.id)}
-                  />{" "}
-                  {g.name}
-                </label>
-              ))}
-            </div>
-          </div>
-          <p className="modal-preview">
-            {t("Starts {{start}} – Ends {{end}}", {
-              start: formatDate(startsAt),
-              end: formatDate(endsAt),
-            })}
-          </p>
-          <div className="row">
-            <button type="button" onClick={next}>
-              {t("Continue")}
-            </button>
-            <button type="button" className="ghost" onClick={onClose}>
-              {t("Cancel")}
-            </button>
-          </div>
-        </>
-      ) : (
-        <>
-          <dl className="modal-summary">
-            <dt>{t("Member")}</dt>
-            <dd>{`${member.firstName} ${member.lastName}`}</dd>
-            <dt>{t("Plan")}</dt>
-            <dd>{t(monthsKey(months))}</dd>
-            <dt>{t("Gyms")}</dt>
-            <dd>{gymNames(gymIds, gyms)}</dd>
-            <dt>{t("Start")}</dt>
-            <dd>{formatDate(startsAt)}</dd>
-            <dt>{t("End")}</dt>
-            <dd>{formatDate(endsAt)}</dd>
-          </dl>
-          <div className="row">
-            <button
-              type="button"
-              onClick={() => void confirm()}
-              disabled={submitting}
-            >
-              {submitting
-                ? t("Processing…")
-                : t("Confirm — grant {{plan}}", { plan: t(monthsKey(months)) })}
-            </button>
-            <button
-              type="button"
-              className="ghost"
-              onClick={() => {
-                setError(null);
-                setStep("form");
-              }}
-              disabled={submitting}
-            >
-              {t("Back")}
-            </button>
-          </div>
-        </>
-      )}
-    </Modal>
-  );
-}
 
 function EditGymsForm({
   subscription,
@@ -856,59 +622,73 @@ export function SubscriptionPanel({
           <Pencil size={14} /> {t("Edit subscriptions")}
         </button>
       </div>
-      <table>
-        <thead>
-          <tr>
-            <th>{t("Start")}</th>
-            <th>{t("End")}</th>
-            <th>{t("Note")}</th>
-            <th>{t("Gyms")}</th>
-            <th>{t("Status")}</th>
-          </tr>
-        </thead>
-        <tbody>
-          {loading && (
+      <div className="table-scroll">
+        <table>
+          <thead>
             <tr>
-              <td colSpan={5}>{t("Loading…")}</td>
+              <th>{t("Start")}</th>
+              <th>{t("End")}</th>
+              <th>{t("Note")}</th>
+              <th>{t("Gyms")}</th>
+              <th>{t("Status")}</th>
+              <th>{t("Billing")}</th>
             </tr>
-          )}
-          {!loading &&
-            (subs ?? []).map((subscription) => {
-              const status = subscriptionStatus(subscription);
-              return (
-                <tr key={subscription.id}>
-                  <td>
-                    {new Date(subscription.startsAt).toLocaleDateString(
-                      dateLocale(i18n.resolvedLanguage),
-                    )}
-                  </td>
-                  <td>
-                    {new Date(subscription.endsAt).toLocaleDateString(
-                      dateLocale(i18n.resolvedLanguage),
-                    )}
-                  </td>
-                  <td>{subscription.note ?? "—"}</td>
-                  <td>{gymNames(subscription.gymIds, gyms)}</td>
-                  <td>
-                    <span className={`badge ${status.className}`}>
-                      {t(status.label)}
-                    </span>
-                  </td>
-                </tr>
-              );
-            })}
-          {!loading && subs?.length === 0 && (
-            <tr>
-              <td colSpan={5}>{t("No subscription records.")}</td>
-            </tr>
-          )}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {loading && (
+              <tr>
+                <td colSpan={6}>{t("Loading…")}</td>
+              </tr>
+            )}
+            {!loading &&
+              (subs ?? []).map((subscription) => {
+                const status = subscriptionStatus(subscription);
+                return (
+                  <tr key={subscription.id}>
+                    <td>
+                      {new Date(subscription.startsAt).toLocaleDateString(
+                        dateLocale(i18n.resolvedLanguage),
+                      )}
+                    </td>
+                    <td>
+                      {new Date(subscription.endsAt).toLocaleDateString(
+                        dateLocale(i18n.resolvedLanguage),
+                      )}
+                    </td>
+                    <td>{subscription.note ?? "—"}</td>
+                    <td>{gymNames(subscription.gymIds, gyms)}</td>
+                    <td>
+                      <span className={`badge ${status.className}`}>
+                        {t(status.label)}
+                      </span>
+                    </td>
+                    <td>
+                      {subscription.sale && (
+                        <PeriodBilling
+                          subscription={subscription}
+                          onChanged={() => void reloadList()}
+                        />
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
+            {!loading && subs?.length === 0 && (
+              <tr>
+                <td colSpan={6}>{t("No subscription records.")}</td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
       {modal?.kind === "new" && (
         <NewPeriodModal
           member={member}
           subs={subs ?? []}
-          onClose={closeModal}
+          onClose={() => {
+            closeModal();
+            void reloadList();
+          }}
           onSwitchToEdit={(subscription) => openEdit("gyms", subscription)}
           onGranted={(startsAt, endsAt) => {
             setModal(null);

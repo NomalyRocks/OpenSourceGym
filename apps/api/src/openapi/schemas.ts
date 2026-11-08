@@ -177,6 +177,42 @@ export const myWeightHistorySchema = withId(
   "MyWeightHistory",
 );
 
+export const currencySchema = withId(
+  z.enum(["TRY", "USD", "EUR", "GBP"]),
+  "CurrencyCode",
+);
+
+const minorUnitsSchema = z.number().int().meta({
+  description: "Integer amount in minor units (kuruş for TRY); never a float",
+});
+
+export const packageDurationSchema = withId(
+  z.object({
+    unit: z.enum(["month", "day"]),
+    value: z.number().int().min(1).max(366).meta({
+      description: "Months 1-24 (clamped calendar months) or days 1-366",
+    }),
+  }),
+  "PackageDuration",
+);
+
+export const subscriptionSaleSchema = withId(
+  z.object({
+    packageId: objectIdSchema.nullable().meta({
+      description: "Null for a custom grant",
+    }),
+    packageName: z.string(),
+    duration: packageDurationSchema,
+    listPriceMinor: minorUnitsSchema.nullable(),
+    priceMinor: minorUnitsSchema.meta({
+      description: "What the member owes",
+    }),
+    currency: currencySchema,
+    nextPaymentDue: isoDateTimeSchema.nullable(),
+  }),
+  "SubscriptionSale",
+);
+
 export const subscriptionSchema = withId(
   z.object({
     id: objectIdSchema,
@@ -187,8 +223,190 @@ export const subscriptionSchema = withId(
     gymIds: z.array(objectIdSchema),
     createdBy: z.string(),
     createdAt: isoDateTimeSchema,
+    sale: subscriptionSaleSchema.nullable().meta({
+      description:
+        "Null for periods created before pricing existed and, for a non-owner, for periods with no gym in their scope",
+    }),
+    paidMinor: minorUnitsSchema.nullable(),
+    balanceMinor: minorUnitsSchema.nullable(),
   }),
   "Subscription",
+);
+
+export const packageSchema = withId(
+  z.object({
+    id: objectIdSchema,
+    name: z.string(),
+    duration: packageDurationSchema,
+    priceMinor: minorUnitsSchema.nullable().meta({
+      description: "Null until the owner has set a price",
+    }),
+    active: z.boolean(),
+    legacyMonths: z
+      .union([z.literal(1), z.literal(3), z.literal(6), z.literal(12)])
+      .nullable(),
+    createdAt: isoDateTimeSchema,
+    updatedAt: isoDateTimeSchema,
+  }),
+  "Package",
+);
+
+export const packageListResponseSchema = withId(
+  z.object({ packages: z.array(packageSchema), currency: currencySchema }),
+  "PackageListResponse",
+);
+
+export const createPackageRequestSchema = withId(
+  z
+    .object({
+      name: z.string().trim().min(1).max(80),
+      duration: packageDurationSchema,
+      priceMinor: minorUnitsSchema.min(0).max(100_000_000_00).nullable(),
+    })
+    .strict(),
+  "CreatePackageRequest",
+);
+
+export const updatePackageRequestSchema = withId(
+  z
+    .object({
+      name: z.string().trim().min(1).max(80).optional(),
+      duration: packageDurationSchema.optional(),
+      priceMinor: minorUnitsSchema
+        .min(0)
+        .max(100_000_000_00)
+        .nullable()
+        .optional(),
+      active: z.boolean().optional(),
+    })
+    .strict(),
+  "UpdatePackageRequest",
+);
+
+export const paymentMethodSchema = withId(
+  z.enum(["cash", "card", "transfer", "other"]),
+  "PaymentMethod",
+);
+
+export const paymentSchema = withId(
+  z.object({
+    id: objectIdSchema,
+    subscriptionId: objectIdSchema,
+    userId: objectIdSchema.nullable().meta({
+      description: "Null after the member's account was deleted",
+    }),
+    gymId: objectIdSchema,
+    amountMinor: minorUnitsSchema,
+    currency: currencySchema,
+    method: paymentMethodSchema,
+    paidAt: isoDateTimeSchema,
+    note: z.string().nullable(),
+    recordedBy: z.string(),
+    recordedByName: z.string().nullable(),
+    packageName: z.string(),
+    void: z
+      .object({
+        at: isoDateTimeSchema,
+        by: z.string(),
+        reason: z.string().nullable(),
+      })
+      .nullable(),
+  }),
+  "Payment",
+);
+
+export const recordPaymentRequestSchema = withId(
+  z
+    .object({
+      amountMinor: minorUnitsSchema.min(1),
+      method: paymentMethodSchema,
+      gymId: objectIdSchema.meta({
+        description: "In the caller's scope and on the period's gymIds",
+      }),
+      note: z.string().trim().max(200).optional(),
+      requestId: z.string().uuid().meta({
+        description: "Client UUID; a repeat returns the existing payment",
+      }),
+    })
+    .strict(),
+  "RecordPaymentRequest",
+);
+
+export const voidPaymentRequestSchema = withId(
+  z.object({ reason: z.string().trim().min(3).max(200) }).strict(),
+  "VoidPaymentRequest",
+);
+
+export const paymentResultSchema = withId(
+  z.object({
+    payment: paymentSchema,
+    paidMinor: minorUnitsSchema,
+    balanceMinor: minorUnitsSchema,
+  }),
+  "PaymentResult",
+);
+
+export const updateSubscriptionSaleRequestSchema = withId(
+  z.object({ nextPaymentDue: isoDateTimeSchema.nullable() }).strict(),
+  "UpdateSubscriptionSaleRequest",
+);
+
+const cashPaymentSchema = paymentSchema.extend({
+  memberName: z.string().nullable(),
+});
+
+export const cashReportSchema = withId(
+  z.object({
+    day: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+    timeZone: z.string(),
+    totals: z.array(
+      z.object({
+        currency: currencySchema,
+        totalMinor: minorUnitsSchema,
+        count: z.number().int(),
+        byMethod: z.array(
+          z.object({
+            method: paymentMethodSchema,
+            totalMinor: minorUnitsSchema,
+            count: z.number().int(),
+          }),
+        ),
+        byStaff: z.array(
+          z.object({
+            userId: z.string(),
+            name: z.string().nullable(),
+            totalMinor: minorUnitsSchema,
+            count: z.number().int(),
+          }),
+        ),
+      }),
+    ),
+    payments: z.array(cashPaymentSchema),
+    voided: z.array(cashPaymentSchema),
+    truncated: z.boolean(),
+  }),
+  "CashReport",
+);
+
+export const debtorRowSchema = withId(
+  z.object({
+    subscriptionId: objectIdSchema,
+    userId: objectIdSchema,
+    firstName: z.string(),
+    lastName: z.string(),
+    email: z.string(),
+    phone: z.string(),
+    packageName: z.string(),
+    startsAt: isoDateTimeSchema,
+    endsAt: isoDateTimeSchema,
+    priceMinor: minorUnitsSchema,
+    paidMinor: minorUnitsSchema,
+    balanceMinor: minorUnitsSchema,
+    currency: currencySchema,
+    nextPaymentDue: isoDateTimeSchema.nullable(),
+    overdue: z.boolean(),
+  }),
+  "DebtorRow",
 );
 
 export const sharingConfigSchema = withId(
@@ -262,6 +480,7 @@ export const chainSettingsSchema = withId(
     chainName: z.string(),
     legal: legalConfigSchema,
     freeze: freezeConfigSchema,
+    currency: currencySchema,
   }),
   "ChainSettings",
 );
@@ -424,6 +643,18 @@ export const mySubscriptionSchema = withId(
       description: "Set while frozen; the next entry scan resumes it",
     }),
     freezeAllowance: myFreezeAllowanceSchema,
+    billing: z
+      .object({
+        packageName: z.string().nullable(),
+        balanceMinor: minorUnitsSchema,
+        currency: currencySchema,
+        nextPaymentDue: isoDateTimeSchema.nullable(),
+      })
+      .nullable()
+      .meta({
+        description:
+          "Package and outstanding balance; null when nothing was ever priced",
+      }),
   }),
   "MySubscription",
 );
@@ -585,22 +816,52 @@ export const setSubscriptionGymsRequestSchema = withId(
   "SetSubscriptionGymsRequest",
 );
 
+const saleRequestBase = {
+  userId: z.string(),
+  gymIds: z.array(z.string()).min(1).meta({
+    description: "Active gyms the member may enter during this period",
+  }),
+  nextPaymentDue: isoDateTimeSchema.nullable().optional(),
+  note: z.string().trim().max(500).optional(),
+  requestId: z.string().uuid().meta({
+    description:
+      "Client UUID; a repeat returns the existing period instead of a second one",
+  }),
+};
+
 export const createSubscriptionRequestSchema = withId(
-  z
-    .object({
-      userId: z.string(),
-      months: z.union([
-        z.literal(1),
-        z.literal(3),
-        z.literal(6),
-        z.literal(12),
-      ]),
-      gymIds: z.array(z.string()).min(1).meta({
-        description: "Active gyms the member may enter during this period",
-      }),
-      note: z.string().trim().max(500).optional(),
-    })
-    .strict(),
+  z.union([
+    z
+      .object({
+        ...saleRequestBase,
+        packageId: objectIdSchema,
+        priceMinor: minorUnitsSchema.min(0).optional().meta({
+          description: "Price override; owner/admin only",
+        }),
+        expectedPriceMinor: minorUnitsSchema
+          .min(0)
+          .max(10_000_000_000)
+          .optional()
+          .meta({
+            description:
+              "Without an override, a changed catalog price returns 409 PACKAGE_PRICE_CHANGED",
+          }),
+      })
+      .strict(),
+    z
+      .object({
+        ...saleRequestBase,
+        custom: z
+          .object({
+            days: z.number().int().min(1).max(366),
+            priceMinor: minorUnitsSchema.min(0),
+            label: z.string().trim().min(1).max(80).optional(),
+          })
+          .strict(),
+      })
+      .strict()
+      .meta({ description: "Custom grant; owner/admin only" }),
+  ]),
   "CreateSubscriptionRequest",
 );
 
@@ -614,6 +875,7 @@ export const chainSettingsRequestSchema = withId(
     chainName: z.string().trim().min(1),
     legal: legalConfigSchema.optional(),
     freeze: freezeConfigSchema.optional(),
+    currency: currencySchema.optional(),
   }),
   "ChainSettingsRequest",
 );

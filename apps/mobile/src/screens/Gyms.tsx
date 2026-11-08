@@ -135,6 +135,13 @@ export function Gyms({ active }: { active: boolean }) {
                 tone={frozen ? "neutral" : "success"}
               />
             </View>
+            {subscription?.billing?.packageName ? (
+              <Text style={styles.packageName}>
+                {t("Package: {{name}}", {
+                  name: subscription.billing.packageName,
+                })}
+              </Text>
+            ) : null}
             <View style={styles.summaryRow}>
               <Text style={styles.summaryDays}>{remainingDays}</Text>
               <Text style={styles.summaryUnit}>{t("Days left")}</Text>
@@ -181,6 +188,11 @@ const gymsStyles = (theme: Theme) =>
       minHeight: 26,
     },
     summaryKind: { ...theme.type.label, color: theme.colors.textTertiary },
+    packageName: {
+      ...theme.type.supporting,
+      color: theme.colors.textSecondary,
+      marginTop: theme.spacing.xs,
+    },
     summaryRow: {
       flexDirection: "row",
       alignItems: "baseline",

@@ -40,6 +40,7 @@ import { backfillLegacyUserPhones } from "./repairs/phoneBackfill.js";
 import { repairLegacySubscriptionOverlaps } from "./features/subscriptions/subscriptions.js";
 import { assertProductionProfilePhotoConfig } from "./features/profilePhoto/profilePhoto.js";
 import { sendApiError } from "./core/apiError.js";
+import { seedLegacyMonthPackages } from "./repairs/seedLegacyPackages.js";
 import { openApiRouter } from "./openapi/router.js";
 
 const app = express();
@@ -185,6 +186,7 @@ async function main() {
   await backfillLegacyUserPhones();
   await renameLegacyConsentFields();
   await ensureIndexes();
+  await seedLegacyMonthPackages();
   await connectRedis();
   await repairLegacySubscriptionOverlaps();
   await seedInitialAdmin();

@@ -283,6 +283,9 @@ export function Reports() {
             <a className="button ghost" href={exportHref("entries")} download>
               {t("Entries (CSV)")}
             </a>
+            <a className="button ghost" href={exportHref("payments")} download>
+              {t("Payments (CSV)")}
+            </a>
           </div>
         </div>
       )}

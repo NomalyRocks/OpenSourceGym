@@ -1699,3 +1699,69 @@ textarea:focus {
 .inside-list .member-identity {
   min-width: 0;
 }
+
+/* Billing retains the panel's compact ledger layout and tabular amounts. */
+.table-scroll {
+  overflow-x: auto;
+}
+.money-cell,
+.billing-summary dd {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.period-billing {
+  min-width: 240px;
+  max-width: 420px;
+  white-space: normal;
+}
+.billing-summary {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 4px 12px;
+  margin: 10px 0;
+  font-size: 12px;
+}
+.billing-summary dt {
+  color: var(--ink-dim);
+}
+.billing-summary dd {
+  margin: 0;
+  text-align: right;
+}
+.billing-balance {
+  color: var(--warn);
+  font-weight: 600;
+}
+.payment-voided {
+  text-decoration: line-through;
+  color: var(--ink-dim);
+}
+.payment-history {
+  border-top: 1px solid var(--line-soft);
+  margin-top: 10px;
+}
+.payment-history-row {
+  padding: 10px 0;
+  border-bottom: 1px solid var(--line-soft);
+  overflow-wrap: anywhere;
+}
+.cash-breakdowns {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+.member-link {
+  text-align: left;
+}
+@media (max-width: 760px) {
+  .cash-breakdowns {
+    grid-template-columns: 1fr;
+  }
+}
+
+.debtor-row {
+  cursor: pointer;
+}
+.kpi-card-link .kpi-value {
+  overflow-wrap: anywhere;
+}

@@ -44,6 +44,7 @@ const [
   { db, mongoClient, userCollection, gymCollection },
   { connectRedis, redis },
   { ensureIndexes },
+  { seedLegacyMonthPackages },
   { gateQrContent },
   { INITIAL_ADMIN_EMAIL, INITIAL_ADMIN_PHONE, runAsInitialAdminSeed },
 ] = await Promise.all([
@@ -51,10 +52,11 @@ const [
   import("../src/core/db.js"),
   import("../src/core/redis.js"),
   import("../src/core/indexes.js"),
+  import("../src/repairs/seedLegacyPackages.js"),
   import("../src/features/gate/gateQr.js"),
   import("../src/auth/initialAdmin.js"),
 ]);
-const { createHash, randomBytes } = await import("node:crypto");
+const { createHash, randomBytes, randomUUID } = await import("node:crypto");
 
 // --- deterministic randomness: the same seed yields the same demo chain ---
 let state = 20261016;
@@ -211,6 +213,53 @@ if (redisPath && redisPath !== "/" && redisPath !== "/0") {
 }
 await ensureIndexes();
 console.log(`[seed-demo] Wiped database "${databaseName}"`);
+
+// --- package catalog: the seeded classics get prices, plus two extras ---
+await seedLegacyMonthPackages();
+const CLASSIC_PRICES_MINOR: Record<number, number> = {
+  1: 90_000,
+  3: 240_000,
+  6: 420_000,
+  12: 720_000,
+};
+for (const [months, priceMinor] of Object.entries(CLASSIC_PRICES_MINOR)) {
+  await db
+    .collection("packages")
+    .updateOne({ legacyMonths: Number(months) }, { $set: { priceMinor } });
+}
+const demoPackageAt = daysAgo(540);
+await db.collection("packages").insertMany([
+  {
+    name: "Öğrenci 3 Aylık",
+    duration: { unit: "month", value: 3 },
+    priceMinor: 180_000,
+    active: true,
+    createdAt: demoPackageAt,
+    createdBy: "system",
+    updatedAt: demoPackageAt,
+    updatedBy: "system",
+  },
+  {
+    name: "14 Günlük Deneme",
+    duration: { unit: "day", value: 14 },
+    priceMinor: 45_000,
+    active: true,
+    createdAt: demoPackageAt,
+    createdBy: "system",
+    updatedAt: demoPackageAt,
+    updatedBy: "system",
+  },
+] as never[]);
+const classicPackages = new Map<number, { id: ObjectId; name: string }>();
+for (const doc of await db
+  .collection("packages")
+  .find({ legacyMonths: { $exists: true } })
+  .toArray()) {
+  classicPackages.set(doc.legacyMonths as number, {
+    id: doc._id,
+    name: doc.name as string,
+  });
+}
 
 const ctx = await auth.$context;
 const passwordHash = await ctx.password.hash(DEMO_PASSWORD);
@@ -391,6 +440,7 @@ for (const [index, def] of staffDefs.entries()) {
 interface Period {
   startsAt: Date;
   endsAt: Date;
+  months: number;
 }
 const MEMBER_COUNT = 80;
 
@@ -406,11 +456,11 @@ function buildPeriods(
     const months = pick([1, 1, 3, 3, 6, 12]);
     const end = addMonths(start, months);
     if (state === "active") {
-      periods.push({ startsAt: start, endsAt: end });
+      periods.push({ startsAt: start, endsAt: end, months });
       if (end > now) return periods;
     } else {
       if (end > daysAgo(2)) break;
-      periods.push({ startsAt: start, endsAt: end });
+      periods.push({ startsAt: start, endsAt: end, months });
       if (chance(0.4)) break;
     }
     start = end;
@@ -425,6 +475,16 @@ const memberRows: {
   periods: Period[];
 }[] = [];
 const subscriptions: Record<string, unknown>[] = [];
+const payments: Record<string, unknown>[] = [];
+const partialPeriods: {
+  subscriptionId: ObjectId;
+  userId: string;
+  gymId: string;
+  packageName: string;
+  remainingMinor: number;
+  current: boolean;
+  createdBy: string;
+}[] = [];
 
 for (let i = 0; i < MEMBER_COUNT; i += 1) {
   const female = chance(0.5);
@@ -451,7 +511,17 @@ for (let i = 0; i < MEMBER_COUNT; i += 1) {
   const firstStart = new Date(createdAt.getTime() + int(0, 10) * DAY);
   const periods = buildPeriods(firstStart, state);
   for (const period of periods) {
+    const pkg = classicPackages.get(period.months)!;
+    const priceMinor = CLASSIC_PRICES_MINOR[period.months]!;
+    const createdBy = pick([ownerId, ...staffIds]);
+    const subscriptionId = new ObjectId();
+    const nextPaymentDue = (() => {
+      // Unpaid remainders carry a promise date, some already overdue.
+      const offset = int(-20, 20) * DAY;
+      return new Date(now.getTime() + offset);
+    })();
     subscriptions.push({
+      _id: subscriptionId,
       userId: new ObjectId(id),
       startsAt: period.startsAt,
       endsAt: period.endsAt,
@@ -459,13 +529,107 @@ for (let i = 0; i < MEMBER_COUNT; i += 1) {
       note: chance(0.1)
         ? pick(["Cash payment", "Student discount", "Campaign"])
         : null,
-      createdBy: pick([ownerId, ...staffIds]),
+      createdBy,
       createdAt: period.startsAt,
+      sale: {
+        packageId: pkg.id,
+        packageName: pkg.name,
+        duration: { unit: "month", value: period.months },
+        listPriceMinor: priceMinor,
+        priceMinor,
+        currency: "TRY",
+        nextPaymentDue,
+      },
+      requestId: randomUUID(),
     });
+    const ended = period.endsAt <= now;
+    const roll = random();
+    // Most periods are paid in full; some are partly paid, a few not at all.
+    const share = ended
+      ? roll < 0.93
+        ? 1
+        : 0.5
+      : roll < 0.7
+        ? 1
+        : roll < 0.9
+          ? 0.5
+          : 0;
+    if (share > 0) {
+      const gym = pick(gymIds);
+      const firstAmount = Math.round((priceMinor * share) / 100) * 100;
+      payments.push({
+        _id: new ObjectId(),
+        subscriptionId,
+        userId: id,
+        gymId: gym.toHexString(),
+        amountMinor: firstAmount,
+        currency: "TRY",
+        method: pick(["cash", "cash", "cash", "card", "card", "transfer"]),
+        paidAt: new Date(period.startsAt.getTime() + int(1, 90) * 60_000),
+        note: null,
+        recordedBy: createdBy,
+        packageName: pkg.name,
+        requestId: randomUUID(),
+        void: null,
+      });
+      partialPeriods.push({
+        subscriptionId,
+        userId: id,
+        gymId: gym.toHexString(),
+        packageName: pkg.name,
+        remainingMinor: priceMinor - firstAmount,
+        current: !ended && period.startsAt <= now,
+        createdBy,
+      });
+    }
   }
   memberRows.push({ id, name: `${firstName} ${lastName}`, gymIds, periods });
 }
 await db.collection("subscriptions").insertMany(subscriptions as never[]);
+
+// A few partly paid current periods get a second installment today, so the
+// daily cash report has rows; the first of them is entered wrongly and voided,
+// then repeated correctly.
+let todaysPayments = 0;
+for (const period of partialPeriods) {
+  if (!period.current || period.remainingMinor <= 0 || todaysPayments >= 6) {
+    continue;
+  }
+  const amountMinor = Math.min(period.remainingMinor, 20_000);
+  const row = (overrides: Record<string, unknown>) => ({
+    _id: new ObjectId(),
+    subscriptionId: period.subscriptionId,
+    userId: period.userId,
+    gymId: period.gymId,
+    amountMinor,
+    currency: "TRY",
+    method: pick(["cash", "card"]),
+    paidAt: new Date(now.getTime() - int(5, 240) * 60_000),
+    note: null,
+    recordedBy: period.createdBy,
+    packageName: period.packageName,
+    requestId: randomUUID(),
+    void: null,
+    ...overrides,
+  });
+  if (todaysPayments === 0) {
+    payments.push(
+      row({
+        amountMinor: amountMinor + 5_000,
+        void: {
+          at: new Date(now.getTime() - 60_000),
+          by: ownerId,
+          reason: "Wrong amount entered",
+        },
+      }),
+    );
+  }
+  payments.push(row({}));
+  todaysPayments += 1;
+}
+if (payments.length > 0) {
+  await db.collection("payments").insertMany(payments as never[]);
+}
 
 // --- entry history: the last 30 days, members who held a period that day ---
 const entryEvents: Record<string, unknown>[] = [];
@@ -574,7 +738,7 @@ for (const m of memberRows) {
 console.log(
   `[seed-demo] Created owner, ${staffIds.length} admin/staff, ${memberRows.length} members ` +
     `(active ${byStatus.active}, expired ${byStatus.expired}, none ${byStatus.none}), ` +
-    `${gyms.length} gyms, ${devices.length} devices, ${subscriptions.length} subscriptions, ` +
+    `${gyms.length} gyms, ${devices.length} devices, ${subscriptions.length} subscriptions, ${payments.length} payments, ` +
     `${entryEvents.length} entry events.`,
 );
 console.log(`[seed-demo] Sign in as ${INITIAL_ADMIN_EMAIL} / ${DEMO_PASSWORD}`);

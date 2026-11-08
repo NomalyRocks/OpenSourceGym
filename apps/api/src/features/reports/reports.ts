@@ -34,6 +34,58 @@ export function localDayLabel(at: Date, timeZone: string): string {
   }).format(at);
 }
 
+/** True for a real calendar date written as `YYYY-MM-DD`. */
+export function isDayLabel(value: string): boolean {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+  if (!match) return false;
+  const [year, month, day] = [
+    Number(match[1]),
+    Number(match[2]),
+    Number(match[3]),
+  ];
+  const probe = new Date(Date.UTC(year, month - 1, day));
+  return (
+    probe.getUTCFullYear() === year &&
+    probe.getUTCMonth() === month - 1 &&
+    probe.getUTCDate() === day
+  );
+}
+
+/**
+ * First instant of the local day `label` in the time zone. Binary search on
+ * {@link localDayLabel}, which only ever moves forward with the instant, so it
+ * holds across daylight-saving changes, including zones whose clock skips
+ * midnight (the day then starts at the first instant that exists). Offsets
+ * range from -12 h to +14 h, so +-24 h around the UTC midnight brackets it.
+ */
+function startOfLocalDay(label: string, timeZone: string): Date {
+  const [year, month, day] = label.split("-").map(Number);
+  const utcMidnight = Date.UTC(year ?? 1970, (month ?? 1) - 1, day ?? 1);
+  let low = utcMidnight - DAY_MS; // local label is earlier than `label`
+  let high = utcMidnight + DAY_MS; // local label is `label` or later
+  while (high - low > 1) {
+    const mid = Math.floor((low + high) / 2);
+    if (localDayLabel(new Date(mid), timeZone) >= label) high = mid;
+    else low = mid;
+  }
+  return new Date(high);
+}
+
+/**
+ * UTC range of one local day: `from` inclusive, `to` exclusive (the start of
+ * the next local day). A day is 23 or 25 hours long where the clocks change,
+ * which a fixed 24 h window would get wrong.
+ */
+export function localDayRange(
+  label: string,
+  timeZone: string,
+): { from: Date; to: Date } {
+  return {
+    from: startOfLocalDay(label, timeZone),
+    to: startOfLocalDay(nextDayLabel(label), timeZone),
+  };
+}
+
 /**
  * Produces labels for the local days covered by the range, in order.
  *

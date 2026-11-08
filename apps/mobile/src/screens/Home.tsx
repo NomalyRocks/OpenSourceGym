@@ -17,6 +17,7 @@ import { BusyHoursCard } from "../components/BusyHoursCard";
 import { PresenceDot } from "../components/PresenceDot";
 import { occupancyLevel } from "../lib/occupancy";
 import { MembershipPager } from "../components/MembershipPager";
+import { MembershipBilling } from "../components/MembershipBilling";
 import { BellGlyph, QrGlyph } from "../components/icons";
 import { WeekStrip } from "../components/WeekStrip";
 import { useThemedStyles, type Theme } from "../theme";
@@ -318,6 +319,7 @@ export function Home({
         <MembershipPager
           gyms={gyms}
           occupancy={occupancy}
+          billing={subscription?.billing ?? null}
           formatDate={formatDate}
           onPageChange={setPageIndex}
           badge={{
@@ -336,6 +338,10 @@ export function Home({
               "You do not have an active membership. Contact gym reception for help.",
             )}
           </Text>
+          <MembershipBilling
+            billing={subscription?.billing ?? null}
+            formatDate={formatDate}
+          />
         </Plate>
       )}
 

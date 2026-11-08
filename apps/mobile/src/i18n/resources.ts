@@ -283,6 +283,10 @@ const tr = {
   Settings: "Ayarlar",
   Account: "Hesap",
   Membership: "Üyelik",
+  "Package: {{name}}": "Paket: {{name}}",
+  "Outstanding balance: {{amount}}": "Kalan borç: {{amount}}",
+  "Payment due {{date}}": "Sonraki ödeme tarihi: {{date}}",
+  "Payment overdue since {{date}}": "Ödeme tarihi geçti: {{date}}",
   "Days left": "Kalan gün",
   "Your membership expires soon — visit reception to renew it.":
     "Üyeliğin yakında bitiyor; yenilemek için resepsiyona uğra.",

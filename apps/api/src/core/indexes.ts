@@ -235,6 +235,55 @@ export async function ensureIndexes(database: Db = db): Promise<void> {
     subscriptionId: 1,
     sentAt: -1,
   });
+
+  await ensurePaymentIndexes(database);
+}
+
+/**
+ * Indexes of the package catalog and payment records (and the double-submit
+ * guard on sales). Split out of {@link ensureIndexes} so a test can create just
+ * these without the whole set.
+ */
+export async function ensurePaymentIndexes(database: Db = db): Promise<void> {
+  // Package catalog: the four seeded classics are upserted on legacyMonths, so
+  // this partial unique index is what makes the seed race-safe without a lock.
+  await ensureIndex(
+    database,
+    "packages",
+    { legacyMonths: 1 },
+    {
+      name: "packages_legacy_months_unique",
+      unique: true,
+      partialFilterExpression: { legacyMonths: { $type: "number" } },
+    },
+  );
+
+  // Double-submit guard for sales. Partial because periods created before the
+  // field existed have no requestId (and null would collide).
+  await ensureIndex(
+    database,
+    "subscriptions",
+    { requestId: 1 },
+    {
+      name: "subscriptions_request_id_unique",
+      unique: true,
+      partialFilterExpression: { requestId: { $type: "string" } },
+    },
+  );
+
+  // Payments: the requestId makes a repeated submit return the same row.
+  await ensureIndex(
+    database,
+    "payments",
+    { requestId: 1 },
+    { name: "payments_request_id_unique", unique: true },
+  );
+  // Balance of one period and the cancel guard.
+  await ensureIndex(database, "payments", { subscriptionId: 1 });
+  // Daily cash report and the payments export, per gym.
+  await ensureIndex(database, "payments", { gymId: 1, paidAt: -1 });
+  // Anonymisation on account deletion.
+  await ensureIndex(database, "payments", { userId: 1 });
 }
 
 /**
