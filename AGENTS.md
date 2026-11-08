@@ -2,6 +2,8 @@
 
 Self-hosted gym automation for a single gym or a chain of gyms under one business: member self-registration, subscription tracking, QR turnstile entry (static QR on turnstile, mobile-scanned), staff/role management. Product docs are Turkish: `PRD.md` (requirements and non-goals) and `ROADMAP.md` (phase checklists). Current state: Faz 0–6 (MVP, v1.1 hardening + occupancy, v2.0 sharing detection) and Faz 7–9 (profile photos, TR/EN localization, member tools with calorie calculator) complete; Faz 11 (multi-gym / chain, `docs/multi-gym.md`) and Faz 12 (member controls: subscription confirm/cancel, ban, freeze, deletion on behalf — `docs/member-controls.md`) implemented (API, web, mobile); device/emulator smoke tests pending. Open leftovers are tracked as unchecked items in `ROADMAP.md`.
 
+**Business model and license:** the software is free and open source under AGPL-3.0-only (`LICENSE`); an optional paid installation/operation service is offered, and every service customer gets a separate, isolated install. Anyone may self-host without the service.
+
 **Non-goals** (from PRD): online payments, multi-tenant (unrelated businesses sharing one install — a chain of gyms under one business is supported, see `docs/multi-gym.md`), class booking/training/diet features. PRD "Ek A" (experimental path-obfuscation/custom cipher layer) is archived — never implement it.
 
 ## Workspace

@@ -114,3 +114,7 @@ docker compose -f docker-compose.prod.yml up -d --build
 ## Contributing
 
 CI runs format → lint → typecheck → test → build on Node 22; run the same locally before opening a PR. All code, comments and technical docs are written in English; Turkish UI copy lives only in each client's `tr` translation map. See [`AGENTS.md`](AGENTS.md) for the full conventions.
+
+## License
+
+OpenGym is free software, licensed under the [GNU Affero General Public License v3.0 only](LICENSE) (`AGPL-3.0-only`). You may install, run, modify and redistribute it yourself. If you run a modified version as a network service, the AGPL requires you to offer its users the corresponding source code.

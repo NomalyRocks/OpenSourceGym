@@ -1,6 +1,6 @@
 # OpenGym — Ürün Gereksinim Dokümanı (PRD)
 
-> **Sürüm:** 1.1 · **Tarih:** 2026-07-31 · **Durum:** Taslak
+> **Sürüm:** 1.2 · **Tarih:** 2026-11-08 · **Durum:** Taslak
 
 ---
 
@@ -12,7 +12,14 @@ Spor salonları, üye kayıt ve turnike otomasyonu için yüksek katılım bedel
 
 ### Çözüm
 
-OpenGym: modern, self-hosted, açık kaynak bir spor salonu otomasyon sistemi (monorepo). Tek salon kendi sunucusunda çalıştırır; üye kaydı, abonelik takibi, QR ile turnike geçişi ve personel yönetimini tek pakette sunar. Lisans veya katılım bedeli yoktur.
+OpenGym: modern, self-hosted, açık kaynak bir spor salonu otomasyon sistemi (monorepo). Tek bir kurulum, tek bir salona veya tek bir işletmeye bağlı salon zincirine hizmet eder; üye kaydı, abonelik takibi, QR ile turnike geçişi ve personel yönetimini tek pakette sunar. Yazılım ücretsizdir; lisans veya katılım bedeli yoktur.
+
+### İş Modeli
+
+- Yazılım ücretsiz ve açık kaynaktır; lisansı **AGPL-3.0-only**'dir.
+- İsteğe bağlı, ücretli bir kurulum ve işletme hizmeti sunulur.
+- Hizmet alan her müşterinin kendi, diğerlerinden ayrı ve izole kurulumu olur; müşteriler asla ortak (multi-tenant) bir kurulumu paylaşmaz.
+- Bilen herkes sistemi hizmet satın almadan kendisi kurabilir ve işletebilir; hizmet almak zorunlu değildir.
 
 ### Başarı Kriterleri
 
@@ -130,7 +137,7 @@ OpenGym: modern, self-hosted, açık kaynak bir spor salonu otomasyon sistemi (m
 ### 2.3 Non-Goals (Kapsam Dışı)
 
 - **Online ödeme entegrasyonu yok.** Ödeme salonda alınır; abonelik personel tarafından manuel tanımlanır.
-- **Multi-tenant (birbirinden bağımsız işletmeler) yok.** Bir kurulum tek bir işletmeye (tek salon veya zincir) hizmet eder; farklı işletmeler aynı kurulumu paylaşmaz. Aynı işletmenin çoklu salonu US-8 kapsamındadır.
+- **Multi-tenant (birbirinden bağımsız işletmeler) yok.** Bir kurulum tek bir işletmeye (tek salon veya zincir) hizmet eder; farklı işletmeler aynı kurulumu paylaşmaz. Hizmet alan her müşteri kendi ayrı, izole kurulumuna sahip olur (bkz. §1 İş Modeli). Aynı işletmenin çoklu salonu US-8 kapsamındadır.
 - **Ders/rezervasyon, antrenman programı, diyet takibi, öğün planlama veya beslenme koçluğu yok.** Genel yetişkinler için tahmin üreten bilgilendirici kalori/makro hesaplayıcısı bu sınırın istisnasıdır (girdileri cihazda saklar, boy/kiloyu ayrıca üyenin sunucu profiline yazar — bkz. US-7).
 - **Path obfuscation ve custom cipher katmanı bu sürümde uygulanmayacak** (bkz. §3.4 ve Ek A).
 
@@ -219,8 +226,9 @@ OpenGym Backend
 | **v2.0** | Hesap paylaşımı tespiti, anti-debugging sertleştirme; gerekirse deneysel güvenlik katmanı (Ek A) değerlendirmesi                                |
 | **v2.1** | Üye profil fotoğrafı, Türkçe/İngilizce deneyim ve cihazda çalışan bilgilendirici üye araçları (US-7)                                            |
 | **v3.0** | Çoklu salon / zincir desteği (US-8)                                                                                                             |
+| **v3.1** | Üye kontrolleri: abonelik onay/iptali, yasaklama, dondurma ve üye adına hesap silme talebi                                                      |
 
-> Geliştirme adımlarına bölünmüş detaylı faz planı için bkz. [ROADMAP.md](ROADMAP.md) (MVP = Faz 0–3, v1.1 = Faz 4–5, v2.0 = Faz 6, v2.1 = Faz 7–9, v3.0 = Faz 11).
+> Geliştirme adımlarına bölünmüş detaylı faz planı için bkz. [ROADMAP.md](ROADMAP.md) (MVP = Faz 0–3, v1.1 = Faz 4–5, v2.0 = Faz 6, v2.1 = Faz 7–9, v3.0 = Faz 11, v3.1 = Faz 12).
 
 ### 4.2 Teknik Riskler
 
