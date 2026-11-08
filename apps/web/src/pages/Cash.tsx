@@ -5,9 +5,11 @@ import { api, isAbortError } from "../lib/api";
 import { useGymApi } from "../lib/gyms";
 import { formatMoney } from "../lib/money";
 import { reportDayRange } from "../lib/reportDayRange";
+import { dayStartIso } from "../lib/dateRange";
 import { dateLocale } from "../i18n/format";
 import { errorMessage } from "../i18n/errors";
 import { PageHeader } from "../components/PageHeader";
+import { useDateFormatter } from "../components/Modal";
 import { paymentMethodKeys } from "../components/PaymentFields";
 
 function PaymentTable({
@@ -64,6 +66,7 @@ function PaymentTable({
 
 export function Cash() {
   const { t, i18n } = useTranslation();
+  const formatDate = useDateFormatter();
   const gymApi = useGymApi();
   // Let the server choose today's day in REPORTS_TIME_ZONE on the first load.
   const [day, setDay] = useState("");
@@ -91,6 +94,8 @@ export function Cash() {
     return () => controller.abort();
   }, [day, gymApi, t, version]);
   const locale = dateLocale(i18n.resolvedLanguage);
+  const selectedDay = day || report?.day || "";
+  const selectedDayIso = dayStartIso(selectedDay);
   const bounds = report ? reportDayRange(report.day, report.timeZone) : null;
   const exportHref = bounds
     ? gymApi(
@@ -110,9 +115,15 @@ export function Cash() {
             <input
               id="cash-day"
               type="date"
-              value={day || report?.day || ""}
+              value={selectedDay}
               onChange={(e) => setDay(e.target.value)}
+              aria-describedby={selectedDayIso ? "cash-day-hint" : undefined}
             />
+            {selectedDayIso && (
+              <span className="hint" id="cash-day-hint">
+                {formatDate(selectedDayIso)}
+              </span>
+            )}
           </div>
           <button
             className="ghost"

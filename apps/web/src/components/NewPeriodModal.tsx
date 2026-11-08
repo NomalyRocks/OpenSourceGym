@@ -61,6 +61,7 @@ export function NewPeriodModal({
   const [override, setOverride] = useState(false);
   const [price, setPrice] = useState<number | null>(null);
   const [due, setDue] = useState("");
+  const dueIso = dayEndIso(due);
   const [note, setNote] = useState("");
   const [takePayment, setTakePayment] = useState(false);
   const [amount, setAmount] = useState<number | null>(null);
@@ -409,7 +410,13 @@ export function NewPeriodModal({
               type="date"
               value={due}
               onChange={(e) => setDue(e.target.value)}
+              aria-describedby={dueIso ? "sale-due-hint" : undefined}
             />
+            {dueIso && (
+              <span className="hint" id="sale-due-hint">
+                {formatDate(dueIso)}
+              </span>
+            )}
           </div>
           <div className="field">
             <label htmlFor="sale-note">{t("Note")}</label>
@@ -487,7 +494,7 @@ export function NewPeriodModal({
                 : t("Price not set")}
             </dd>
             <dt>{t("Next payment date")}</dt>
-            <dd>{due || "—"}</dd>
+            <dd>{dueIso ? formatDate(dueIso) : "—"}</dd>
             <dt>{t("Note")}</dt>
             <dd>{note || "—"}</dd>
             <dt>{t("Payment")}</dt>

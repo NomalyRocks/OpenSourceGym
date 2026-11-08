@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useId, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type {
   Payment,
@@ -210,11 +210,13 @@ function DueDateModal({
   onSaved: () => void;
 }) {
   const { t } = useTranslation();
+  const formatDate = useDateFormatter();
   const [due, setDue] = useState(
     subscription.sale?.nextPaymentDue
       ? dateInputValue(new Date(subscription.sale.nextPaymentDue))
       : "",
   );
+  const dueIso = dayEndIso(due);
   const [confirm, setConfirm] = useState(false);
   if (confirm)
     return (
@@ -235,7 +237,8 @@ function DueDateModal({
         }}
       >
         <p>
-          {subscription.sale!.packageName} · {due || t("No payment date")}
+          {subscription.sale!.packageName} ·{" "}
+          {dueIso ? formatDate(dueIso) : t("No payment date")}
         </p>
       </ConfirmModal>
     );
@@ -254,7 +257,13 @@ function DueDateModal({
             type="date"
             value={due}
             onChange={(e) => setDue(e.target.value)}
+            aria-describedby={dueIso ? "edit-due-hint" : undefined}
           />
+          {dueIso && (
+            <span className="hint" id="edit-due-hint">
+              {formatDate(dueIso)}
+            </span>
+          )}
         </div>
         <p className="hint">{t("Leave blank to clear the payment date.")}</p>
         <div className="row">
@@ -281,30 +290,37 @@ export function PeriodBilling({
   const canAdmin = profile?.role === "owner" || profile?.role === "admin";
   const formatDate = useDateFormatter();
   const [expanded, setExpanded] = useState(false);
+  const historyId = useId();
   const [payments, setPayments] = useState<Payment[] | null>(null);
   const [version, setVersion] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [action, setAction] = useState<"record" | "due" | Payment | null>(null);
+  const hasSale = !!subscription.sale;
   useEffect(() => {
-    if (!expanded) return;
+    if (!hasSale) return;
     const controller = new AbortController();
     setPayments(null);
     setError(null);
     api<Payment[]>(`/api/admin/subscriptions/${subscription.id}/payments`, {
       signal: controller.signal,
     })
-      .then(setPayments)
+      .then((items) =>
+        setPayments(
+          [...items].sort((a, b) => b.paidAt.localeCompare(a.paidAt)),
+        ),
+      )
       .catch((err) => {
         if (!isAbortError(err))
           setError(errorMessage(err, t, "Could not load data."));
       });
     return () => controller.abort();
-  }, [expanded, subscription.id, version, t]);
+  }, [hasSale, subscription.id, version, t]);
   const sale = subscription.sale;
   if (!sale) return null;
   const money = (n: number) =>
     formatMoney(n, sale.currency, dateLocale(i18n.resolvedLanguage));
   const balance = subscription.balanceMinor ?? 0;
+  const visiblePayments = expanded ? payments : payments?.slice(0, 3);
   const overdue =
     balance > 0 &&
     !!sale.nextPaymentDue &&
@@ -316,21 +332,32 @@ export function PeriodBilling({
   };
   return (
     <div className="period-billing">
-      <strong>{sale.packageName}</strong>
+      <div className="period-billing-heading">
+        <span className="hint">{t("Billing")}</span>
+        <strong>{sale.packageName}</strong>
+      </div>
       <dl className="billing-summary">
-        <dt>{t("Price")}</dt>
-        <dd>{money(sale.priceMinor)}</dd>
-        <dt>{t("Paid")}</dt>
-        <dd>{money(subscription.paidMinor ?? 0)}</dd>
-        <dt>{t("Balance")}</dt>
-        <dd className={balance > 0 ? "billing-balance" : ""}>
-          {money(balance)}{" "}
-          {overdue && <span className="badge warn">{t("Overdue")}</span>}
-        </dd>
-        <dt>{t("Next payment date")}</dt>
-        <dd>{sale.nextPaymentDue ? formatDate(sale.nextPaymentDue) : "—"}</dd>
+        <div>
+          <dt>{t("Price")}</dt>
+          <dd>{money(sale.priceMinor)}</dd>
+        </div>
+        <div>
+          <dt>{t("Paid")}</dt>
+          <dd>{money(subscription.paidMinor ?? 0)}</dd>
+        </div>
+        <div>
+          <dt>{t("Balance")}</dt>
+          <dd className={balance > 0 ? "billing-balance" : ""}>
+            {money(balance)}{" "}
+            {overdue && <span className="badge warn">{t("Overdue")}</span>}
+          </dd>
+        </div>
+        <div>
+          <dt>{t("Next payment date")}</dt>
+          <dd>{sale.nextPaymentDue ? formatDate(sale.nextPaymentDue) : "—"}</dd>
+        </div>
       </dl>
-      <div className="row">
+      <div className="row billing-actions">
         {balance > 0 && (
           <button className="ghost" onClick={() => setAction("record")}>
             {t("Record payment")}
@@ -341,33 +368,31 @@ export function PeriodBilling({
             {t("Edit next payment date")}
           </button>
         )}
-        <button
-          className="ghost"
-          aria-expanded={expanded}
-          onClick={() => setExpanded(!expanded)}
-        >
-          {expanded ? t("Hide payments") : t("Payments")}
-        </button>
+        {payments && payments.length > 3 && (
+          <button
+            className="ghost"
+            aria-expanded={expanded}
+            aria-controls={historyId}
+            onClick={() => setExpanded(!expanded)}
+          >
+            {expanded ? t("Show recent payments") : t("Show all payments")}
+          </button>
+        )}
       </div>
-      {expanded && (
-        <div className="payment-history">
-          {error && (
-            <div className="msg error">
-              {error}
-              <button
-                className="ghost"
-                onClick={() => setVersion((v) => v + 1)}
-              >
-                {t("Retry")}
-              </button>
-            </div>
-          )}
-          {!payments && !error && <p className="hint">{t("Loading…")}</p>}
-          {payments?.length === 0 && (
-            <p className="hint">{t("No payments.")}</p>
-          )}
-          {payments?.map((p) => (
-            <div key={p.id} className="payment-history-row">
+      <div className="payment-history" id={historyId}>
+        {error && (
+          <div className="msg error">
+            {error}
+            <button className="ghost" onClick={() => setVersion((v) => v + 1)}>
+              {t("Retry")}
+            </button>
+          </div>
+        )}
+        {!payments && !error && <p className="hint">{t("Loading…")}</p>}
+        {payments?.length === 0 && <p className="hint">{t("No payments.")}</p>}
+        {visiblePayments?.map((p) => (
+          <div key={p.id} className="payment-history-row">
+            <div className="payment-history-details">
               <div className={p.void ? "payment-voided" : ""}>
                 {formatMoney(
                   p.amountMinor,
@@ -386,19 +411,19 @@ export function PeriodBilling({
                   {t("Voided")}: {p.void.reason || "—"} ·{" "}
                   {formatDate(p.void.at)}
                 </div>
-              ) : (
-                canAdmin &&
-                (profile?.role === "owner" ||
-                  profile?.gymIds.includes(p.gymId)) && (
-                  <button className="ghost" onClick={() => setAction(p)}>
-                    {t("Void")}
-                  </button>
-                )
-              )}
+              ) : null}
             </div>
-          ))}
-        </div>
-      )}
+            {!p.void &&
+              canAdmin &&
+              (profile?.role === "owner" ||
+                profile?.gymIds.includes(p.gymId)) && (
+                <button className="ghost" onClick={() => setAction(p)}>
+                  {t("Void")}
+                </button>
+              )}
+          </div>
+        ))}
+      </div>
       {action === "record" && (
         <RecordPaymentModal
           subscription={subscription}

@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { Plus } from "lucide-react";
 import type {
   PackageListResponse,
   CreatePackageRequest,
@@ -204,17 +205,19 @@ export function Packages() {
         subtitle={t(
           "Manage the chain catalog. Inactive packages remain in past sales.",
         )}
+        actions={
+          <button
+            type="button"
+            disabled={loading || !currency}
+            onClick={() => setEditor({ item: null })}
+          >
+            <Plus size={14} aria-hidden="true" />
+            {t("Create package")}
+          </button>
+        }
       />
       {error && <div className="msg error">{error}</div>}
       <div className="panel">
-        <div className="row">
-          <button
-            disabled={!currency}
-            onClick={() => setEditor({ item: null })}
-          >
-            {t("Create package")}
-          </button>
-        </div>
         <div className="table-scroll">
           <table>
             <thead>

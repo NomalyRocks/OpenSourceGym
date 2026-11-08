@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { Fragment, useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Pencil, Plus } from "lucide-react";
 import type {
@@ -623,7 +623,7 @@ export function SubscriptionPanel({
         </button>
       </div>
       <div className="table-scroll">
-        <table>
+        <table className="subscription-periods">
           <thead>
             <tr>
               <th>{t("Start")}</th>
@@ -631,51 +631,58 @@ export function SubscriptionPanel({
               <th>{t("Note")}</th>
               <th>{t("Gyms")}</th>
               <th>{t("Status")}</th>
-              <th>{t("Billing")}</th>
             </tr>
           </thead>
           <tbody>
             {loading && (
               <tr>
-                <td colSpan={6}>{t("Loading…")}</td>
+                <td colSpan={5}>{t("Loading…")}</td>
               </tr>
             )}
             {!loading &&
               (subs ?? []).map((subscription) => {
                 const status = subscriptionStatus(subscription);
                 return (
-                  <tr key={subscription.id}>
-                    <td>
-                      {new Date(subscription.startsAt).toLocaleDateString(
-                        dateLocale(i18n.resolvedLanguage),
-                      )}
-                    </td>
-                    <td>
-                      {new Date(subscription.endsAt).toLocaleDateString(
-                        dateLocale(i18n.resolvedLanguage),
-                      )}
-                    </td>
-                    <td>{subscription.note ?? "—"}</td>
-                    <td>{gymNames(subscription.gymIds, gyms)}</td>
-                    <td>
-                      <span className={`badge ${status.className}`}>
-                        {t(status.label)}
-                      </span>
-                    </td>
-                    <td>
-                      {subscription.sale && (
-                        <PeriodBilling
-                          subscription={subscription}
-                          onChanged={() => void reloadList()}
-                        />
-                      )}
-                    </td>
-                  </tr>
+                  <Fragment key={subscription.id}>
+                    <tr
+                      className={
+                        subscription.sale ? "period-details" : undefined
+                      }
+                    >
+                      <td>
+                        {new Date(subscription.startsAt).toLocaleDateString(
+                          dateLocale(i18n.resolvedLanguage),
+                        )}
+                      </td>
+                      <td>
+                        {new Date(subscription.endsAt).toLocaleDateString(
+                          dateLocale(i18n.resolvedLanguage),
+                        )}
+                      </td>
+                      <td>{subscription.note ?? "—"}</td>
+                      <td>{gymNames(subscription.gymIds, gyms)}</td>
+                      <td>
+                        <span className={`badge ${status.className}`}>
+                          {t(status.label)}
+                        </span>
+                      </td>
+                    </tr>
+                    {subscription.sale && (
+                      <tr>
+                        <td colSpan={5} className="period-billing-cell">
+                          <PeriodBilling
+                            subscription={subscription}
+                            onChanged={() => void reloadList()}
+                          />
+                        </td>
+                      </tr>
+                    )}
+                  </Fragment>
                 );
               })}
             {!loading && subs?.length === 0 && (
               <tr>
-                <td colSpan={6}>{t("No subscription records.")}</td>
+                <td colSpan={5}>{t("No subscription records.")}</td>
               </tr>
             )}
           </tbody>

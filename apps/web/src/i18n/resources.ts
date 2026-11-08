@@ -740,6 +740,8 @@ const tr = {
   "Leave blank to clear the payment date.":
     "Ödeme tarihini kaldırmak için boş bırakın.",
   "Hide payments": "Ödemeleri gizle",
+  "Show all payments": "Tüm ödemeleri göster",
+  "Show recent payments": "Son ödemeleri göster",
   "No payments.": "Ödeme yok.",
   "Recorded by": "Kaydeden",
   "Deleted member": "Silinmiş üye",

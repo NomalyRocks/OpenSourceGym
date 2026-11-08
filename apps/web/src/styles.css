@@ -1704,29 +1704,61 @@ textarea:focus {
 .table-scroll {
   overflow-x: auto;
 }
+.subscription-periods {
+  table-layout: fixed;
+}
+.subscription-periods th,
+.subscription-periods td {
+  padding: 10px 6px;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+.subscription-periods .period-details td {
+  border-bottom: none;
+}
+.subscription-periods .period-billing-cell {
+  padding: 0 6px 16px;
+}
 .money-cell,
 .billing-summary dd {
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
 .period-billing {
-  min-width: 240px;
-  max-width: 420px;
+  min-width: 0;
   white-space: normal;
 }
+.period-billing-heading {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 10px;
+}
 .billing-summary {
-  display: grid;
-  grid-template-columns: auto 1fr;
-  gap: 4px 12px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 24px;
   margin: 10px 0;
   font-size: 12px;
+}
+.billing-summary > div {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
 }
 .billing-summary dt {
   color: var(--ink-dim);
 }
 .billing-summary dd {
   margin: 0;
-  text-align: right;
+  white-space: normal;
+}
+.billing-actions {
+  gap: 6px;
+}
+.period-billing button.ghost {
+  padding: 5px 8px;
+  font-size: 12px;
 }
 .billing-balance {
   color: var(--warn);
@@ -1741,9 +1773,22 @@ textarea:focus {
   margin-top: 10px;
 }
 .payment-history-row {
-  padding: 10px 0;
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 8px 0;
   border-bottom: 1px solid var(--line-soft);
   overflow-wrap: anywhere;
+}
+.payment-history-row:last-child {
+  border-bottom: none;
+}
+.payment-history-details {
+  flex: 1;
+  min-width: 0;
+}
+.payment-history-row > button {
+  flex-shrink: 0;
 }
 .cash-breakdowns {
   display: grid;
