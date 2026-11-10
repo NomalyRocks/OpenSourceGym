@@ -96,7 +96,7 @@ test(
 
       const created = await createSequentialSubscription({
         userId: createUser,
-        months: 1,
+        duration: { unit: "month", value: 1 },
         gymIds: [gymId],
         note: null,
         createdBy: "staff",
@@ -116,7 +116,7 @@ test(
       );
       await createSequentialSubscription({
         userId: createUser,
-        months: 1,
+        duration: { unit: "month", value: 1 },
         gymIds: [gymId],
         note: null,
         createdBy: "staff",

@@ -1,14 +1,14 @@
 import { createHash, randomBytes } from "node:crypto";
 import { Router } from "express";
 import { z } from "zod";
-import type { Device, DeviceCreated, DeviceDirection } from "@opengym/shared";
+import type { Device, DeviceCreated, DeviceMode } from "@opengym/shared";
 import { db, toObjectId } from "../../core/db.js";
 import { sendApiError } from "../../core/apiError.js";
 import { logAudit } from "../../core/audit.js";
 import { gymScoped, requireGymAccess } from "../../core/middleware.js";
 import { disconnectDevice, isDeviceOnline } from "./gateway.js";
 import { computeUptimes24h } from "./deviceStatus.js";
-import { gateQrContent } from "../gate/gateQr.js";
+import { gateQrContent, sidedGateQrContent } from "../gate/gateQr.js";
 
 /**
  * Mounted at /api/admin/gyms/:gymId/devices. Owner or an admin scoped to the
@@ -18,7 +18,7 @@ export const devicesRouter: Router = Router({ mergeParams: true });
 
 const createDeviceSchema = z.object({
   name: z.string().trim().min(1).max(100),
-  direction: z.enum(["in", "out"]).default("in"),
+  direction: z.enum(["in", "out", "both"]).default("in"),
 });
 
 // Gate device registration — token appears once in this response; only its hash is stored
@@ -53,13 +53,17 @@ devicesRouter.post(
       gymId,
     );
 
+    const id = inserted.insertedId.toString();
     const body: DeviceCreated = {
-      id: inserted.insertedId.toString(),
+      id,
       gymId,
       name,
       direction,
       token,
-      qrContent: gateQrContent(inserted.insertedId.toString()),
+      qrContent:
+        direction === "both" ? sidedGateQrContent(id, "in") : gateQrContent(id),
+      exitQrContent:
+        direction === "both" ? sidedGateQrContent(id, "out") : null,
     };
     res.json(body);
   }),
@@ -90,16 +94,22 @@ devicesRouter.get(
     const uptimes = await computeUptimes24h(devices);
     const body: Device[] = docs.map((d, index) => {
       const { deviceId: id, nowOnline: online } = devices[index]!;
+      const direction = (d.direction as DeviceMode | undefined) ?? "in";
       return {
         id,
         gymId,
         name: d.name,
-        direction: (d.direction as DeviceDirection | undefined) ?? "in",
+        direction,
         online,
         lastSeenAt: d.lastSeenAt ? new Date(d.lastSeenAt).toISOString() : null,
         createdAt: d.createdAt.toISOString(),
         uptime24h: uptimes.get(id)!,
-        qrContent: gateQrContent(id),
+        qrContent:
+          direction === "both"
+            ? sidedGateQrContent(id, "in")
+            : gateQrContent(id),
+        exitQrContent:
+          direction === "both" ? sidedGateQrContent(id, "out") : null,
       };
     });
     res.json(body);

@@ -100,6 +100,26 @@ const codeMessages: Record<ApiErrorCode, WebTranslationKey> = {
   DELETION_REQUEST_RESOLVED: "The deletion request has already been resolved.",
   DELETION_CLEANUP_FAILED:
     "Account data could not be cleaned up. Please try again.",
+  INVALID_CURRENCY: "Invalid currency.",
+  PACKAGE_NOT_FOUND: "Package not found.",
+  INVALID_PACKAGE: "Enter valid package details.",
+  PRICE_OVERRIDE_FORBIDDEN:
+    "Only owners and administrators can override prices or create custom grants.",
+  PACKAGE_PRICE_UNSET: "Set a package price before selling it.",
+  PACKAGE_PRICE_CHANGED:
+    "The package price changed. Review the refreshed catalog and confirm the sale again.",
+  PACKAGE_INACTIVE: "This package is inactive.",
+  REQUEST_ID_CONFLICT:
+    "This request ID has already been used for another record.",
+  INVALID_PAYMENT: "Enter valid payment details.",
+  SUBSCRIPTION_UNPRICED: "This period has no sale and cannot take payments.",
+  PAYMENT_GYM_NOT_ON_PERIOD: "Choose a payment gym that is on this period.",
+  PAYMENT_EXCEEDS_BALANCE: "The payment exceeds the outstanding balance.",
+  PAYMENT_NOT_FOUND: "Payment not found.",
+  PAYMENT_ALREADY_VOIDED: "This payment has already been voided.",
+  SUBSCRIPTION_HAS_PAYMENTS:
+    "Void the period’s payments before cancelling it. Refund the money in person first.",
+  INVALID_DAY: "Choose a valid calendar day.",
 };
 
 export function errorMessage(

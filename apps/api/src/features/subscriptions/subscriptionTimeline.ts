@@ -1,4 +1,4 @@
-import type { SubscriptionMonths } from "@opengym/shared";
+import type { PackageDuration } from "@opengym/shared";
 import type { ObjectId } from "mongodb";
 
 const DAY_MS = 86_400_000;
@@ -34,10 +34,7 @@ export interface SubscriptionSummary {
  * target month, clamps it to the month's final day (January 31 + 1 month =
  * February 28/29).
  */
-export function addUtcCalendarMonthsClamped(
-  date: Date,
-  months: SubscriptionMonths,
-): Date {
+export function addUtcCalendarMonthsClamped(date: Date, months: number): Date {
   const targetMonthIndex = date.getUTCMonth() + months;
   const targetYear = date.getUTCFullYear() + Math.floor(targetMonthIndex / 12);
   const targetMonth = targetMonthIndex % 12;
@@ -54,12 +51,26 @@ export function addUtcCalendarMonthsClamped(
   return result;
 }
 
+/**
+ * Adds a package duration: calendar months use the clamped month arithmetic,
+ * days add exactly `value x 24 h` (UTC, so daylight saving never matters).
+ */
+export function addDuration(date: Date, duration: PackageDuration): Date {
+  return duration.unit === "month"
+    ? addUtcCalendarMonthsClamped(date, duration.value)
+    : new Date(date.getTime() + duration.value * DAY_MS);
+}
+
 /** Starts a new package after the latest subscription, or now if it has ended. */
 export function calculateSubscriptionPeriod(
   now: Date,
   latestEndsAt: Date | null,
-  months: SubscriptionMonths,
+  duration: PackageDuration | number,
 ): SubscriptionPeriod {
+  const spec: PackageDuration =
+    typeof duration === "number"
+      ? { unit: "month", value: duration }
+      : duration;
   const startsAt = new Date(
     Math.max(
       now.getTime(),
@@ -68,7 +79,7 @@ export function calculateSubscriptionPeriod(
   );
   return {
     startsAt,
-    endsAt: addUtcCalendarMonthsClamped(startsAt, months),
+    endsAt: addDuration(startsAt, spec),
   };
 }
 

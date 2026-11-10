@@ -16,7 +16,7 @@ import { roleKey } from "../lib/roleKey";
 import { usePresenceFormat } from "../lib/presence";
 import { Avatar } from "./Avatar";
 import { MemberControls } from "./MemberControls";
-import { ConfirmModal, Modal } from "./Modal";
+import { ConfirmModal, Modal, useDateFormatter } from "./Modal";
 import { StatusBadge } from "./StatusBadge";
 import { SubscriptionPanel } from "./SubscriptionPanel";
 
@@ -85,6 +85,7 @@ export function MemberDrawer({
   const { t } = useTranslation();
   const { profile: user } = useProfile();
   const { duration, time } = usePresenceFormat();
+  const formatDate = useDateFormatter();
   const { gyms, refresh: refreshGyms } = useGyms();
   // Gym choice shown before an admin/staff role is applied.
   const [gymPick, setGymPick] = useState<{
@@ -298,20 +299,33 @@ export function MemberDrawer({
           ) : (
             <div className="hint">{loadError ? "" : t("Loading…")}</div>
           )}
-          <button
-            type="button"
-            className="ghost"
-            aria-label={t("Close")}
-            onClick={onClose}
-          >
-            <X size={16} />
-          </button>
+          <div className="drawer-header-actions">
+            {detail && target?.role === "member" && (
+              <MemberControls
+                detail={detail}
+                canBan={role === "owner" || role === "admin"}
+                notify={(kind, text) => setMsg({ kind, text })}
+                onChanged={() => {
+                  setReloadKey((k) => k + 1);
+                  void refresh();
+                }}
+              />
+            )}
+            <button
+              type="button"
+              className="ghost"
+              aria-label={t("Close")}
+              onClick={onClose}
+            >
+              <X size={16} />
+            </button>
+          </div>
         </div>
         {loadError && <div className="msg error">{loadError}</div>}
         {msg && <div className={`msg ${msg.kind}`}>{msg.text}</div>}
         {detail && target && (
           <>
-            <div className="panel">
+            <div className="member-header-meta">
               <div className="row role-row">
                 <span className={`badge ${target.role}`}>
                   {t(roleKey(target.role))}
@@ -347,18 +361,25 @@ export function MemberDrawer({
                   )}
                 </div>
               )}
+              {detail.ban && (
+                <div className="msg error member-state">
+                  <strong>{t("This member is banned.")}</strong>
+                  <span>{detail.ban.reason}</span>
+                </div>
+              )}
+              {detail.freeze.active && (
+                <p className="hint member-state">
+                  {t("Frozen since {{date}}", {
+                    date: formatDate(detail.freeze.active.startedAt),
+                  })}
+                </p>
+              )}
+              {detail.pendingDeletion && (
+                <p className="hint member-state">
+                  {t("Deletion request pending")}
+                </p>
+              )}
             </div>
-            {target.role === "member" && (
-              <MemberControls
-                detail={detail}
-                canBan={role === "owner" || role === "admin"}
-                notify={(kind, text) => setMsg({ kind, text })}
-                onChanged={() => {
-                  setReloadKey((k) => k + 1);
-                  void refresh();
-                }}
-              />
-            )}
             <SubscriptionPanel
               key={target.id}
               member={target}

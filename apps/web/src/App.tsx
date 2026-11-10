@@ -25,6 +25,9 @@ import { Audit } from "./pages/Audit";
 import { Devices } from "./pages/Devices";
 import { Entries } from "./pages/Entries";
 import { Renewals } from "./pages/Renewals";
+import { Packages } from "./pages/Packages";
+import { Cash } from "./pages/Cash";
+import { Debtors } from "./pages/Debtors";
 import { Reports } from "./pages/Reports";
 import { Security } from "./pages/Security";
 import { DataRequests } from "./pages/DataRequests";
@@ -118,6 +121,8 @@ function Gate() {
               <Route path="entries" element={<Entries />} />
               <Route path="renewals" element={<Renewals />} />
               <Route path="reports" element={<Reports />} />
+              <Route path="debtors" element={<Debtors />} />
+              {canAdmin && <Route path="cash" element={<Cash />} />}
               {canAdmin && <Route path="devices" element={<Devices />} />}
               {canAdmin && <Route path="settings" element={<Settings />} />}
               <Route path="*" element={<Navigate to="overview" replace />} />
@@ -125,6 +130,7 @@ function Gate() {
             </Route>
             <Route path="/security" element={<Security />} />
             {isOwner && <Route path="/chain" element={<ChainSummary />} />}
+            {isOwner && <Route path="/chain/packages" element={<Packages />} />}
             {isOwner && <Route path="/chain/gyms" element={<Gyms />} />}
             {isOwner && <Route path="/chain/staff" element={<StaffGyms />} />}
             {canAdmin && (

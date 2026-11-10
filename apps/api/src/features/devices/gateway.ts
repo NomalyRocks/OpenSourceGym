@@ -5,6 +5,7 @@ import { WebSocket, WebSocketServer } from "ws";
 import type {
   DeviceClientMessage,
   DeviceDirection,
+  DeviceMode,
   DeviceServerMessage,
 } from "@opengym/shared";
 import { db } from "../../core/db.js";
@@ -18,9 +19,8 @@ interface DeviceSocket extends WebSocket {
   deviceId?: string;
   deviceName?: string;
   gymId?: string | null;
-  // Turnstile direction: "in" means entry (occupancy +1, subscription checked),
-  // "out" means exit (occupancy -1, no subscription check)
-  direction?: DeviceDirection;
+  // Physical turnstile mode; each open command carries the resolved scan side.
+  direction?: DeviceMode;
   isAlive?: boolean;
 }
 
@@ -72,12 +72,16 @@ export function disconnectDevice(id: string): void {
 }
 
 // Sends a relay-open command to a connected device; returns false if unavailable
-export function openDevice(id: string, openMs: number): boolean {
+export function openDevice(
+  id: string,
+  openMs: number,
+  side: DeviceDirection,
+): boolean {
   const ws = devices.get(id);
   if (!ws || ws.readyState !== WebSocket.OPEN) {
     return false;
   }
-  send(ws, { type: "open", openMs });
+  send(ws, { type: "open", openMs, side });
   return true;
 }
 
@@ -130,7 +134,7 @@ async function authenticate(
     ws.deviceId = msg.deviceId;
     ws.deviceName = device.name as string;
     ws.gymId = typeof device.gymId === "string" ? device.gymId : null;
-    ws.direction = (device.direction as DeviceDirection | undefined) ?? "in";
+    ws.direction = (device.direction as DeviceMode | undefined) ?? "in";
     ws.isAlive = true;
     registerDevice(msg.deviceId, ws);
     send(ws, { type: "auth_ok", deviceName: ws.deviceName });

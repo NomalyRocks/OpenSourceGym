@@ -6,6 +6,7 @@ import { Avatar } from "../components/Avatar";
 import { usePresenceFormat } from "../lib/presence";
 import type {
   AdminStats,
+  CashReport,
   EntryEvent,
   GymInsideResponse,
   InsideMember,
@@ -17,35 +18,28 @@ import { api, isAbortError } from "../lib/api";
 import { usePollingQuery } from "../hooks/usePollingQuery";
 import { errorMessage } from "../i18n/errors";
 import { dateLocale } from "../i18n/format";
+import { formatMoney } from "../lib/money";
+import { useProfile } from "../lib/profile";
 import { useGymApi, useGymLink } from "../lib/gyms";
-
-// Payment/revenue tracking is out of scope (a PRD non-goal) — the card is blurred
-// with a placeholder value only for visual consistency.
-const MOCK_REVENUE = 4280;
 
 function KpiCard({
   label,
   value,
   delta,
   color,
-  blurred,
   to,
 }: {
   label: string;
   value: string;
   delta?: string;
   color?: string;
-  blurred?: boolean;
   /** When provided, the card becomes clickable and links to this page. */
   to?: string;
 }) {
   const body = (
     <>
       <div className="kpi-label">{label}</div>
-      <div
-        className={blurred ? "kpi-value kpi-blur" : "kpi-value"}
-        style={color ? { color } : undefined}
-      >
+      <div className="kpi-value" style={color ? { color } : undefined}>
         {value}
       </div>
       {delta && <div className="kpi-delta">{delta}</div>}
@@ -130,6 +124,23 @@ export function Overview() {
   const locale = dateLocale(i18n.resolvedLanguage);
   const gymApi = useGymApi();
   const gymLink = useGymLink();
+  const { profile } = useProfile();
+  const canViewCash = profile?.role === "owner" || profile?.role === "admin";
+  const [cash, setCash] = useState<CashReport | null>(null);
+  const [cashError, setCashError] = useState<string | null>(null);
+  async function loadCash(signal: AbortSignal) {
+    if (!canViewCash) return;
+    try {
+      setCash(await api<CashReport>(gymApi("/reports/cash"), { signal }));
+      setCashError(null);
+    } catch (err) {
+      if (!isAbortError(err)) {
+        setCash(null);
+        setCashError(errorMessage(err, t, "Could not load data."));
+      }
+    }
+  }
+  usePollingQuery(loadCash, 60000, String(canViewCash));
   const [stats, setStats] = useState<AdminStats | null>(null);
   const [occupancy, setOccupancy] = useState<OccupancyResponse | null>(null);
   const [entries, setEntries] = useState<EntryEvent[]>([]);
@@ -204,18 +215,26 @@ export function Overview() {
       />
       {error && <div className="msg error">{error}</div>}
 
-      <div className="kpi-grid cols-5">
-        <KpiCard
-          label={t("Today's revenue")}
-          value={new Intl.NumberFormat(locale, {
-            style: "currency",
-            currency: "TRY",
-            maximumFractionDigits: 0,
-          }).format(MOCK_REVENUE)}
-          delta={t("Payment tracking coming soon")}
-          color="var(--ok)"
-          blurred
-        />
+      <div className={`kpi-grid ${canViewCash ? "cols-5" : ""}`}>
+        {canViewCash && (
+          <KpiCard
+            label={t("Today's revenue")}
+            value={
+              cash
+                ? cash.totals.length
+                  ? cash.totals
+                      .map((total) =>
+                        formatMoney(total.totalMinor, total.currency, locale),
+                      )
+                      .join(" · ")
+                  : t("No payments.")
+                : "—"
+            }
+            delta={cashError ?? cash?.day}
+            color="var(--ok)"
+            to={gymLink("/cash")}
+          />
+        )}
         <KpiCard
           label={t("Active members")}
           value={stats ? String(stats.activeMembers) : "—"}

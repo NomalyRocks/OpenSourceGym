@@ -174,7 +174,7 @@ test(
         createSequentialSubscription(
           {
             userId: sequentialUser,
-            months: 1,
+            duration: { unit: "month", value: 1 },
             gymIds: [testGymId],
             note: null,
             createdBy: "staff-1",
@@ -184,7 +184,7 @@ test(
         createSequentialSubscription(
           {
             userId: sequentialUser,
-            months: 1,
+            duration: { unit: "month", value: 1 },
             gymIds: [testGymId],
             note: null,
             createdBy: "staff-2",

@@ -273,11 +273,20 @@ test(
       const outB = await makeDevice(gymB.id, "out");
 
       // --- subscriptions carry gymIds, validated and scoped ---
+      const monthly = await call(owner.cookie, "POST", "/api/admin/packages", {
+        name: "Monthly",
+        duration: { unit: "month", value: 1 },
+        priceMinor: 90_000,
+      });
+      assert.equal(monthly.status, 201);
       const subscribe = (cookie: string, userId: string, gymIds: string[]) =>
         call(cookie, "POST", "/api/admin/subscriptions", {
           userId,
-          months: 1,
+          packageId: monthly.body.id,
+          expectedCurrency: "TRY",
+          expectedDuration: { unit: "month", value: 1 },
           gymIds,
+          requestId: randomUUID(),
         });
       assert.equal((await subscribe(staffA.cookie, member.id, [])).status, 400);
       assert.equal(

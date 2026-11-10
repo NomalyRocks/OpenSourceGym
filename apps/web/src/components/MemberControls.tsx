@@ -7,7 +7,8 @@ import type {
 } from "@opengym/shared";
 import { api } from "../lib/api";
 import type { WebTranslationKey } from "../i18n/resources";
-import { ConfirmModal, useDateFormatter } from "./Modal";
+import { ConfirmModal } from "./Modal";
+import { OverflowMenu, type OverflowMenuItem } from "./OverflowMenu";
 
 type ControlModal = "ban" | "unban" | "freeze" | "resume" | "deletion";
 
@@ -33,7 +34,6 @@ export function MemberControls({
   notify: (kind: "success" | "error", text: string) => void;
 }) {
   const { t } = useTranslation();
-  const formatDate = useDateFormatter();
   const [modal, setModal] = useState<ControlModal | null>(null);
   const [reason, setReason] = useState("");
   const userId = detail.user.id;
@@ -67,118 +67,41 @@ export function MemberControls({
     trimmedReason.length <= BAN_REASON_MAX;
 
   return (
-    <div className="panel">
-      <h2>{t("Member controls")}</h2>
-
-      {canBan && (
-        <div className="control-row">
-          <div className="control-info">
-            <strong>{t("Ban")}</strong>
-            {ban ? (
-              <div className="msg error" style={{ marginTop: 8 }}>
-                <strong>{t("This member is banned.")}</strong>
-                <div>{ban.reason}</div>
-                <div className="hint">
-                  {t("Banned on {{date}}", { date: formatDate(ban.bannedAt) })}
-                </div>
-              </div>
-            ) : (
-              <span className="hint">
-                {t("A banned member cannot enter any gym.")}
-              </span>
-            )}
-          </div>
-          {ban ? (
-            <button
-              type="button"
-              className="ghost"
-              onClick={() => open("unban")}
-            >
-              {t("Unban")}
-            </button>
-          ) : (
-            <button
-              type="button"
-              className="danger"
-              onClick={() => open("ban")}
-            >
-              {t("Ban member")}
-            </button>
-          )}
-        </div>
-      )}
-
-      <div className="control-row">
-        <div className="control-info">
-          <strong>{t("Subscription freeze")}</strong>
-          {freeze.active ? (
-            <span className="hint">
-              {t("Frozen since {{date}}", {
-                date: formatDate(freeze.active.startedAt),
-              })}
-            </span>
-          ) : (
-            <span className="hint">
-              {freezeBlocked
-                ? t(freezeBlocked)
-                : t("{{used}} of {{max}} freezes used in the last 365 days.", {
-                    used: freeze.usedInLastYear,
-                    max: cfg.maxPerYear,
-                  })}
-            </span>
-          )}
-        </div>
-        {freeze.active ? (
-          <button
-            type="button"
-            className="ghost"
-            onClick={() => open("resume")}
-          >
-            {t("Resume")}
-          </button>
-        ) : (
-          <button
-            type="button"
-            className="ghost"
-            disabled={freezeBlocked !== null}
-            title={freezeBlocked ? t(freezeBlocked) : undefined}
-            onClick={() => open("freeze")}
-          >
-            {t("Freeze subscription")}
-          </button>
-        )}
-      </div>
-
-      <div className="control-row">
-        <div className="control-info">
-          <strong>{t("Account deletion")}</strong>
-          {pendingDeletion ? (
-            <span className="hint">
-              {pendingDeletion.requestedBy
-                ? t("Deletion requested on {{date}} by {{name}}", {
-                    date: formatDate(pendingDeletion.requestedAt),
-                    name: pendingDeletion.requestedBy.name,
-                  })
-                : t("Deletion requested on {{date}} by the member", {
-                    date: formatDate(pendingDeletion.requestedAt),
-                  })}
-            </span>
-          ) : (
-            <span className="hint">
-              {t("Open a deletion request on the member's behalf.")}
-            </span>
-          )}
-        </div>
-        {!pendingDeletion && (
-          <button
-            type="button"
-            className="ghost"
-            onClick={() => open("deletion")}
-          >
-            {t("Request deletion")}
-          </button>
-        )}
-      </div>
+    <>
+      <OverflowMenu
+        label={t("Member actions")}
+        items={
+          [
+            ...(canBan
+              ? [
+                  {
+                    label: ban ? t("Unban") : t("Ban member"),
+                    destructive: !ban,
+                    onSelect: () => open(ban ? "unban" : "ban"),
+                  },
+                ]
+              : []),
+            {
+              label: freeze.active
+                ? t("Resume subscription")
+                : t("Freeze subscription"),
+              disabled: !freeze.active && freezeBlocked !== null,
+              reason:
+                !freeze.active && freezeBlocked ? t(freezeBlocked) : undefined,
+              onSelect: () => open(freeze.active ? "resume" : "freeze"),
+            },
+            ...(!pendingDeletion
+              ? [
+                  {
+                    label: t("Request deletion"),
+                    destructive: true,
+                    onSelect: () => open("deletion"),
+                  },
+                ]
+              : []),
+          ] satisfies OverflowMenuItem[]
+        }
+      />
 
       {modal === "ban" && (
         <ConfirmModal
@@ -335,6 +258,6 @@ export function MemberControls({
           </div>
         </ConfirmModal>
       )}
-    </div>
+    </>
   );
 }

@@ -3,7 +3,9 @@ import { Router, type Response } from "express";
 import { ObjectId, type Document } from "mongodb";
 import { z } from "zod";
 import type {
+  CashReport,
   ChainSummary,
+  DebtorRow,
   EntryTrend,
   ExportDataset,
   Page,
@@ -22,10 +24,15 @@ import {
 } from "../../core/middleware.js";
 import { listAllGyms } from "../gyms/gyms.js";
 import { InvalidCursorError, pageQuerySchema } from "../../lib/pagination.js";
+import { env } from "../../core/env.js";
+import { buildCashReport } from "../payments/cashReport.js";
+import { listDebtors } from "../payments/debtors.js";
 import {
   buildChainSummary,
   buildEntryTrend,
   buildReportSummary,
+  isDayLabel,
+  localDayLabel,
   MAX_REPORT_RANGE_DAYS,
 } from "./reports.js";
 import {
@@ -245,8 +252,78 @@ gymReportsRouter.post(
   }),
 );
 
+const cashQuerySchema = z.object({
+  day: z
+    .string()
+    .refine(isDayLabel, "Expected a calendar day as YYYY-MM-DD")
+    .optional(),
+});
+
+// Money taken at this gym during one local day. Owner/admin only: staff record
+// payments but do not see the till.
+gymReportsRouter.get(
+  "/cash",
+  requireGymAccess("owner", "admin"),
+  gymScoped(async (req, res) => {
+    const query = cashQuerySchema.safeParse(req.query);
+    if (!query.success) {
+      sendApiError(
+        res,
+        400,
+        "INVALID_DAY",
+        "Day must be a calendar date as YYYY-MM-DD.",
+      );
+      return;
+    }
+    const day =
+      query.data.day ?? localDayLabel(new Date(), env.reportsTimeZone);
+    const body: CashReport = await buildCashReport(
+      req.gym._id.toHexString(),
+      day,
+      env.reportsTimeZone,
+    );
+    res.json(body);
+  }),
+);
+
+// Periods that still owe money. Staff chase balances at the desk, so they see
+// this list too.
+gymReportsRouter.get(
+  "/debtors",
+  requireGymAccess("owner", "admin", "staff"),
+  gymScoped(async (req, res) => {
+    const query = pageQuerySchema.safeParse(req.query);
+    if (!query.success) {
+      sendApiError(
+        res,
+        400,
+        "INVALID_REQUEST",
+        "Invalid list query parameters.",
+      );
+      return;
+    }
+    try {
+      const page = await listDebtors({
+        ...query.data,
+        gymId: req.gym._id.toHexString(),
+      });
+      const body: Page<DebtorRow> = {
+        items: page.items,
+        nextCursor: page.nextCursor,
+      };
+      res.json(body);
+    } catch (err) {
+      if (err instanceof InvalidCursorError) {
+        sendApiError(res, 400, "INVALID_REQUEST", "Invalid pagination cursor.");
+        return;
+      }
+      throw err;
+    }
+  }),
+);
+
 const exportQuerySchema = rangeQuerySchema.extend({
-  dataset: z.enum(["members", "subscriptions", "entries"]),
+  dataset: z.enum(["members", "subscriptions", "entries", "payments"]),
 });
 
 interface ExportSpec {
@@ -342,6 +419,68 @@ const EXPORTS: Record<ExportDataset, ExportSpec> = {
       doc.note,
       doc.createdBy,
       doc.createdAt,
+    ],
+  },
+  payments: {
+    collection: "payments",
+    header: [
+      "id",
+      "gymId",
+      "paidAt",
+      "memberEmail",
+      "memberName",
+      "packageName",
+      "amountMinor",
+      "currency",
+      "method",
+      "recordedBy",
+      "note",
+      "voidedAt",
+      "voidedBy",
+      "voidReason",
+    ],
+    // Payments recorded at this gym in the range, voided ones included and
+    // marked. Anonymised rows (deleted members) have no member columns.
+    pipeline: ({ from, to }, gymId) => [
+      { $match: { gymId, paidAt: { $gte: from, $lte: to } } },
+      { $sort: { paidAt: 1, _id: 1 } },
+      {
+        $lookup: {
+          from: "user",
+          let: { memberId: "$userId" },
+          pipeline: [
+            {
+              $match: {
+                $expr: {
+                  $and: [
+                    { $ne: ["$$memberId", null] },
+                    { $eq: [{ $toString: "$_id" }, "$$memberId"] },
+                  ],
+                },
+              },
+            },
+            { $project: { email: 1, firstName: 1, lastName: 1 } },
+          ],
+          as: "userDocs",
+        },
+      },
+      { $addFields: { member: { $first: "$userDocs" } } },
+    ],
+    row: (doc) => [
+      doc._id,
+      doc.gymId,
+      doc.paidAt,
+      doc.member?.email,
+      [doc.member?.firstName, doc.member?.lastName].filter(Boolean).join(" "),
+      doc.packageName,
+      doc.amountMinor,
+      doc.currency,
+      doc.method,
+      doc.recordedBy,
+      doc.note,
+      doc.void?.at,
+      doc.void?.by,
+      doc.void?.reason,
     ],
   },
   entries: {

@@ -13,6 +13,7 @@ import { authed, requireRole } from "../../core/middleware.js";
 import { LEGAL_DEFAULTS } from "./legal.js";
 import { legalDocumentUrlSchema } from "./legalUrl.js";
 import { freezeConfigSchema, getFreezeConfig } from "../freeze/freeze.js";
+import { currencySchema, getChainCurrency } from "../payments/money.js";
 
 export const settingsRouter: Router = Router();
 
@@ -27,6 +28,7 @@ settingsRouter.get(
       chainName: doc?.chainName ?? "",
       legal: { ...LEGAL_DEFAULTS, ...(doc?.legal ?? {}) },
       freeze: await getFreezeConfig(),
+      currency: await getChainCurrency(),
     };
     res.json(settings);
   },
@@ -51,6 +53,8 @@ const chainSettingsSchema = z.object({
   legal: legalSchema.optional(),
   // Preserve the existing freeze rules when absent.
   freeze: freezeConfigSchema.optional(),
+  // Preserve the existing currency when absent; only new sales use a change.
+  currency: currencySchema.optional(),
 });
 
 settingsRouter.put(
@@ -60,7 +64,14 @@ settingsRouter.put(
     const parsed = chainSettingsSchema.safeParse(req.body ?? {});
     if (!parsed.success) {
       const field = String(parsed.error.issues[0]?.path[0] ?? "");
-      if (field === "freeze") {
+      if (field === "currency") {
+        sendApiError(
+          res,
+          400,
+          "INVALID_CURRENCY",
+          "Currency must be one of TRY, USD, EUR or GBP.",
+        );
+      } else if (field === "freeze") {
         sendApiError(
           res,
           400,
@@ -79,10 +90,11 @@ settingsRouter.put(
       }
       return;
     }
-    const { chainName, legal, freeze } = parsed.data;
+    const { chainName, legal, freeze, currency } = parsed.data;
     const setDoc: Partial<Omit<ChainSettingsDocument, "_id">> = { chainName };
     if (legal !== undefined) setDoc.legal = legal;
     if (freeze !== undefined) setDoc.freeze = freeze;
+    if (currency !== undefined) setDoc.currency = currency;
 
     await chainSettingsCollection().updateOne(
       { _id: CHAIN_SETTINGS_ID },
@@ -95,6 +107,7 @@ settingsRouter.put(
       // changes must be recorded in the audit log.
       ...(legal !== undefined ? { legal } : {}),
       ...(freeze !== undefined ? { freeze } : {}),
+      ...(currency !== undefined ? { currency } : {}),
     });
     res.json({ ok: true });
   }),

@@ -1,66 +1,27 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Pencil, Plus } from "lucide-react";
+import { ChevronDown, ChevronRight, Plus } from "lucide-react";
 import type {
   CancelSubscriptionResponse,
-  CreateSubscriptionRequest,
   SetSubscriptionGymsRequest,
   PublicUser,
   Subscription,
-  SubscriptionMonths,
 } from "@opengym/shared";
 import { api, isAbortError } from "../lib/api";
-import { Avatar } from "./Avatar";
+import { NewPeriodModal } from "./NewPeriodModal";
+import {
+  DueDateModal,
+  PeriodBilling,
+  RecordPaymentModal,
+} from "./PeriodBilling";
+import { OverflowMenu, type OverflowMenuItem } from "./OverflowMenu";
+import { useProfile } from "../lib/profile";
+import { formatMoney } from "../lib/money";
 import { Modal, useDateFormatter } from "./Modal";
-import { useGymId, useGyms } from "../lib/gyms";
+import { useGyms } from "../lib/gyms";
 import { dateLocale } from "../i18n/format";
 import { errorMessage } from "../i18n/errors";
 import type { WebTranslationKey } from "../i18n/resources";
-
-const subscriptionMonthOptions: readonly SubscriptionMonths[] = [1, 3, 6, 12];
-
-const monthsKeys = {
-  1: "1 month",
-  3: "3 months",
-  6: "6 months",
-  12: "12 months",
-} as const satisfies Record<SubscriptionMonths, WebTranslationKey>;
-
-function monthsKey(months: SubscriptionMonths): WebTranslationKey {
-  return monthsKeys[months];
-}
-
-function subscriptionStatus(subscription: Subscription): {
-  label: WebTranslationKey;
-  className: string;
-} {
-  const now = Date.now();
-  if (new Date(subscription.startsAt).getTime() > now) {
-    return { label: "Scheduled", className: "warn" };
-  }
-  if (new Date(subscription.endsAt).getTime() >= now) {
-    return { label: "Active", className: "ok" };
-  }
-  return { label: "Expired", className: "member" };
-}
-
-// Mirrors the server's addUtcCalendarMonthsClamped so the preview matches what
-// POST /api/admin/subscriptions will create (UTC months, day clamped).
-function addUtcMonthsClamped(date: Date, months: number): Date {
-  const targetMonthIndex = date.getUTCMonth() + months;
-  const targetYear = date.getUTCFullYear() + Math.floor(targetMonthIndex / 12);
-  const targetMonth = targetMonthIndex % 12;
-  const lastDay = new Date(
-    Date.UTC(targetYear, targetMonth + 1, 0),
-  ).getUTCDate();
-  const result = new Date(date.getTime());
-  result.setUTCFullYear(
-    targetYear,
-    targetMonth,
-    Math.min(date.getUTCDate(), lastDay),
-  );
-  return result;
-}
 
 /** Active or scheduled periods (not yet ended), earliest first. */
 function ongoingPeriods(subs: Subscription[]): Subscription[] {
@@ -87,209 +48,6 @@ function sameGymSet(a: string[], b: string[]): boolean {
 type LaterChange =
   | { target: Subscription; kind: "unchanged" | "empty" }
   | { target: Subscription; kind: "update"; next: string[] };
-
-// Creates a NEW sequential period after the member's latest one. Two steps
-// (form, then confirm) so an accidental click cannot sell an extra period.
-function NewPeriodModal({
-  member,
-  subs,
-  onClose,
-  onSwitchToEdit,
-  onGranted,
-}: {
-  member: PublicUser;
-  subs: Subscription[];
-  onClose: () => void;
-  /** Opens the edit-gyms modal for the current period. */
-  onSwitchToEdit: (subscription: Subscription) => void;
-  onGranted: (startsAt: string, endsAt: string) => void;
-}) {
-  const { t } = useTranslation();
-  const formatDate = useDateFormatter();
-  const { gyms } = useGyms();
-  const selectedGymId = useGymId();
-  const activeGyms = gyms.filter((g) => g.active);
-  const [step, setStep] = useState<"form" | "confirm">("form");
-  const [months, setMonths] = useState<SubscriptionMonths>(1);
-  // Defaults to the gym currently selected in the panel.
-  const [gymIds, setGymIds] = useState<string[]>(
-    activeGyms.some((g) => g.id === selectedGymId) ? [selectedGymId] : [],
-  );
-  const [error, setError] = useState<string | null>(null);
-  const [submitting, setSubmitting] = useState(false);
-  // Synchronous guard: state updates are async, so a fast double click could
-  // otherwise fire two POSTs before `submitting` disables the button.
-  const submittingRef = useRef(false);
-
-  const ongoing = ongoingPeriods(subs);
-  const current = ongoing[0] ?? null;
-  const latestEnd = subs.reduce(
-    (max, s) => Math.max(max, new Date(s.endsAt).getTime()),
-    Number.NEGATIVE_INFINITY,
-  );
-  const startsAt = new Date(Math.max(Date.now(), latestEnd));
-  const endsAt = addUtcMonthsClamped(startsAt, months);
-
-  const toggleGym = (id: string) =>
-    setGymIds((prev) =>
-      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id],
-    );
-
-  function next() {
-    setError(null);
-    if (gymIds.length === 0) {
-      setError(t("Select at least one gym."));
-      return;
-    }
-    setStep("confirm");
-  }
-
-  async function confirm() {
-    if (submittingRef.current) return;
-    submittingRef.current = true;
-    setSubmitting(true);
-    setError(null);
-    try {
-      const request: CreateSubscriptionRequest = {
-        userId: member.id,
-        months,
-        gymIds,
-        note: t("{{months}}-month plan", { months }),
-      };
-      const created = await api<{ startsAt: string; endsAt: string }>(
-        "/api/admin/subscriptions",
-        { method: "POST", body: request },
-      );
-      onGranted(created.startsAt, created.endsAt);
-    } catch (err) {
-      setError(errorMessage(err, t, "Could not grant the subscription."));
-      submittingRef.current = false;
-      setSubmitting(false);
-    }
-  }
-
-  const warning = ongoing.length > 0 && (
-    <div className="msg warn">
-      <strong>
-        {t(
-          "This adds a NEW {{months}}-month period after {{date}}, and the member will be charged for an extra period.",
-          { months, date: formatDate(new Date(latestEnd)) },
-        )}
-      </strong>{" "}
-      {t(
-        "To give access to another gym on an existing period, change that period's gyms instead.",
-      )}
-      {step === "form" && current && (
-        <div style={{ marginTop: 10 }}>
-          <button
-            type="button"
-            className="ghost"
-            onClick={() => onSwitchToEdit(current)}
-          >
-            {t("Edit gyms of the current period")}
-          </button>
-        </div>
-      )}
-    </div>
-  );
-
-  return (
-    <Modal
-      title={t("New subscription period")}
-      busy={submitting}
-      onClose={onClose}
-    >
-      {error && <div className="msg error">{error}</div>}
-      {warning}
-      {step === "form" ? (
-        <>
-          <div className="field">
-            <label htmlFor="new-period-months">{t("Plan")}</label>
-            <select
-              id="new-period-months"
-              value={months}
-              onChange={(e) =>
-                setMonths(Number(e.target.value) as SubscriptionMonths)
-              }
-            >
-              {subscriptionMonthOptions.map((option) => (
-                <option key={option} value={option}>
-                  {t(monthsKey(option))}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div className="field">
-            <label>{t("Gyms")}</label>
-            <div className="row">
-              {activeGyms.map((g) => (
-                <label key={g.id} className="check">
-                  <input
-                    type="checkbox"
-                    checked={gymIds.includes(g.id)}
-                    onChange={() => toggleGym(g.id)}
-                  />{" "}
-                  {g.name}
-                </label>
-              ))}
-            </div>
-          </div>
-          <p className="modal-preview">
-            {t("Starts {{start}} – Ends {{end}}", {
-              start: formatDate(startsAt),
-              end: formatDate(endsAt),
-            })}
-          </p>
-          <div className="row">
-            <button type="button" onClick={next}>
-              {t("Continue")}
-            </button>
-            <button type="button" className="ghost" onClick={onClose}>
-              {t("Cancel")}
-            </button>
-          </div>
-        </>
-      ) : (
-        <>
-          <dl className="modal-summary">
-            <dt>{t("Member")}</dt>
-            <dd>{`${member.firstName} ${member.lastName}`}</dd>
-            <dt>{t("Plan")}</dt>
-            <dd>{t(monthsKey(months))}</dd>
-            <dt>{t("Gyms")}</dt>
-            <dd>{gymNames(gymIds, gyms)}</dd>
-            <dt>{t("Start")}</dt>
-            <dd>{formatDate(startsAt)}</dd>
-            <dt>{t("End")}</dt>
-            <dd>{formatDate(endsAt)}</dd>
-          </dl>
-          <div className="row">
-            <button
-              type="button"
-              onClick={() => void confirm()}
-              disabled={submitting}
-            >
-              {submitting
-                ? t("Processing…")
-                : t("Confirm — grant {{plan}}", { plan: t(monthsKey(months)) })}
-            </button>
-            <button
-              type="button"
-              className="ghost"
-              onClick={() => {
-                setError(null);
-                setStep("form");
-              }}
-              disabled={submitting}
-            >
-              {t("Back")}
-            </button>
-          </div>
-        </>
-      )}
-    </Modal>
-  );
-}
 
 function EditGymsForm({
   subscription,
@@ -617,142 +375,207 @@ function CancelPeriodForm({
   );
 }
 
-type EditStep = "pick" | "gyms" | "cancel";
+type EditStep = "gyms" | "cancel";
 
-// One modal with internal steps: pick a period, then change its gyms or cancel
-// it. Started (active) periods cannot be cancelled.
-function EditSubscriptionsModal({
+/** Opens the existing edit or cancellation confirmation directly for one period. */
+function PeriodActionModal({
   subs,
-  initialStep,
-  initialId,
+  step,
+  subscriptionId,
   onClose,
   onChanged,
   onGymsDone,
   onCancelled,
 }: {
   subs: Subscription[];
-  initialStep: EditStep;
-  initialId: string;
+  step: EditStep;
+  subscriptionId: string;
   onClose: () => void;
   onChanged: () => void;
   onGymsDone: (updatedPeriods: number) => void;
   onCancelled: () => void;
 }) {
   const { t } = useTranslation();
-  const formatDate = useDateFormatter();
-  const { gyms } = useGyms();
-  const [step, setStep] = useState<EditStep>(initialStep);
-  const [selectedId, setSelectedId] = useState(initialId);
   const [busy, setBusy] = useState(false);
-
   const ongoing = ongoingPeriods(subs);
-  const selected = ongoing.find((s) => s.id === selectedId) ?? ongoing[0];
-  const started = selected
-    ? new Date(selected.startsAt).getTime() <= Date.now()
-    : false;
-  const startOf = (s: Subscription) => new Date(s.startsAt).getTime();
-  const laterThan = (base: Subscription) =>
-    ongoing.filter((s) => s.id !== base.id && startOf(s) > startOf(base));
-  const backToPick = () => setStep("pick");
-
-  const title =
-    step === "gyms"
-      ? t("Edit gyms")
-      : step === "cancel"
-        ? t("Cancel period")
-        : t("Edit subscriptions");
-
+  const selected = ongoing.find((s) => s.id === subscriptionId);
+  if (!selected) return null;
+  const later = ongoing.filter(
+    (s) =>
+      s.id !== selected.id &&
+      new Date(s.startsAt).getTime() > new Date(selected.startsAt).getTime(),
+  );
   return (
-    <Modal title={title} busy={busy} onClose={onClose}>
-      {!selected ? (
-        <>
-          <p className="hint" style={{ marginBottom: 12 }}>
-            {t("There is no active or scheduled period to edit.")}
-          </p>
-          <div className="row">
-            <button type="button" className="ghost" onClick={onClose}>
-              {t("Close")}
-            </button>
-          </div>
-        </>
-      ) : step === "gyms" ? (
+    <Modal
+      title={step === "gyms" ? t("Edit gyms") : t("Cancel period")}
+      busy={busy}
+      onClose={onClose}
+    >
+      {step === "gyms" ? (
         <EditGymsForm
-          key={selected.id}
           subscription={selected}
-          later={laterThan(selected)}
-          onBack={backToPick}
+          later={later}
+          onBack={onClose}
           onClose={onClose}
           onChanged={onChanged}
           onDone={onGymsDone}
           onBusy={setBusy}
         />
-      ) : step === "cancel" ? (
+      ) : (
         <CancelPeriodForm
-          key={selected.id}
           subscription={selected}
-          later={laterThan(selected)}
-          onBack={backToPick}
+          later={later}
+          onBack={onClose}
           onCancelled={onCancelled}
           onBusy={setBusy}
         />
-      ) : (
-        <>
-          <div className="period-options" role="radiogroup">
-            {ongoing.map((s) => {
-              const status = subscriptionStatus(s);
-              return (
-                <label
-                  key={s.id}
-                  className={`period-option${s.id === selected.id ? " selected" : ""}`}
-                >
-                  <input
-                    type="radio"
-                    name="edit-period"
-                    checked={s.id === selected.id}
-                    onChange={() => setSelectedId(s.id)}
-                  />
-                  <span className="grow">
-                    <strong>{`${formatDate(s.startsAt)} – ${formatDate(s.endsAt)}`}</strong>
-                    <span className="hint">{gymNames(s.gymIds, gyms)}</span>
-                  </span>
-                  <span className={`badge ${status.className}`}>
-                    {t(status.label)}
-                  </span>
-                </label>
-              );
-            })}
-          </div>
-          {started && (
-            <p className="hint" style={{ marginBottom: 12 }}>
-              {t(
-                "This subscription period has already started and cannot be cancelled.",
-              )}
-            </p>
-          )}
-          <div className="row">
-            <button type="button" onClick={() => setStep("gyms")}>
-              {t("Change gyms")}
-            </button>
-            <button
-              type="button"
-              className="ghost"
-              disabled={started}
-              onClick={() => setStep("cancel")}
-            >
-              {t("Cancel period")}
-            </button>
-            <button type="button" className="ghost" onClick={onClose}>
-              {t("Close")}
-            </button>
-          </div>
-        </>
       )}
     </Modal>
   );
 }
 
 type PeriodModal =
-  { kind: "new" } | { kind: "edit"; step: EditStep; subscriptionId: string };
+  | { kind: "new" }
+  | { kind: "edit"; step: EditStep; subscriptionId: string }
+  | { kind: "record" | "due"; subscriptionId: string };
+
+function PeriodCard({
+  subscription,
+  past,
+  primaryPayment,
+  onEdit,
+  onBilling,
+  onChanged,
+}: {
+  subscription: Subscription;
+  past: boolean;
+  primaryPayment: boolean;
+  onEdit: (step: EditStep, subscription: Subscription) => void;
+  onBilling: (kind: "record" | "due", subscription: Subscription) => void;
+  onChanged: () => void;
+}) {
+  const { t, i18n } = useTranslation();
+  const { profile } = useProfile();
+  const { gyms } = useGyms();
+  const formatDate = useDateFormatter();
+  const [expanded, setExpanded] = useState(
+    (subscription.balanceMinor ?? 0) > 0,
+  );
+  const bodyId = useId();
+  const started = new Date(subscription.startsAt).getTime() <= Date.now();
+  const balance = subscription.balanceMinor ?? 0;
+  const sale = subscription.sale;
+  const name = sale?.packageName ?? t("Subscription period");
+  const dates = `${formatDate(subscription.startsAt)} – ${formatDate(subscription.endsAt)}`;
+  const gymsLabel = gymNames(subscription.gymIds, gyms);
+  const money = (amount: number) =>
+    sale
+      ? formatMoney(amount, sale.currency, dateLocale(i18n.resolvedLanguage))
+      : "";
+  const items: OverflowMenuItem[] = [
+    ...(!past
+      ? [
+          {
+            label: t("Change gyms"),
+            onSelect: () => onEdit("gyms", subscription),
+          },
+        ]
+      : []),
+    ...(sale &&
+    balance > 0 &&
+    (profile?.role === "owner" || profile?.role === "admin")
+      ? [
+          {
+            label: t("Edit next payment date"),
+            onSelect: () => onBilling("due", subscription),
+          },
+        ]
+      : []),
+    {
+      label: t("Cancel period"),
+      destructive: true,
+      disabled: started,
+      reason: started
+        ? t(
+            "This subscription period has already started and cannot be cancelled.",
+          )
+        : undefined,
+      onSelect: () => onEdit("cancel", subscription),
+    },
+  ];
+  const pastSummary = [
+    dates,
+    name,
+    ...(sale
+      ? [
+          money(sale.priceMinor),
+          balance > 0
+            ? t("Balance due {{amount}}", { amount: money(balance) })
+            : t("Paid in full"),
+        ]
+      : []),
+  ].join(" · ");
+
+  return (
+    <article className={`period-card${past ? " past-period" : ""}`}>
+      {past && (
+        <button
+          type="button"
+          className="ghost past-period-toggle"
+          aria-expanded={expanded}
+          aria-controls={bodyId}
+          onClick={() => setExpanded(!expanded)}
+        >
+          {expanded ? (
+            <ChevronDown size={14} aria-hidden="true" />
+          ) : (
+            <ChevronRight size={14} aria-hidden="true" />
+          )}
+          <span title={pastSummary}>{pastSummary}</span>
+        </button>
+      )}
+      <div id={bodyId} className="period-card-body" hidden={past && !expanded}>
+        {(!past || expanded) && (
+          <>
+            <div className="period-card-head">
+              <div className="period-card-identity">
+                <strong>{name}</strong>
+                <span className="hint period-gyms" title={gymsLabel}>
+                  {gymsLabel}
+                </span>
+              </div>
+              <OverflowMenu
+                label={t("Actions for {{period}}", { period: dates })}
+                items={items}
+              />
+            </div>
+            {!past && <p className="hint period-dates">{dates}</p>}
+            {subscription.note?.trim() && (
+              <p className="hint period-note">{subscription.note}</p>
+            )}
+            {sale && (
+              <>
+                <PeriodBilling
+                  subscription={subscription}
+                  onChanged={onChanged}
+                />
+                {balance > 0 && !primaryPayment && (
+                  <button
+                    type="button"
+                    className="ghost period-record"
+                    onClick={() => onBilling("record", subscription)}
+                  >
+                    {t("Record payment")}
+                  </button>
+                )}
+              </>
+            )}
+          </>
+        )}
+      </div>
+    </article>
+  );
+}
 
 export function SubscriptionPanel({
   member,
@@ -772,7 +595,6 @@ export function SubscriptionPanel({
   const [loadError, setLoadError] = useState<string | null>(null);
   const [msg, setMsg] = useState<{ kind: string; text: string } | null>(null);
   const [modal, setModal] = useState<PeriodModal | null>(null);
-  const { gyms } = useGyms();
 
   function load(signal?: AbortSignal) {
     return api<Subscription[]>(`/api/admin/users/${member.id}/subscriptions`, {
@@ -813,6 +635,39 @@ export function SubscriptionPanel({
   const closeModal = useCallback(() => setModal(null), []);
 
   const ongoing = ongoingPeriods(subs ?? []);
+  const now = Date.now();
+  const current = ongoing.filter((s) => new Date(s.startsAt).getTime() <= now);
+  const upcoming = ongoing.filter((s) => new Date(s.startsAt).getTime() > now);
+  const past = (subs ?? [])
+    .filter((s) => new Date(s.endsAt).getTime() <= now)
+    .sort(
+      (a, b) => new Date(b.endsAt).getTime() - new Date(a.endsAt).getTime(),
+    );
+  const summary = current[0] ?? upcoming[0];
+  const paymentPeriod = [...current, ...past, ...upcoming].find(
+    (s) => s.sale && (s.balanceMinor ?? 0) > 0,
+  );
+  const paymentSale = paymentPeriod?.sale;
+  const paymentOverdue =
+    paymentSale?.nextPaymentDue &&
+    new Date(paymentSale.nextPaymentDue).getTime() < now;
+  const billingSubscription =
+    modal && "subscriptionId" in modal
+      ? subs?.find((s) => s.id === modal.subscriptionId)
+      : undefined;
+  const groups: {
+    label: WebTranslationKey;
+    periods: Subscription[];
+    past: boolean;
+  }[] = [
+    { label: "Current period", periods: current, past: false },
+    { label: "Upcoming", periods: upcoming, past: false },
+    { label: "Past", periods: past, past: true },
+  ];
+  function openBilling(kind: "record" | "due", subscription: Subscription) {
+    setMsg(null);
+    setModal({ kind, subscriptionId: subscription.id });
+  }
 
   function openEdit(step: EditStep, subscription: Subscription) {
     setMsg(null);
@@ -820,95 +675,111 @@ export function SubscriptionPanel({
   }
 
   return (
-    <div className="panel">
-      <div className="member-detail-heading">
-        <Avatar member={member} large />
-        <h2>
-          {t("Subscription — {{name}}", {
-            name: `${member.firstName} ${member.lastName}`,
-          })}
-        </h2>
-      </div>
+    <section className="subscription-panel" aria-label={t("Subscription")}>
       {msg && <div className={`msg ${msg.kind}`}>{msg.text}</div>}
       {loadError && <div className="msg error">{loadError}</div>}
-      <div className="row" style={{ marginBottom: 18 }}>
-        <button
-          type="button"
-          disabled={loading || subs === null}
-          onClick={() => {
-            setMsg(null);
-            setModal({ kind: "new" });
-          }}
-        >
-          <Plus size={14} /> {t("New subscription period")}
-        </button>
-        <button
-          type="button"
-          className="ghost"
-          disabled={loading || ongoing.length === 0}
-          title={
-            ongoing.length === 0
-              ? t("There is no active or scheduled period to edit.")
-              : undefined
-          }
-          onClick={() => ongoing[0] && openEdit("pick", ongoing[0])}
-        >
-          <Pencil size={14} /> {t("Edit subscriptions")}
-        </button>
+      <div className="subscription-overview">
+        {summary && (
+          <p className="subscription-summary">
+            <strong>
+              {summary.sale?.packageName ?? t("Subscription period")}
+            </strong>
+            <span>
+              {formatDate(summary.startsAt)} → {formatDate(summary.endsAt)}
+            </span>
+            {current.includes(summary) && (
+              <span className="hint">
+                {t("{{count}} days left", {
+                  count: Math.max(
+                    0,
+                    Math.ceil(
+                      (new Date(summary.endsAt).getTime() - now) / 86_400_000,
+                    ),
+                  ),
+                })}
+              </span>
+            )}
+          </p>
+        )}
+        {paymentPeriod && paymentSale && (
+          <div className="subscription-balance">
+            <strong>
+              {t("Balance due {{amount}}", {
+                amount: formatMoney(
+                  paymentPeriod.balanceMinor ?? 0,
+                  paymentSale.currency,
+                  dateLocale(i18n.resolvedLanguage),
+                ),
+              })}
+            </strong>
+            {paymentOverdue && (
+              <span className="badge warn">{t("Overdue")}</span>
+            )}
+            {paymentPeriod !== summary && (
+              <span className="hint">
+                {t("Payment for {{period}}", {
+                  period: `${formatDate(paymentPeriod.startsAt)} – ${formatDate(paymentPeriod.endsAt)}`,
+                })}
+              </span>
+            )}
+          </div>
+        )}
+        <div className="row subscription-primary-actions">
+          {paymentPeriod && (
+            <button
+              type="button"
+              onClick={() => openBilling("record", paymentPeriod)}
+            >
+              {t("Record payment")}
+            </button>
+          )}
+          <button
+            type="button"
+            className={paymentPeriod ? "ghost" : undefined}
+            disabled={loading || subs === null}
+            onClick={() => {
+              setMsg(null);
+              setModal({ kind: "new" });
+            }}
+          >
+            <Plus size={14} aria-hidden="true" /> {t("New period")}
+          </button>
+        </div>
       </div>
-      <table>
-        <thead>
-          <tr>
-            <th>{t("Start")}</th>
-            <th>{t("End")}</th>
-            <th>{t("Note")}</th>
-            <th>{t("Gyms")}</th>
-            <th>{t("Status")}</th>
-          </tr>
-        </thead>
-        <tbody>
-          {loading && (
-            <tr>
-              <td colSpan={5}>{t("Loading…")}</td>
-            </tr>
-          )}
-          {!loading &&
-            (subs ?? []).map((subscription) => {
-              const status = subscriptionStatus(subscription);
-              return (
-                <tr key={subscription.id}>
-                  <td>
-                    {new Date(subscription.startsAt).toLocaleDateString(
-                      dateLocale(i18n.resolvedLanguage),
-                    )}
-                  </td>
-                  <td>
-                    {new Date(subscription.endsAt).toLocaleDateString(
-                      dateLocale(i18n.resolvedLanguage),
-                    )}
-                  </td>
-                  <td>{subscription.note ?? "—"}</td>
-                  <td>{gymNames(subscription.gymIds, gyms)}</td>
-                  <td>
-                    <span className={`badge ${status.className}`}>
-                      {t(status.label)}
-                    </span>
-                  </td>
-                </tr>
-              );
-            })}
-          {!loading && subs?.length === 0 && (
-            <tr>
-              <td colSpan={5}>{t("No subscription records.")}</td>
-            </tr>
-          )}
-        </tbody>
-      </table>
+      {loading && <p className="hint">{t("Loading…")}</p>}
+      {!loading && subs?.length === 0 && (
+        <p className="hint">{t("No subscription records.")}</p>
+      )}
+      {groups
+        .filter((group) => group.periods.length > 0)
+        .map((group) => (
+          <section
+            key={group.label}
+            className="period-group"
+            aria-label={t(group.label)}
+          >
+            <h2>{t(group.label)}</h2>
+            {group.periods.map((subscription) => (
+              <PeriodCard
+                key={subscription.id}
+                subscription={subscription}
+                past={group.past}
+                primaryPayment={subscription.id === paymentPeriod?.id}
+                onEdit={openEdit}
+                onBilling={openBilling}
+                onChanged={() => void reloadList()}
+              />
+            ))}
+          </section>
+        ))}
       {modal?.kind === "new" && (
         <NewPeriodModal
           member={member}
           subs={subs ?? []}
-          onClose={closeModal}
+          onClose={() => {
+            closeModal();
+            void reloadList();
+          }}
           onSwitchToEdit={(subscription) => openEdit("gyms", subscription)}
           onGranted={(startsAt, endsAt) => {
             setModal(null);
@@ -924,10 +795,10 @@ export function SubscriptionPanel({
         />
       )}
       {modal?.kind === "edit" && (
-        <EditSubscriptionsModal
+        <PeriodActionModal
           subs={subs ?? []}
-          initialStep={modal.step}
-          initialId={modal.subscriptionId}
+          step={modal.step}
+          subscriptionId={modal.subscriptionId}
           onClose={closeModal}
           onChanged={() => void reloadList()}
           onGymsDone={(updated) => {
@@ -952,6 +823,32 @@ export function SubscriptionPanel({
           }}
         />
       )}
-    </div>
+      {modal?.kind === "record" && billingSubscription?.sale && (
+        <RecordPaymentModal
+          subscription={billingSubscription}
+          onClose={() => {
+            closeModal();
+            void reloadList();
+          }}
+          onSaved={() => {
+            closeModal();
+            void reloadList();
+          }}
+        />
+      )}
+      {modal?.kind === "due" && billingSubscription?.sale && (
+        <DueDateModal
+          subscription={billingSubscription}
+          onClose={() => {
+            closeModal();
+            void reloadList();
+          }}
+          onSaved={() => {
+            closeModal();
+            void reloadList();
+          }}
+        />
+      )}
+    </section>
   );
 }

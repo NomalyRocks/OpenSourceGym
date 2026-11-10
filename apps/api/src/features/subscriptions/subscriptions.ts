@@ -1,13 +1,19 @@
 import { randomUUID } from "node:crypto";
 import { setTimeout as delay } from "node:timers/promises";
 import type {
+  CurrencyCode,
+  MyBilling,
   MySubscription,
   MySubscriptionGym,
-  SubscriptionMonths,
+  PackageDuration,
 } from "@opengym/shared";
 import { ObjectId } from "mongodb";
 import type { Db, WithId } from "mongodb";
-import { db, gymCollection } from "../../core/db.js";
+import { db, gymCollection, isDuplicateKeyError } from "../../core/db.js";
+import {
+  hasLivePayments,
+  sumPaidBySubscription,
+} from "../payments/paymentStore.js";
 import {
   finishPendingCredit,
   freezeCollection,
@@ -21,6 +27,7 @@ import {
   previewFreezeCredit,
   summarizeGymAccess,
   summarizeSubscriptionTimeline,
+  type SubscriptionPeriod,
   type SubscriptionSummary,
   type SubscriptionTimelineRecord,
 } from "./subscriptionTimeline.js";
@@ -42,6 +49,19 @@ end
 return 0
 `;
 
+/** What a period was sold as; a snapshot, never touched by catalog edits. */
+export interface SaleSnapshot {
+  /** Null for a custom grant */
+  packageId: ObjectId | null;
+  packageName: string;
+  duration: PackageDuration;
+  listPriceMinor: number | null;
+  /** What the member owes, minor units */
+  priceMinor: number;
+  currency: CurrencyCode;
+  nextPaymentDue: Date | null;
+}
+
 interface SubscriptionFields {
   userId: ObjectId;
   startsAt: Date;
@@ -53,6 +73,10 @@ interface SubscriptionFields {
   createdAt: Date;
   /** Freezes whose credit was already applied to this period (idempotency marker) */
   freezeCredits?: ObjectId[];
+  /** Absent on periods created before pricing existed: no balance, no payments */
+  sale?: SaleSnapshot;
+  /** Client UUID of the sale request (unique where present) */
+  requestId?: string;
 }
 
 export type SubscriptionDocument = WithId<SubscriptionFields>;
@@ -74,17 +98,30 @@ export interface SubscriptionRepairReport {
 
 export interface CreateSequentialSubscriptionInput {
   userId: ObjectId;
-  months: SubscriptionMonths;
+  duration: PackageDuration;
   /** Validated, non-empty list of active gyms */
   gymIds: ObjectId[];
   note: string | null;
   createdBy: string;
+  sale?: SaleSnapshot | null;
+  /** Idempotency key: a repeat returns the existing period */
+  requestId?: string | null;
 }
 
 export interface CreatedSequentialSubscription {
   id: ObjectId;
   startsAt: Date;
   endsAt: Date;
+  /** True when `requestId` matched an existing period and nothing was created */
+  replayed: boolean;
+}
+
+/** The requestId already belongs to another member's period. */
+export class RequestIdConflictError extends Error {
+  constructor() {
+    super("The request id was already used for a different record.");
+    this.name = "RequestIdConflictError";
+  }
 }
 
 export class SubscriptionLockTimeoutError extends Error {
@@ -195,6 +232,23 @@ export async function createSequentialSubscription(
       // A freeze credit interrupted half-way must land before the new period
       // is planned from the latest end, or it would overlap the late shift.
       await finishPendingCredit(input.userId, assertOwned, database);
+      if (input.requestId) {
+        // Under the per-member lock, so two concurrent submits cannot both miss.
+        const existing = await subscriptionCollection(database).findOne({
+          requestId: input.requestId,
+        });
+        if (existing) {
+          if (!existing.userId.equals(input.userId)) {
+            throw new RequestIdConflictError();
+          }
+          return {
+            id: existing._id,
+            startsAt: existing.startsAt,
+            endsAt: existing.endsAt,
+            replayed: true,
+          };
+        }
+      }
       const latest = await subscriptionCollection(database).findOne(
         { userId: input.userId },
         { sort: { endsAt: -1, createdAt: -1, _id: -1 } },
@@ -203,19 +257,30 @@ export async function createSequentialSubscription(
       const { startsAt, endsAt } = calculateSubscriptionPeriod(
         now,
         latest?.endsAt ?? null,
-        input.months,
+        input.duration,
       );
       await assertOwned();
-      const inserted = await subscriptionCollection(database).insertOne({
-        userId: input.userId,
-        startsAt,
-        endsAt,
-        gymIds: input.gymIds,
-        note: input.note,
-        createdBy: input.createdBy,
-        createdAt: now,
-      });
-      return { id: inserted.insertedId, startsAt, endsAt };
+      let inserted;
+      try {
+        inserted = await subscriptionCollection(database).insertOne({
+          userId: input.userId,
+          startsAt,
+          endsAt,
+          gymIds: input.gymIds,
+          note: input.note,
+          createdBy: input.createdBy,
+          createdAt: now,
+          ...(input.sale ? { sale: input.sale } : {}),
+          ...(input.requestId ? { requestId: input.requestId } : {}),
+        });
+      } catch (error) {
+        // The unique index is the backstop for a requestId used by another member.
+        if (input.requestId && isDuplicateKeyError(error)) {
+          throw new RequestIdConflictError();
+        }
+        throw error;
+      }
+      return { id: inserted.insertedId, startsAt, endsAt, replayed: false };
     },
   );
 }
@@ -224,6 +289,7 @@ export type CancelSubscriptionResult =
   | { status: "not-found" }
   | { status: "started" }
   | { status: "out-of-scope" }
+  | { status: "has-payments" }
   | {
       status: "cancelled";
       cancelled: SubscriptionDocument;
@@ -270,6 +336,11 @@ export async function cancelScheduledSubscription(
       }
       if (target.startsAt.getTime() <= Date.now()) {
         return { status: "started" };
+      }
+      // Money was taken for this period: void the payments (refund in person)
+      // before it can go. Checked under the lock every payment also takes.
+      if (await hasLivePayments(id, database)) {
+        return { status: "has-payments" };
       }
 
       const later = await collection
@@ -402,6 +473,8 @@ export async function listActiveSubscriptionGymIds(
 interface MemberTimeline {
   openFreeze: { startedAt: Date; maxDays: number } | null;
   summary: SubscriptionSummary;
+  /** Period dates in the same freeze-adjusted view as `summary`. */
+  periods: readonly (SubscriptionPeriod & { id: string })[];
   /** Gyms the member may use now, in the same view as `summary`. */
   gymIds: ObjectId[];
   gymWindows: Map<string, SubscriptionSummary>;
@@ -447,6 +520,7 @@ async function loadMemberTimeline(
     return {
       openFreeze,
       summary: summarizeSubscriptionTimeline(previewed, now),
+      periods: previewed,
       gymIds,
       gymWindows: summarizeGymAccess(
         previewed,
@@ -467,6 +541,11 @@ async function loadMemberTimeline(
   return {
     openFreeze: null,
     summary,
+    periods: docs.map((doc) => ({
+      id: doc._id.toHexString(),
+      startsAt: doc.startsAt,
+      endsAt: doc.endsAt,
+    })),
     gymIds,
     gymWindows: summarizeGymAccess(
       docs.map((doc) => ({
@@ -516,12 +595,12 @@ export async function getSubscriptionSummary(
       gymIds: [],
       gyms: [],
       freeze: null,
+      billing: null,
     };
   }
-  const { openFreeze, summary, gymIds, gymWindows } = await loadMemberTimeline(
-    new ObjectId(userId),
-    now,
-  );
+  const { openFreeze, summary, periods, gymIds, gymWindows } =
+    await loadMemberTimeline(new ObjectId(userId), now);
+  const billing = await loadMyBilling(new ObjectId(userId), now, periods);
   const gymDocs =
     gymIds.length > 0
       ? await gymCollection()
@@ -558,6 +637,51 @@ export async function getSubscriptionSummary(
     freeze: openFreeze
       ? { startedAt: openFreeze.startedAt.toISOString() }
       : null,
+    billing,
+  };
+}
+
+/**
+ * Package and balance for the member's subscription card. The balance spans
+ * every priced period in the currency of the earliest one that still owes
+ * money; null when the member never had a priced period.
+ */
+async function loadMyBilling(
+  owner: ObjectId,
+  now: Date,
+  periods: MemberTimeline["periods"],
+): Promise<MyBilling | null> {
+  const priced = await subscriptionCollection()
+    .find({ userId: owner, sale: { $exists: true } })
+    .sort({ startsAt: 1, _id: 1 })
+    .toArray();
+  if (priced.length === 0) return null;
+  const paid = await sumPaidBySubscription(priced.map((doc) => doc._id));
+  const coveringIds = new Set(
+    periods
+      .filter((period) => period.startsAt <= now && period.endsAt >= now)
+      .map((period) => period.id),
+  );
+  const covering = priced.find((doc) => coveringIds.has(doc._id.toHexString()));
+  const owing = priced.flatMap((doc) => {
+    const sale = doc.sale!;
+    const balance = sale.priceMinor - (paid.get(doc._id.toHexString()) ?? 0);
+    return balance > 0 ? [{ sale, balance }] : [];
+  });
+  const currency =
+    owing[0]?.sale.currency ??
+    covering?.sale?.currency ??
+    priced[0]!.sale!.currency;
+  const sameCurrency = owing.filter((row) => row.sale.currency === currency);
+  const dues = sameCurrency
+    .map((row) => row.sale.nextPaymentDue)
+    .filter((due): due is Date => due instanceof Date)
+    .sort((left, right) => left.getTime() - right.getTime());
+  return {
+    packageName: covering?.sale?.packageName ?? null,
+    balanceMinor: sameCurrency.reduce((sum, row) => sum + row.balance, 0),
+    currency,
+    nextPaymentDue: dues[0]?.toISOString() ?? null,
   };
 }
 

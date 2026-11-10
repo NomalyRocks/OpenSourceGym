@@ -4,7 +4,10 @@ import test from "node:test";
 import { ObjectId } from "mongodb";
 
 const mongoUri = process.env.TEST_MONGODB_URI;
-const redisUri = process.env.TEST_REDIS_URL;
+// Other integration files call flushDb() on TEST_REDIS_URL while this one runs
+// in parallel, wiping its occupancy records mid-test. A sibling logical DB
+// keeps this file isolated from those flushes.
+const redisUri = process.env.TEST_REDIS_URL?.replace(/\/\d+$/, "/10");
 
 const skip =
   mongoUri && redisUri

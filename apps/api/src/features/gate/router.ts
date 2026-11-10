@@ -2,7 +2,11 @@ import { Router } from "express";
 import { randomUUID } from "node:crypto";
 import { ObjectId } from "mongodb";
 import { z } from "zod";
-import type { GateRejectCode, GateScanResponse } from "@opengym/shared";
+import type {
+  DeviceMode,
+  GateRejectCode,
+  GateScanResponse,
+} from "@opengym/shared";
 import { db } from "../../core/db.js";
 import { sendApiError } from "../../core/apiError.js";
 import { acquireLock, releaseLock } from "../../core/redis.js";
@@ -10,6 +14,7 @@ import { authed, requireRole } from "../../core/middleware.js";
 import { distanceMeters } from "../../lib/geo.js";
 import { isImpossibleTravel } from "./travel.js";
 import { verifyGateQr } from "./gateQr.js";
+import { resolveScanDirection } from "./scanDirection.js";
 import {
   checkEntryDuringFreeze,
   endFreeze,
@@ -125,7 +130,10 @@ gateScanRouter.post(
       .collection("devices")
       .findOne({ _id: new ObjectId(deviceId) });
     const deviceName = device ? (device.name as string) : "";
-    const direction = (device?.direction as "in" | "out" | undefined) ?? "in";
+    const direction = resolveScanDirection(
+      (device?.direction as DeviceMode | undefined) ?? "in",
+      verified.side,
+    );
     // The QR resolves device -> gym. A device without a resolvable gym is as
     // good as unregistered.
     const gym =
@@ -160,7 +168,8 @@ gateScanRouter.post(
         allowed: false,
         reason,
         at: new Date(),
-        direction,
+        // An incompatible QR has no resolved scan direction; keep the denial fallback.
+        direction: direction ?? "in",
         distanceM: scanDistanceM,
       });
       sendApiError(res, status, reason, message);
@@ -171,6 +180,11 @@ gateScanRouter.post(
         "UNKNOWN_DEVICE",
         "This gate is no longer registered. Contact reception.",
       );
+      return;
+    }
+
+    if (direction === null) {
+      deny("INVALID_QR", "Invalid QR code. Scan the code on the gate again.");
       return;
     }
 
@@ -312,7 +326,7 @@ gateScanRouter.post(
       return;
     }
 
-    if (!openDevice(deviceId, GATE_OPEN_MS)) {
+    if (!openDevice(deviceId, GATE_OPEN_MS, direction)) {
       // The gate did not open; release the lock and the anti-passback cooldown
       // so the member can retry as soon as the connection returns.
       await releaseLock(lockKey, lockToken);

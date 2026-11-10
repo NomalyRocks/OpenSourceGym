@@ -3,6 +3,9 @@ import { NavLink, useLocation, useMatch, useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import {
   Building2,
+  Banknote,
+  Package as PackageIcon,
+  Wallet,
   Check,
   ChevronDown,
   Cpu,
@@ -56,6 +59,9 @@ const sectionLabels: Record<string, WebTranslationKey> = {
   entries: "Entries",
   renewals: "Renewals",
   reports: "Reports",
+  cash: "Daily cash",
+  debtors: "Debtors",
+  packages: "Packages",
   devices: "Devices",
   settings: "Settings",
   chain: "All gyms",
@@ -206,8 +212,10 @@ export function Shell({ children }: { children: React.ReactNode }) {
         { to: `${gymBase}/entries`, label: "Entries", icon: Activity },
         { to: `${gymBase}/renewals`, label: "Renewals", icon: RefreshCw },
         { to: `${gymBase}/reports`, label: "Reports", icon: BarChart3 },
+        { to: `${gymBase}/debtors`, label: "Debtors", icon: Wallet },
         ...(canAdmin
           ? [
+              { to: `${gymBase}/cash`, label: "Daily cash", icon: Banknote },
               { to: `${gymBase}/devices`, label: "Devices", icon: Cpu },
               {
                 to: `${gymBase}/settings`,
@@ -223,6 +231,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
       ? [
           { to: "/chain", label: "All gyms", icon: Layers },
           { to: "/chain/gyms", label: "Gyms", icon: Building2 },
+          { to: "/chain/packages", label: "Packages", icon: PackageIcon },
           { to: "/chain/staff", label: "Staff assignment", icon: UserCog },
         ]
       : []),

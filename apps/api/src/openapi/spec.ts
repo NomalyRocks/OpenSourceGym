@@ -15,6 +15,17 @@ import {
   createSubscriptionRequestSchema,
   setSubscriptionGymsRequestSchema,
   createSubscriptionResponseSchema,
+  cashReportSchema,
+  createPackageRequestSchema,
+  debtorRowSchema,
+  packageSchema,
+  packageListResponseSchema,
+  paymentResultSchema,
+  paymentSchema,
+  recordPaymentRequestSchema,
+  updatePackageRequestSchema,
+  updateSubscriptionSaleRequestSchema,
+  voidPaymentRequestSchema,
   cancelSubscriptionResponseSchema,
   banMemberRequestSchema,
   createMemberDeletionRequestSchema,
@@ -614,10 +625,10 @@ export const openApiDocument: OpenApiDocument = createDocument({
       post: {
         tags: ["admin"],
         operationId: "createSubscription",
-        summary: "Create or extend subscription",
+        summary: "Sell a subscription period",
         ...requiredRole(
           "owner | admin | staff (access to every listed gym)",
-          "Appends a sequential subscription to the member's current timeline",
+          "Appends a sequential, priced period to the member's timeline: a catalog package (staff sells at the catalog price) or, owner/admin only, a price override or a custom day grant. A repeated requestId returns the existing period if a gym on it is in the caller's scope, even after gym deactivation. Errors: PRICE_OVERRIDE_FORBIDDEN, PACKAGE_PRICE_UNSET, PACKAGE_PRICE_CHANGED (confirmed currency or duration differs, or expectedPriceMinor differs without override), PACKAGE_INACTIVE, REQUEST_ID_CONFLICT",
         ),
         requestBody: jsonBody(createSubscriptionRequestSchema),
         responses: protectedResponses({
@@ -627,7 +638,171 @@ export const openApiDocument: OpenApiDocument = createDocument({
           ),
           "400": apiErrorResponse,
           "404": apiErrorResponse,
+          "409": apiErrorResponse,
           "503": apiErrorResponse,
+        }),
+      },
+    },
+    "/api/admin/subscriptions/{id}/payments": {
+      get: {
+        tags: ["admin"],
+        operationId: "listSubscriptionPayments",
+        summary: "List the payments of a period",
+        ...requiredRole(
+          "owner | admin | staff (a gym of the period must be in scope)",
+          "Voided payments are included and marked",
+        ),
+        requestParams: { path: idPathParams },
+        responses: protectedResponses({
+          "200": jsonResponse("Payments, newest first", z.array(paymentSchema)),
+          "404": apiErrorResponse,
+        }),
+      },
+      post: {
+        tags: ["admin"],
+        operationId: "recordPayment",
+        summary: "Record a payment against a sold period",
+        ...requiredRole(
+          "owner | admin | staff (gymId in scope and on the period)",
+          "Runs under the member's subscription lock; amountMinor above the balance is PAYMENT_EXCEEDS_BALANCE. A repeated requestId returns the existing payment. Errors: SUBSCRIPTION_UNPRICED, PAYMENT_GYM_NOT_ON_PERIOD, REQUEST_ID_CONFLICT",
+        ),
+        requestParams: { path: idPathParams },
+        requestBody: jsonBody(recordPaymentRequestSchema),
+        responses: protectedResponses({
+          "200": jsonResponse("Payment and new balance", paymentResultSchema),
+          "400": apiErrorResponse,
+          "404": apiErrorResponse,
+          "409": apiErrorResponse,
+          "503": apiErrorResponse,
+        }),
+      },
+    },
+    "/api/admin/subscriptions/{id}/sale": {
+      patch: {
+        tags: ["admin"],
+        operationId: "updateSubscriptionSale",
+        summary: "Change the promised payment date of a period",
+        ...requiredRole(
+          "owner | admin (a gym of the period must be in scope)",
+          "Sets or clears nextPaymentDue; the price and payments are untouched",
+        ),
+        requestParams: { path: idPathParams },
+        requestBody: jsonBody(updateSubscriptionSaleRequestSchema),
+        responses: protectedResponses({
+          "200": jsonResponse("Updated period", subscriptionSchema),
+          "400": apiErrorResponse,
+          "404": apiErrorResponse,
+          "409": apiErrorResponse,
+        }),
+      },
+    },
+    "/api/admin/payments/{id}/void": {
+      post: {
+        tags: ["admin"],
+        operationId: "voidPayment",
+        summary: "Void a payment",
+        ...requiredRole(
+          "owner | admin (the payment's gym must be in scope)",
+          "Under the member's subscription lock, shared with account erasure. Erased members return PAYMENT_NOT_FOUND. Once only (PAYMENT_ALREADY_VOIDED); a voided payment no longer counts toward the balance or cash totals",
+        ),
+        requestParams: { path: idPathParams },
+        requestBody: jsonBody(voidPaymentRequestSchema),
+        responses: protectedResponses({
+          "200": jsonResponse(
+            "Voided payment and new balance",
+            paymentResultSchema,
+          ),
+          "400": apiErrorResponse,
+          "404": apiErrorResponse,
+          "409": apiErrorResponse,
+          "503": apiErrorResponse,
+        }),
+      },
+    },
+    "/api/admin/packages": {
+      get: {
+        tags: ["admin"],
+        operationId: "listPackages",
+        summary: "List catalog packages",
+        ...requiredRole(
+          "owner | admin | staff",
+          "Active packages for the sale modal; all=true (owner only) also lists inactive ones",
+        ),
+        requestParams: {
+          query: z.object({ all: z.enum(["true", "false"]).optional() }),
+        },
+        responses: protectedResponses({
+          "200": jsonResponse(
+            "Packages and chain currency",
+            packageListResponseSchema,
+          ),
+          "400": apiErrorResponse,
+        }),
+      },
+      post: {
+        tags: ["admin"],
+        operationId: "createPackage",
+        summary: "Create a catalog package",
+        ...requiredRole("owner", "Adds a package to the chain-wide catalog"),
+        requestBody: jsonBody(createPackageRequestSchema),
+        responses: protectedResponses({
+          "201": jsonResponse("Package created", packageSchema),
+          "400": apiErrorResponse,
+        }),
+      },
+    },
+    "/api/admin/packages/{id}": {
+      patch: {
+        tags: ["admin"],
+        operationId: "updatePackage",
+        summary: "Update or deactivate a catalog package",
+        ...requiredRole(
+          "owner",
+          "Partial update; packages are never deleted. A price change is audited with the old and new price",
+        ),
+        requestParams: { path: idPathParams },
+        requestBody: jsonBody(updatePackageRequestSchema),
+        responses: protectedResponses({
+          "200": jsonResponse("Updated package", packageSchema),
+          "400": apiErrorResponse,
+          "404": apiErrorResponse,
+        }),
+      },
+    },
+    "/api/admin/gyms/{gymId}/reports/cash": {
+      get: {
+        tags: ["admin"],
+        operationId: "getCashReport",
+        summary: "Daily cash report",
+        ...requiredRole(
+          "owner | admin (gym in scope)",
+          "Non-voided payments recorded at the gym during one local day in REPORTS_TIME_ZONE (default: today); voided ones are listed apart",
+        ),
+        requestParams: {
+          path: gymIdPathParams,
+          query: z.object({ day: dayLabelQuerySchema.optional() }),
+        },
+        responses: protectedResponses({
+          "200": jsonResponse("Cash report", cashReportSchema),
+          "400": apiErrorResponse,
+          "404": apiErrorResponse,
+        }),
+      },
+    },
+    "/api/admin/gyms/{gymId}/reports/debtors": {
+      get: {
+        tags: ["admin"],
+        operationId: "listDebtors",
+        summary: "Periods with an outstanding balance",
+        ...requiredRole(
+          "owner | admin | staff (gym in scope)",
+          "Overdue first, then by due date, then larger balance first; keyset paged",
+        ),
+        requestParams: { path: gymIdPathParams, query: pageQuerySchema },
+        responses: protectedResponses({
+          "200": jsonResponse("Debtors", pageSchema(debtorRowSchema)),
+          "400": apiErrorResponse,
+          "404": apiErrorResponse,
         }),
       },
     },
@@ -638,7 +813,7 @@ export const openApiDocument: OpenApiDocument = createDocument({
         summary: "Cancel a subscription period that has not started",
         ...requiredRole(
           "owner | admin | staff (access to every gym on the period)",
-          "Deletes a not-yet-started period and moves the member's later periods earlier by its duration; refused with SUBSCRIPTION_STARTED once it has begun",
+          "Deletes a not-yet-started period and moves the member's later periods earlier by its duration; refused with SUBSCRIPTION_STARTED once it has begun and with SUBSCRIPTION_HAS_PAYMENTS while it has non-voided payments",
         ),
         requestParams: { path: idPathParams },
         responses: protectedResponses({
@@ -681,7 +856,7 @@ export const openApiDocument: OpenApiDocument = createDocument({
         summary: "List user subscriptions",
         ...requiredRole(
           "owner | admin | staff",
-          "Returns subscription periods belonging to the target user",
+          "Returns the latest 50 subscription periods plus every older period with an outstanding balance visible to the caller, ordered by end date, creation date and id descending",
         ),
         requestParams: { path: idPathParams },
         responses: protectedResponses({
@@ -951,7 +1126,7 @@ export const openApiDocument: OpenApiDocument = createDocument({
         requestParams: { path: gymPathParams },
         ...requiredRole(
           "owner | admin (scoped to the gym)",
-          "Returns devices with online status and 24-hour uptime; each row carries qrContent, which is itself the gate credential",
+          "Returns devices with online status and 24-hour uptime; qrContent and the bidirectional exitQrContent are gate credentials",
         ),
         responses: protectedResponses({
           "200": jsonResponse("Devices", z.array(deviceSchema)),
@@ -964,7 +1139,7 @@ export const openApiDocument: OpenApiDocument = createDocument({
         requestParams: { path: gymPathParams },
         ...requiredRole(
           "owner | admin (scoped to the gym)",
-          "Registers the device; the plaintext device token appears only in this response",
+          "Registers an entry, exit, or bidirectional device; bidirectional devices have a signed QR per face. The plaintext device token appears only in this response",
         ),
         requestBody: jsonBody(createDeviceRequestSchema),
         responses: protectedResponses({

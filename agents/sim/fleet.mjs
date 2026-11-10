@@ -7,7 +7,7 @@
 // the admin API, creates new ones, and writes their credentials to devices.json.
 //
 // Usage:
-//   Setup: ADMIN_PASSWORD=... node fleet.mjs setup ["Name:in" "Name2:out" ...]
+//   Setup: ADMIN_PASSWORD=... node fleet.mjs setup ["Name:in" "Name2:out" "Name3:both" ...]
 //          (default without arguments: "Entrance Turnstile:in" "Exit Turnstile:out")
 //   Run:   node fleet.mjs
 //
@@ -86,9 +86,9 @@ function parseDeviceArgs(args) {
     const sep = arg.lastIndexOf(":");
     const name = sep === -1 ? arg : arg.slice(0, sep);
     const direction = sep === -1 ? "in" : arg.slice(sep + 1);
-    if (!name || (direction !== "in" && direction !== "out")) {
+    if (!name || !["in", "out", "both"].includes(direction)) {
       console.error(
-        `Invalid device argument: "${arg}" — expected format: "Name:in" or "Name:out".`,
+        `Invalid device argument: "${arg}" — expected format: "Name:in", "Name:out", or "Name:both".`,
       );
       process.exit(2);
     }
@@ -215,7 +215,7 @@ function connectDevice(gatewayUrl, device) {
 
       if (msg.type === "open") {
         console.log(
-          `[${device.name}] OPEN — relay triggered for ${msg.openMs ?? 500} ms`,
+          `[${device.name}] OPEN — side ${msg.side}, relay triggered for ${msg.openMs ?? 500} ms`,
         );
       }
     });

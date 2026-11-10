@@ -8,7 +8,11 @@ import {
   View,
   useWindowDimensions,
 } from "react-native";
-import type { MySubscriptionGym, OccupancyResponse } from "@opengym/shared";
+import type {
+  MySubscription,
+  MySubscriptionGym,
+  OccupancyResponse,
+} from "@opengym/shared";
 import { occupancyLevel } from "../lib/occupancy";
 import { useTabSwipeLock } from "../lib/tabSwipeLock";
 import {
@@ -19,6 +23,7 @@ import {
 } from "../theme";
 import { Badge, Plate } from "../ui";
 import { occupancyColor } from "./GymCard";
+import { MembershipBilling } from "./MembershipBilling";
 
 const WATCHDOG_MS = 1500;
 const WATCHDOG_MAX_HOLD_MS = 10_000;
@@ -32,12 +37,14 @@ export function MembershipPager({
   gyms,
   occupancy,
   badge,
+  billing,
   formatDate,
   onPageChange,
 }: {
   gyms: MySubscriptionGym[];
   occupancy: OccupancyResponse[];
   badge: { label: string; tone: "success" | "warning" | "neutral" | "error" };
+  billing: MySubscription["billing"];
   formatDate: (value?: string | null) => string;
   /** Fired when the visible page changes (swipe or dot tap). */
   onPageChange?: (index: number) => void;
@@ -182,6 +189,10 @@ export function MembershipPager({
                       </View>
                     ) : null}
                   </View>
+                  <MembershipBilling
+                    billing={billing}
+                    formatDate={formatDate}
+                  />
                 </Plate>
               </View>
             );

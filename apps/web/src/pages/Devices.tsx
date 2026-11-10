@@ -6,6 +6,7 @@ import type {
   Device,
   DeviceCreated,
   DeviceDirection,
+  DeviceMode,
   Gym,
 } from "@opengym/shared";
 import { api, isAbortError } from "../lib/api";
@@ -22,36 +23,75 @@ function escapeHtml(value: string): string {
     .replace(/"/g, "&quot;");
 }
 
-// Minimal page written to the print window: QR and label to attach to the turnstile
+interface QrImage {
+  side: DeviceDirection;
+  dataUrl: string;
+}
+
+async function deviceQrImages(
+  device: Pick<Device, "direction" | "qrContent" | "exitQrContent">,
+): Promise<QrImage[]> {
+  const faces: { side: DeviceDirection; content: string }[] = [
+    {
+      side: device.direction === "out" ? "out" : "in",
+      content: device.qrContent,
+    },
+  ];
+  if (device.exitQrContent) {
+    faces.push({ side: "out", content: device.exitQrContent });
+  }
+  return Promise.all(
+    faces.map(async ({ side, content }) => ({
+      side,
+      dataUrl: await QRCode.toDataURL(content, { width: 320, margin: 2 }),
+    })),
+  );
+}
+
+// Print every face on one page, with labels for attaching each QR to the turnstile.
 function printQr(
   name: string,
   title: string,
-  direction: string,
-  dataUrl: string,
+  faces: { label: string; dataUrl: string }[],
 ): void {
   const win = window.open("", "_blank");
   if (!win) {
     return;
   }
   win.document.write(`<!doctype html>
-    <html><head><title>${escapeHtml(title)}</title></head>
-    <body style="text-align:center;font-family:sans-serif;padding:40px;">
+    <html><head><title>${escapeHtml(title)}</title>
+      <style>
+        @page { size: A4; margin: 12mm; }
+        body { text-align: center; font-family: sans-serif; margin: 0; padding: 16px; }
+        section { break-inside: avoid; margin: 16px 0; }
+        p { margin: 0 0 8px; }
+        img { width: 280px; height: 280px; }
+      </style>
+    </head><body>
       <h2>${escapeHtml(name)}</h2>
-      <p>${escapeHtml(direction)}</p>
-      <img src="${dataUrl}" style="width:320px;height:320px;" />
+      ${faces
+        .map(
+          ({ label, dataUrl }) => `<section>
+            <p>${escapeHtml(label)}</p>
+            <img src="${dataUrl}" alt="${escapeHtml(label)}" />
+          </section>`,
+        )
+        .join("")}
     </body></html>`);
   win.document.close();
-  // The output may be blank if printing starts before the image loads
-  const img = win.document.querySelector("img");
-  const doPrint = () => {
+  // Both faces must finish loading before the print dialog opens.
+  void Promise.all(
+    Array.from(win.document.images).map(
+      (img) =>
+        new Promise<void>((resolve) => {
+          if (img.complete) resolve();
+          else img.onload = () => resolve();
+        }),
+    ),
+  ).then(() => {
     win.focus();
     win.print();
-  };
-  if (img && !img.complete) {
-    img.onload = doPrint;
-  } else {
-    doPrint();
-  }
+  });
 }
 
 export function Devices() {
@@ -60,18 +100,33 @@ export function Devices() {
   const locale = dateLocale(i18n.resolvedLanguage);
   const fmt = (iso: string | null) =>
     iso ? new Date(iso).toLocaleString(locale) : "—";
-  const directionLabel = (value: DeviceDirection) =>
-    value === "in" ? t("Entry") : t("Exit");
+  const directionLabel = (value: DeviceMode) =>
+    value === "both"
+      ? t("Bidirectional")
+      : value === "in"
+        ? t("Entry")
+        : t("Exit");
+  const faceLabel = (mode: DeviceMode, side: DeviceDirection) =>
+    mode === "both"
+      ? side === "in"
+        ? t("Entry side")
+        : t("Exit side")
+      : directionLabel(mode);
+  const printableFaces = (mode: DeviceMode, images: QrImage[]) =>
+    images.map(({ side, dataUrl }) => ({
+      label: faceLabel(mode, side),
+      dataUrl,
+    }));
   const [devices, setDevices] = useState<Device[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [name, setName] = useState("");
-  const [direction, setDirection] = useState<DeviceDirection>("in");
+  const [direction, setDirection] = useState<DeviceMode>("in");
   const [busy, setBusy] = useState(false);
   const [created, setCreated] = useState<DeviceCreated | null>(null);
-  const [createdQr, setCreatedQr] = useState<string | null>(null);
+  const [createdQrs, setCreatedQrs] = useState<QrImage[]>([]);
   const [copied, setCopied] = useState(false);
   const [previewId, setPreviewId] = useState<string | null>(null);
-  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [previewQrs, setPreviewQrs] = useState<QrImage[]>([]);
   const [locationConfigured, setLocationConfigured] = useState(true);
 
   useEffect(() => {
@@ -105,9 +160,8 @@ export function Devices() {
         body: { name, direction },
       });
       setCreated(device);
-      setCreatedQr(
-        await QRCode.toDataURL(device.qrContent, { width: 320, margin: 2 }),
-      );
+      setCreatedQrs([]);
+      setCreatedQrs(await deviceQrImages(device));
       setName("");
       setDirection("in");
       await load();
@@ -150,15 +204,12 @@ export function Devices() {
   async function togglePreview(device: Device) {
     if (previewId === device.id) {
       setPreviewId(null);
-      setPreviewUrl(null);
+      setPreviewQrs([]);
       return;
     }
-    const dataUrl = await QRCode.toDataURL(device.qrContent, {
-      width: 320,
-      margin: 2,
-    });
+    const images = await deviceQrImages(device);
     setPreviewId(device.id);
-    setPreviewUrl(dataUrl);
+    setPreviewQrs(images);
   }
 
   return (
@@ -195,18 +246,25 @@ export function Devices() {
               {copied ? t("Copied") : t("Copy")}
             </button>
           </div>
-          {createdQr && (
+          {createdQrs.length > 0 && (
             <div style={{ marginTop: 16 }}>
               <p style={{ color: "var(--ink-dim)", marginBottom: 10 }}>
                 {t(
                   "Print this static QR code and attach it to the turnstile for members to scan.",
                 )}
               </p>
-              <div className="qr-box">
-                <img
-                  src={createdQr}
-                  alt={t("QR code for {{name}}", { name: created.name })}
-                />
+              <div className="row" style={{ flexWrap: "wrap" }}>
+                {createdQrs.map(({ side, dataUrl }) => (
+                  <div key={side}>
+                    <p>{faceLabel(created.direction, side)}</p>
+                    <div className="qr-box">
+                      <img
+                        src={dataUrl}
+                        alt={faceLabel(created.direction, side)}
+                      />
+                    </div>
+                  </div>
+                ))}
               </div>
               <button
                 type="button"
@@ -215,8 +273,7 @@ export function Devices() {
                   printQr(
                     created.name,
                     t("{{name}} — Turnstile QR", { name: created.name }),
-                    directionLabel(created.direction),
-                    createdQr,
+                    printableFaces(created.direction, createdQrs),
                   )
                 }
               >
@@ -226,7 +283,7 @@ export function Devices() {
           )}
         </div>
       )}
-      {previewId && previewUrl && (
+      {previewId && previewQrs.length > 0 && (
         <div className="panel">
           <h2>
             {t("{{name}} — QR", {
@@ -234,8 +291,27 @@ export function Devices() {
                 devices.find((d) => d.id === previewId)?.name ?? t("Device"),
             })}
           </h2>
-          <div className="qr-box">
-            <img src={previewUrl} alt={t("Device QR code")} />
+          <div className="row" style={{ flexWrap: "wrap" }}>
+            {previewQrs.map(({ side, dataUrl }) => (
+              <div key={side}>
+                <p>
+                  {faceLabel(
+                    devices.find((d) => d.id === previewId)?.direction ?? "in",
+                    side,
+                  )}
+                </p>
+                <div className="qr-box">
+                  <img
+                    src={dataUrl}
+                    alt={faceLabel(
+                      devices.find((d) => d.id === previewId)?.direction ??
+                        "in",
+                      side,
+                    )}
+                  />
+                </div>
+              </div>
+            ))}
           </div>
           <div className="row">
             <button
@@ -247,8 +323,7 @@ export function Devices() {
                   printQr(
                     device.name,
                     t("{{name}} — Turnstile QR", { name: device.name }),
-                    directionLabel(device.direction),
-                    previewUrl,
+                    printableFaces(device.direction, previewQrs),
                   );
                 }
               }}
@@ -260,7 +335,7 @@ export function Devices() {
               className="ghost"
               onClick={() => {
                 setPreviewId(null);
-                setPreviewUrl(null);
+                setPreviewQrs([]);
               }}
             >
               {t("Close")}
@@ -286,10 +361,11 @@ export function Devices() {
             <select
               id="deviceDirection"
               value={direction}
-              onChange={(e) => setDirection(e.target.value as DeviceDirection)}
+              onChange={(e) => setDirection(e.target.value as DeviceMode)}
             >
               <option value="in">{t("Entry")}</option>
               <option value="out">{t("Exit")}</option>
+              <option value="both">{t("Bidirectional")}</option>
             </select>
           </div>
           <button type="submit" disabled={busy}>

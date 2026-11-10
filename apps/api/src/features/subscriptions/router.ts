@@ -1,31 +1,33 @@
 import { Router, type Response } from "express";
 import { ObjectId } from "mongodb";
 import { z } from "zod";
-import type { CancelSubscriptionResponse } from "@opengym/shared";
+import type {
+  CancelSubscriptionResponse,
+  PackageDuration,
+} from "@opengym/shared";
 import { sendApiError } from "../../core/apiError.js";
 import { toObjectId, userCollection } from "../../core/db.js";
 import { logAuditPerGym } from "../../core/audit.js";
 import { authed, requireRole } from "../../core/middleware.js";
 import { canAccessGym, validateSubscriptionGymIds } from "../gyms/gyms.js";
+import { findPackage } from "../packages/packages.js";
+import { getChainCurrency } from "../payments/money.js";
 import {
   cancelScheduledSubscription,
   createSequentialSubscription,
   findSubscription,
-  listUserSubscriptions,
+  RequestIdConflictError,
   setSubscriptionGymIds,
+  subscriptionCollection,
   SubscriptionLockTimeoutError,
+  type SaleSnapshot,
 } from "./subscriptions.js";
+import { mayChoosePrice } from "./sale.js";
+import { confirmedSaleSchema, saleTermsChanged } from "./confirmedSale.js";
+import { canSeeSale, toSubscriptionDtos } from "./subscriptionDto.js";
+import { listSubscriptionsWithDebt } from "./subscriptionsWithDebt.js";
 
 export const subscriptionsRouter: Router = Router();
-
-const createSubscriptionSchema = z
-  .object({
-    userId: z.string(),
-    months: z.union([z.literal(1), z.literal(3), z.literal(6), z.literal(12)]),
-    gymIds: z.array(z.string().min(1).max(64)).max(200),
-    note: z.string().trim().max(500).optional(),
-  })
-  .strict();
 
 type GymCheckFailure = Extract<
   Awaited<ReturnType<typeof validateSubscriptionGymIds>>,
@@ -53,13 +55,14 @@ function sendGymCheckError(res: Response, reason: GymCheckFailure): void {
   }
 }
 
-// US-6: create or extend a subscription. Members are chain-wide, so the route
-// is not gym-scoped; instead the caller must have access to EVERY gym listed.
+// US-6: sell a period (catalog package or custom grant). Members are chain-wide,
+// so the route is not gym-scoped; instead the caller must have access to EVERY
+// gym listed.
 subscriptionsRouter.post(
   "/subscriptions",
   requireRole("owner", "admin", "staff"),
   authed(async (req, res) => {
-    const parsed = createSubscriptionSchema.safeParse(req.body ?? {});
+    const parsed = confirmedSaleSchema.safeParse(req.body ?? {});
     const targetId = parsed.success ? toObjectId(parsed.data.userId) : null;
     if (!parsed.success || !targetId) {
       sendApiError(
@@ -70,41 +73,159 @@ subscriptionsRouter.post(
       );
       return;
     }
-    const gymCheck = await validateSubscriptionGymIds(
-      parsed.data.gymIds,
-      req.user,
-    );
-    if (!gymCheck.ok) {
-      sendGymCheckError(res, gymCheck.reason);
-      return;
-    }
-    const target = await userCollection().findOne({ _id: targetId });
-    if (!target) {
-      sendApiError(res, 404, "USER_NOT_FOUND", "User not found.");
-      return;
-    }
+    const body = parsed.data;
     try {
+      // A repeat of an earlier submit answers with that period even if the
+      // gyms or package were deactivated or the sale terms changed in between.
+      const earlier = await subscriptionCollection().findOne({
+        requestId: body.requestId,
+      });
+      if (earlier && canSeeSale(req.user, earlier.gymIds ?? [])) {
+        if (!earlier.userId.equals(targetId))
+          throw new RequestIdConflictError();
+        res.json({
+          ok: true,
+          id: earlier._id.toHexString(),
+          startsAt: earlier.startsAt.toISOString(),
+          endsAt: earlier.endsAt.toISOString(),
+        });
+        return;
+      }
+
+      // An inaccessible request id follows the same validation path as a new
+      // request; never return that period through the lower-level replay.
+      if (!mayChoosePrice(req.user.role, body)) {
+        sendApiError(
+          res,
+          403,
+          "PRICE_OVERRIDE_FORBIDDEN",
+          "Only an owner or admin can override the price or grant a custom period.",
+        );
+        return;
+      }
+      const gymCheck = await validateSubscriptionGymIds(body.gymIds, req.user);
+      if (!gymCheck.ok) {
+        sendGymCheckError(res, gymCheck.reason);
+        return;
+      }
+      const target = await userCollection().findOne({ _id: targetId });
+      if (!target) {
+        sendApiError(res, 404, "USER_NOT_FOUND", "User not found.");
+        return;
+      }
+
+      const currency = await getChainCurrency();
+      const nextPaymentDue = body.nextPaymentDue ?? null;
+      let duration: PackageDuration;
+      let sale: SaleSnapshot;
+      let listPriceMinor: number | null = null;
+      if ("custom" in body) {
+        duration = { unit: "day", value: body.custom.days };
+        if (
+          saleTermsChanged(body, currency, duration, body.custom.priceMinor)
+        ) {
+          sendApiError(
+            res,
+            409,
+            "PACKAGE_PRICE_CHANGED",
+            "The sale terms have changed. Review them before selling.",
+          );
+          return;
+        }
+        sale = {
+          packageId: null,
+          packageName: body.custom.label ?? `${body.custom.days} days`,
+          duration,
+          listPriceMinor: null,
+          priceMinor: body.custom.priceMinor,
+          currency,
+          nextPaymentDue,
+        };
+      } else {
+        const pkg = await findPackage(body.packageId);
+        if (!pkg) {
+          sendApiError(res, 404, "PACKAGE_NOT_FOUND", "Package not found.");
+          return;
+        }
+        if (!pkg.active) {
+          sendApiError(
+            res,
+            409,
+            "PACKAGE_INACTIVE",
+            "This package is no longer on sale.",
+          );
+          return;
+        }
+        if (saleTermsChanged(body, currency, pkg.duration, pkg.priceMinor)) {
+          sendApiError(
+            res,
+            409,
+            "PACKAGE_PRICE_CHANGED",
+            "The sale terms have changed. Review them before selling.",
+          );
+          return;
+        }
+        const price = body.priceMinor ?? pkg.priceMinor;
+        if (price === null) {
+          sendApiError(
+            res,
+            409,
+            "PACKAGE_PRICE_UNSET",
+            "This package has no price yet. Set one in the catalog first.",
+          );
+          return;
+        }
+        duration = pkg.duration;
+        listPriceMinor = pkg.priceMinor;
+        sale = {
+          packageId: pkg._id,
+          packageName: pkg.name,
+          duration,
+          listPriceMinor,
+          priceMinor: price,
+          currency,
+          nextPaymentDue,
+        };
+      }
+
+      if (earlier) throw new RequestIdConflictError();
       const created = await createSequentialSubscription({
         userId: targetId,
-        months: parsed.data.months,
+        duration,
         gymIds: gymCheck.ids,
-        note: parsed.data.note || null,
+        note: body.note || null,
         createdBy: req.user.id,
+        sale,
+        requestId: body.requestId,
       });
-      const gymHexIds = gymCheck.ids.map((id) => id.toHexString());
-      await logAuditPerGym(
-        req.user,
-        "subscription-created",
-        parsed.data.userId,
-        {
-          months: parsed.data.months,
-          startsAt: created.startsAt.toISOString(),
-          endsAt: created.endsAt.toISOString(),
-          subscriptionId: created.id.toHexString(),
-          gymIds: gymHexIds,
-        },
-        gymHexIds,
-      );
+      if (created.replayed) {
+        const period = await findSubscription(created.id);
+        if (!period || !canSeeSale(req.user, period.gymIds ?? [])) {
+          throw new RequestIdConflictError();
+        }
+      }
+      if (!created.replayed) {
+        const gymHexIds = gymCheck.ids.map((id) => id.toHexString());
+        await logAuditPerGym(
+          req.user,
+          "subscription-created",
+          body.userId,
+          {
+            package: sale.packageName,
+            packageId: sale.packageId?.toHexString() ?? null,
+            duration,
+            listPriceMinor,
+            priceMinor: sale.priceMinor,
+            currency: sale.currency,
+            custom: "custom" in body,
+            startsAt: created.startsAt.toISOString(),
+            endsAt: created.endsAt.toISOString(),
+            subscriptionId: created.id.toHexString(),
+            gymIds: gymHexIds,
+          },
+          gymHexIds,
+        );
+      }
       res.json({
         ok: true,
         id: created.id.toHexString(),
@@ -118,6 +239,15 @@ subscriptionsRouter.post(
           503,
           "SUBSCRIPTION_BUSY",
           "A subscription operation is in progress. Please try again.",
+        );
+        return;
+      }
+      if (error instanceof RequestIdConflictError) {
+        sendApiError(
+          res,
+          409,
+          "REQUEST_ID_CONFLICT",
+          "The request id was already used for a different record.",
         );
         return;
       }
@@ -213,16 +343,8 @@ subscriptionsRouter.put(
       { subscriptionId: subscriptionId.toHexString(), before, after },
       [...added, ...removed],
     );
-    res.json({
-      id: updated._id.toHexString(),
-      userId: updated.userId.toHexString(),
-      startsAt: updated.startsAt.toISOString(),
-      endsAt: updated.endsAt.toISOString(),
-      note: updated.note ?? undefined,
-      gymIds: after,
-      createdBy: updated.createdBy,
-      createdAt: updated.createdAt.toISOString(),
-    });
+    const [body] = await toSubscriptionDtos([updated], req.user);
+    res.json(body);
   }),
 );
 
@@ -272,6 +394,14 @@ subscriptionsRouter.delete(
             "A gym on this subscription is outside your scope.",
           );
           return;
+        case "has-payments":
+          sendApiError(
+            res,
+            409,
+            "SUBSCRIPTION_HAS_PAYMENTS",
+            "This subscription period has payments. Void them first, then cancel.",
+          );
+          return;
       }
       const { cancelled, shifted } = result;
       const gymHexIds = (cancelled.gymIds ?? []).map((id) => id.toHexString());
@@ -294,16 +424,7 @@ subscriptionsRouter.delete(
       );
       const body: CancelSubscriptionResponse = {
         ok: true,
-        shifted: shifted.map((doc) => ({
-          id: doc._id.toHexString(),
-          userId: doc.userId.toHexString(),
-          startsAt: doc.startsAt.toISOString(),
-          endsAt: doc.endsAt.toISOString(),
-          note: doc.note ?? undefined,
-          gymIds: (doc.gymIds ?? []).map((id) => id.toHexString()),
-          createdBy: doc.createdBy,
-          createdAt: doc.createdAt.toISOString(),
-        })),
+        shifted: await toSubscriptionDtos(shifted, req.user),
       };
       res.json(body);
     } catch (error) {
@@ -324,24 +445,13 @@ subscriptionsRouter.delete(
 subscriptionsRouter.get(
   "/users/:id/subscriptions",
   requireRole("owner", "admin", "staff"),
-  async (req, res) => {
+  authed(async (req, res) => {
     const targetId = toObjectId(String(req.params.id ?? ""));
     if (!targetId) {
       sendApiError(res, 400, "INVALID_USER", "Invalid user.");
       return;
     }
-    const docs = await listUserSubscriptions(targetId);
-    res.json(
-      docs.map((d) => ({
-        id: d._id.toString(),
-        userId: d.userId.toString(),
-        startsAt: d.startsAt.toISOString(),
-        endsAt: d.endsAt.toISOString(),
-        note: d.note ?? undefined,
-        gymIds: (d.gymIds ?? []).map((id) => id.toHexString()),
-        createdBy: d.createdBy,
-        createdAt: d.createdAt.toISOString(),
-      })),
-    );
-  },
+    const docs = await listSubscriptionsWithDebt(targetId, req.user);
+    res.json(await toSubscriptionDtos(docs, req.user));
+  }),
 );

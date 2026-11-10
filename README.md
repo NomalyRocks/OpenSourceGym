@@ -9,11 +9,12 @@ Self-hosted gym automation for a single gym or a chain of gyms under one busines
 - **Member self-registration** — e-mail + password with OTP verification and explicit data-processing / privacy consent
 - **Subscriptions** — sequential membership periods per gym, freezes, cancellations, renewal reminders
 - **QR turnstile entry** — a static QR on each turnstile, scanned by the member's phone; the API checks subscription, geofence, anti-passback and account sharing, then opens the gate over WebSocket
+- **Payments** — priced package catalog, partial payments and balances, daily cash report and debtors list (recording only; no online payments)
 - **Staff and roles** — `owner`, `admin`, `staff`, `member`, with admin/staff scoped to their gyms
 - **Admin panel** — members, entries, live occupancy, devices, reports, CSV export, audit log
 - **Member app** — subscription status, entry history, gate scan, body metrics and calorie calculator (TR/EN)
 
-Online payments, multi-tenant hosting of unrelated businesses and class booking/training/diet features are out of scope. See [`PRD.md`](PRD.md) (Turkish) for requirements and [`ROADMAP.md`](ROADMAP.md) (Turkish) for progress.
+Online payment collection, multi-tenant hosting of unrelated businesses and class booking/training/diet features are out of scope; payments taken at the gym are recorded, not collected online. See [`PRD.md`](PRD.md) (Turkish) for requirements and [`ROADMAP.md`](ROADMAP.md) (Turkish) for progress.
 
 ## Stack
 
@@ -108,9 +109,14 @@ docker compose -f docker-compose.prod.yml up -d --build
 | [`docs/multi-gym.md`](docs/multi-gym.md)                         | Multi-gym / chain model                      |
 | [`docs/member-controls.md`](docs/member-controls.md)             | Ban, freeze, deletion on behalf              |
 | [`docs/reports-and-reminders.md`](docs/reports-and-reminders.md) | Reports and renewal reminders                |
+| [`docs/payments.md`](docs/payments.md)                           | Package catalog and payment records          |
 | [`docs/openapi.md`](docs/openapi.md)                             | OpenAPI document and Swagger UI              |
 | [`agents/README.md`](agents/README.md)                           | Turnstile device protocol and agents         |
 
 ## Contributing
 
 CI runs format → lint → typecheck → test → build on Node 22; run the same locally before opening a PR. All code, comments and technical docs are written in English; Turkish UI copy lives only in each client's `tr` translation map. See [`AGENTS.md`](AGENTS.md) for the full conventions.
+
+## License
+
+OpenGym is free software, licensed under the [GNU Affero General Public License v3.0 only](LICENSE) (`AGPL-3.0-only`). You may install, run, modify and redistribute it yourself. If you run a modified version as a network service, the AGPL requires you to offer its users the corresponding source code.

@@ -15,6 +15,14 @@ import { authed, requireRole } from "../../core/middleware.js";
 import { markOutsideEverywhere } from "../gyms/occupancy.js";
 import { revokeUserSessions } from "../../auth/sessions.js";
 import { deleteUserProfilePhotoForAccountDeletion } from "../profilePhoto/profilePhoto.js";
+import { anonymisePaymentsForUser } from "../payments/payments.js";
+import {
+  subscriptionUserLockKey,
+  SubscriptionLockTimeoutError,
+  USER_LOCK_LEASE_MS,
+  USER_LOCK_WAIT_MS,
+  withRedisLock,
+} from "../subscriptions/subscriptions.js";
 import { FP_CHURN_KEY, QR_BLOCK_KEY, QR_LOC_KEY } from "../gate/sharing.js";
 import {
   findPage,
@@ -149,40 +157,73 @@ deletionRequestsRouter.post(
       return;
     }
 
-    await userCollection().deleteOne({ _id: targetId });
-    await db.collection("account").deleteMany({ userId: targetId });
-    await db.collection("subscriptions").deleteMany({ userId: targetId });
-    await db
-      .collection("subscription_freezes")
-      .deleteMany({ userId: targetId });
-    await db.collection("twoFactor").deleteMany({ userId: targetId });
-    // Reminder records reveal that an email was sent to this member on a date
-    // and cannot remain tied to a member whose subscriptions were deleted under
-    // the right to erasure. They have no statistical value, so delete them.
-    await db.collection("renewal_reminders").deleteMany({ userId: targetId });
-    // Weight history is health data meaningful only with the member identity;
-    // it has no statistical value to anonymize, so delete it completely.
-    // Note: weight_history.userId is stored as a string, not an ObjectId.
-    await weightHistoryCollection().deleteMany({ userId: targetIdStr });
-    // Phase 6 sharing-detection records are also personal data (device
-    // fingerprint, location drift). Retaining them for up to 30 days via TTL
-    // conflicts with erasure, so approval removes them from storage and Redis.
-    await db.collection("sharing_signals").deleteMany({ userId: targetId });
-    await redis.del([
-      QR_LOC_KEY(targetIdStr),
-      QR_BLOCK_KEY(targetIdStr),
-      FP_CHURN_KEY(targetIdStr),
-      `og:mfa-fail:${targetIdStr}`,
-    ]);
-    await markOutsideEverywhere(targetIdStr);
-    // Historical gate records are kept for statistics but must not contain
-    // personal data.
-    await db
-      .collection("entry_events")
-      .updateMany(
-        { userId: targetIdStr },
-        { $set: { userId: null, memberName: null } },
+    try {
+      await withRedisLock(
+        subscriptionUserLockKey(targetIdStr),
+        USER_LOCK_LEASE_MS,
+        USER_LOCK_WAIT_MS,
+        async (assertOwned) => {
+          await assertOwned();
+          await userCollection().deleteOne({ _id: targetId });
+          await db.collection("account").deleteMany({ userId: targetId });
+          await db.collection("subscriptions").deleteMany({ userId: targetId });
+          await db
+            .collection("subscription_freezes")
+            .deleteMany({ userId: targetId });
+          await db.collection("twoFactor").deleteMany({ userId: targetId });
+          // Reminder records reveal that an email was sent to this member on a date
+          // and cannot remain tied to a member whose subscriptions were deleted under
+          // the right to erasure. They have no statistical value, so delete them.
+          await db
+            .collection("renewal_reminders")
+            .deleteMany({ userId: targetId });
+          // Weight history is health data meaningful only with the member identity;
+          // it has no statistical value to anonymize, so delete it completely.
+          // Note: weight_history.userId is stored as a string, not an ObjectId.
+          await weightHistoryCollection().deleteMany({ userId: targetIdStr });
+          // Phase 6 sharing-detection records are also personal data (device
+          // fingerprint, location drift). Retaining them for up to 30 days via TTL
+          // conflicts with erasure, so approval removes them from storage and Redis.
+          await db
+            .collection("sharing_signals")
+            .deleteMany({ userId: targetId });
+          await redis.del([
+            QR_LOC_KEY(targetIdStr),
+            QR_BLOCK_KEY(targetIdStr),
+            FP_CHURN_KEY(targetIdStr),
+            `og:mfa-fail:${targetIdStr}`,
+          ]);
+          await markOutsideEverywhere(targetIdStr);
+          // Historical gate records are kept for statistics but must not contain
+          // personal data.
+          await db
+            .collection("entry_events")
+            .updateMany(
+              { userId: targetIdStr },
+              { $set: { userId: null, memberName: null } },
+            );
+          // Payments stay for the gym's financial records, but lose the link to the
+          // person and their free text; cash reports keep adding up.
+          await anonymisePaymentsForUser(targetIdStr);
+        },
       );
+    } catch (error) {
+      if (!(error instanceof SubscriptionLockTimeoutError)) throw error;
+      await db.collection("deletion_requests").updateOne(
+        { _id: requestId },
+        {
+          $set: { status: "pending" },
+          $unset: { resolvedAt: "", resolvedBy: "" },
+        },
+      );
+      sendApiError(
+        res,
+        503,
+        "SUBSCRIPTION_BUSY",
+        "A subscription operation is in progress. Please try again.",
+      );
+      return;
+    }
     // Audit records must not retain the deleted member's email under the right
     // to erasure; action history remains anonymously linked through actorId.
     await db
@@ -209,6 +250,7 @@ deletionRequestsRouter.post(
             "member-banned",
             "member-unbanned",
             "account-deletion-requested",
+            "payment-voided",
           ],
         },
       },
