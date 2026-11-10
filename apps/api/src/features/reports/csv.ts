@@ -30,3 +30,32 @@ export function csvRow(values: unknown[]): string {
  * appear corrupted in Windows Excel—the primary export consumer is accounting.
  */
 export const UTF8_BOM = "﻿";
+
+/** Stable entry export columns, including reception provenance. */
+export const entryCsvHeader = [
+  "id",
+  "gymId",
+  "at",
+  "deviceName",
+  "memberName",
+  "allowed",
+  "reason",
+  "source",
+  "actor",
+  "staffReason",
+];
+export function entryCsvValues(doc: Record<string, unknown>): unknown[] {
+  const source = doc.source ?? "qr";
+  return [
+    doc._id,
+    doc.gymId,
+    doc.at,
+    doc.deviceName,
+    doc.memberName,
+    doc.allowed,
+    doc.reason ?? null,
+    source,
+    doc.actorName,
+    doc.staffReason ?? null,
+  ];
+}

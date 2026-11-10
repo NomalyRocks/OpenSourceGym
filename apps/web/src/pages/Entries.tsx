@@ -50,6 +50,7 @@ export function Entries() {
   const [entries, setEntries] = useState<EntryEvent[]>([]);
   const [nextCursor, setNextCursor] = useState<string | null>(null);
   const [occupancy, setOccupancy] = useState<OccupancyResponse | null>(null);
+  const [source, setSource] = useState("");
   const [allowed, setAllowed] = useState("");
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
@@ -61,6 +62,7 @@ export function Entries() {
   function buildQuery(cursor: string | null): string {
     const params = new URLSearchParams();
     if (cursor) params.set("cursor", cursor);
+    if (source) params.set("source", source);
     if (allowed) params.set("allowed", allowed);
     // Resolve the bounds separately: the user can select only a start or only
     // an end. The end is pinned to the end of the day; sending the start of the
@@ -102,7 +104,7 @@ export function Entries() {
   }
 
   // A filter change invalidates the cursor, so the hook reloads the list from the start.
-  usePollingQuery(refresh, 10000, `${allowed}|${from}|${to}`);
+  usePollingQuery(refresh, 10000, `${allowed}|${source}|${from}|${to}`);
 
   /** Reset pagination on filter changes because the old cursor is invalid for the new filter. */
   function changeFilter(apply: () => void) {
@@ -160,6 +162,18 @@ export function Entries() {
           </select>
         </div>
         <div className="field">
+          <label htmlFor="entries-source">{t("Source")}</label>
+          <select
+            id="entries-source"
+            value={source}
+            onChange={(e) => changeFilter(() => setSource(e.target.value))}
+          >
+            <option value="">{t("All")}</option>
+            <option value="qr">{t("QR")}</option>
+            <option value="reception">{t("Reception")}</option>
+          </select>
+        </div>
+        <div className="field">
           <label htmlFor="entries-from">{t("Start")}</label>
           <input
             id="entries-from"
@@ -186,6 +200,7 @@ export function Entries() {
               <th>{t("Time")}</th>
               <th>{t("Device")}</th>
               <th>{t("Member")}</th>
+              <th>{t("Source")}</th>
               <th>{t("Result")}</th>
               <th>{t("Distance")}</th>
               <th>{t("Reason")}</th>
@@ -209,6 +224,17 @@ export function Entries() {
                     (e.memberName ?? "—")
                   )}
                 </td>
+                <td
+                  title={
+                    e.source === "reception"
+                      ? (e.staffReason ?? undefined)
+                      : undefined
+                  }
+                >
+                  {e.source === "reception"
+                    ? `${t("Reception")}${e.actorName ? ` · ${e.actorName}` : ""}`
+                    : t("QR")}
+                </td>
                 <td>
                   {e.allowed ? (
                     <span className="badge ok">{t("Allowed")}</span>
@@ -228,7 +254,7 @@ export function Entries() {
             ))}
             {entries.length === 0 && !error && (
               <tr>
-                <td colSpan={6}>{t("No records.")}</td>
+                <td colSpan={7}>{t("No records.")}</td>
               </tr>
             )}
           </tbody>

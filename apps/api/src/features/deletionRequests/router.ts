@@ -194,6 +194,12 @@ deletionRequestsRouter.post(
             `og:mfa-fail:${targetIdStr}`,
           ]);
           await markOutsideEverywhere(targetIdStr);
+          await db
+            .collection("entry_events")
+            .updateMany(
+              { userId: targetIdStr, source: "reception" },
+              { $set: { staffReason: null } },
+            );
           // Historical gate records are kept for statistics but must not contain
           // personal data.
           await db
@@ -255,6 +261,14 @@ deletionRequestsRouter.post(
         },
       },
       { $unset: { "details.reason": "", "details.previousReason": "" } },
+    );
+
+    await db.collection("audit_logs").updateMany(
+      {
+        targetId: targetIdStr,
+        action: { $in: ["gate-opened-by-staff", "gate-open-refused"] },
+      },
+      { $unset: { "details.staffReason": "" } },
     );
 
     // Remove the deleted user's PII from duplicate-phone conflict records; if

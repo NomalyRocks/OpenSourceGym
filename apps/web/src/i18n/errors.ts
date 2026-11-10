@@ -67,6 +67,7 @@ const codeMessages: Record<ApiErrorCode, WebTranslationKey> = {
   DELETION_ALREADY_PENDING: "You already have a pending deletion request.",
   DELETION_NOT_PENDING: "No pending deletion request was found.",
   INVALID_DEVICE_NAME: "Enter a valid device name.",
+  INVALID_DIRECTION: "The device does not support this direction.",
   DEVICE_NOT_FOUND: "The device was not found.",
   PASSWORD_TOO_SHORT: "The new password must be at least 8 characters.",
   CURRENT_PASSWORD_INVALID: "The password is incorrect.",

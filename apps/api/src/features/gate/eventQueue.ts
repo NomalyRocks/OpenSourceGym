@@ -36,7 +36,14 @@ export interface EntryEventInput {
 
 // Pushes a turnstile event to the Redis queue (fire-and-forget)—does not delay the API response
 export function enqueueEntryEvent(ev: EntryEventInput): void {
-  const serialized = JSON.stringify({ ...ev, at: ev.at.toISOString() });
+  const serialized = JSON.stringify({
+    ...ev,
+    source: "qr",
+    actorId: null,
+    actorName: null,
+    staffReason: null,
+    at: ev.at.toISOString(),
+  });
   redis.lPush(QUEUE_KEY, serialized).catch(console.error);
 }
 

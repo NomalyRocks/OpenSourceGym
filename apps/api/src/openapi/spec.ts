@@ -35,6 +35,8 @@ import {
   deviceSchema,
   entryEventSchema,
   gateScanRequestSchema,
+  gateOpenRequestSchema,
+  gateDeviceSummarySchema,
   gateScanResponseSchema,
   getSessionResponseSchema,
   chainSettingsRequestSchema,
@@ -177,6 +179,7 @@ const auditQuerySchema = pageQuerySchema.extend({
 });
 
 const entryEventQuerySchema = pageQuerySchema.extend({
+  source: z.enum(["qr", "reception"]).optional(),
   deviceId: z.string().min(1).max(64).optional().meta({
     description: "Device id to filter by (1-64 characters)",
   }),
@@ -1115,6 +1118,43 @@ export const openApiDocument: OpenApiDocument = createDocument({
           "200": jsonResponse("Request rejected", okSchema),
           "404": apiErrorResponse,
           "409": apiErrorResponse,
+        }),
+      },
+    },
+    "/api/admin/gyms/{gymId}/gate-devices": {
+      get: {
+        tags: ["devices"],
+        operationId: "listReceptionGateDevices",
+        summary: "List reception-safe gate devices",
+        ...requiredRole(
+          "owner | admin | staff (scoped to the gym)",
+          "Returns only id, name, direction and online status; no QR or token credentials",
+        ),
+        requestParams: { path: gymIdPathParams },
+        responses: protectedResponses({
+          "200": jsonResponse(
+            "Reception gate devices",
+            z.array(gateDeviceSummarySchema),
+          ),
+        }),
+      },
+    },
+    "/api/admin/gyms/{gymId}/gate-open": {
+      post: {
+        tags: ["devices"],
+        operationId: "openGateFromReception",
+        summary: "Open a gate for a person from reception",
+        ...requiredRole(
+          "owner | admin | staff (scoped to the gym)",
+          "Requires a reason. Evaluates the passing person's entry controls, skipping QR and location checks. Exits keep the QR flow's rules. Every scoped attempt is logged and audited. Limited to 30 requests per actor per 10 minutes; INVALID_DIRECTION when the device does not support the requested direction.",
+        ),
+        requestParams: { path: gymIdPathParams },
+        requestBody: jsonBody(gateOpenRequestSchema),
+        responses: protectedResponses({
+          "200": jsonResponse("Gate opened", gateScanResponseSchema),
+          "400": apiErrorResponse,
+          "404": apiErrorResponse,
+          "429": apiErrorResponse,
         }),
       },
     },

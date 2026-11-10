@@ -667,6 +667,7 @@ export type ApiErrorCode =
   | "DELETION_NOT_PENDING"
   | "INVALID_DEVICE_NAME"
   | "DEVICE_NOT_FOUND"
+  | "INVALID_DIRECTION"
   | "PASSWORD_TOO_SHORT"
   | "CURRENT_PASSWORD_INVALID"
   | "SEARCH_QUERY_TOO_SHORT"
@@ -767,6 +768,14 @@ export type DeviceDirection = "in" | "out";
 /** Physical turnstile mode: a single direction or both directions with a QR on each face. */
 export type DeviceMode = DeviceDirection | "both";
 
+/** Reception-safe device data; contains no gate credentials. */
+export interface GateDeviceSummary {
+  id: string;
+  name: string;
+  direction: DeviceMode;
+  online: boolean;
+}
+
 export interface Device {
   id: string;
   gymId: string;
@@ -804,6 +813,10 @@ export interface EntryEvent {
   userId: string | null;
   memberName: string | null;
   allowed: boolean;
+  source: "qr" | "reception";
+  actorName: string | null;
+  /** Staff explanation for reception attempts; null for QR attempts. */
+  staffReason: string | null;
   reason: GateRejectCode | null;
   at: string;
   /**
