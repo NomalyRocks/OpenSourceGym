@@ -27,6 +27,7 @@ import { Entries } from "./pages/Entries";
 import { Renewals } from "./pages/Renewals";
 import { Packages } from "./pages/Packages";
 import { Cash } from "./pages/Cash";
+import { LostMembers } from "./pages/LostMembers";
 import { Debtors } from "./pages/Debtors";
 import { Reports } from "./pages/Reports";
 import { Security } from "./pages/Security";
@@ -122,6 +123,7 @@ function Gate() {
               <Route path="renewals" element={<Renewals />} />
               <Route path="reports" element={<Reports />} />
               <Route path="debtors" element={<Debtors />} />
+              <Route path="lost-members" element={<LostMembers />} />
               {canAdmin && <Route path="cash" element={<Cash />} />}
               {canAdmin && <Route path="devices" element={<Devices />} />}
               {canAdmin && <Route path="settings" element={<Settings />} />}

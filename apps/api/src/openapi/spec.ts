@@ -18,6 +18,8 @@ import {
   cashReportSchema,
   createPackageRequestSchema,
   debtorRowSchema,
+  inactiveMemberRowSchema,
+  lapsedMemberRowSchema,
   packageSchema,
   packageListResponseSchema,
   paymentResultSchema,
@@ -76,6 +78,11 @@ import {
   verifyEmailOtpRequestSchema,
   verifyEmailOtpResponseSchema,
 } from "./schemas.js";
+
+import {
+  inactiveMembersQuerySchema,
+  lostMembersQuerySchema,
+} from "../features/reports/lostMembers.js";
 
 const jsonResponse = (
   description: string,
@@ -784,6 +791,94 @@ export const openApiDocument: OpenApiDocument = createDocument({
         },
         responses: protectedResponses({
           "200": jsonResponse("Cash report", cashReportSchema),
+          "400": apiErrorResponse,
+          "404": apiErrorResponse,
+        }),
+      },
+    },
+    "/api/admin/gyms/{gymId}/reports/inactive-members": {
+      get: {
+        tags: ["admin"],
+        operationId: "listInactiveMembers",
+        summary: "Active members who stopped visiting",
+        ...requiredRole(
+          "owner | admin | staff (gym in scope)",
+          "Active periods at this gym, open freezes excluded. Only allowed entry-direction scans at this gym count as visits. Never visited first, then oldest last visit; cursor or numbered pagination. Invalid days or pagination returns INVALID_REQUEST",
+        ),
+        requestParams: {
+          path: gymIdPathParams,
+          query: inactiveMembersQuerySchema,
+        },
+        responses: protectedResponses({
+          "200": jsonResponse(
+            "Inactive members and full total",
+            pageSchema(inactiveMemberRowSchema).extend({
+              total: z.number().int().nonnegative(),
+            }),
+          ),
+          "400": apiErrorResponse,
+          "404": apiErrorResponse,
+        }),
+      },
+    },
+    "/api/admin/gyms/{gymId}/reports/lapsed-members": {
+      get: {
+        tags: ["admin"],
+        operationId: "listLapsedMembers",
+        summary: "Members whose membership ended without renewal",
+        ...requiredRole(
+          "owner | admin | staff (gym in scope)",
+          "Same definition and range as summary lapsedMembers: latest period end at this gym is in the inclusive range, open freezes excluded. Default last 30 days through now, maximum 366 days. Most recently ended first; cursor or numbered pagination",
+        ),
+        requestParams: {
+          path: gymIdPathParams,
+          query: lostMembersQuerySchema.safeExtend({
+            from: z.iso.datetime().optional(),
+            to: z.iso.datetime().optional(),
+          }),
+        },
+        responses: protectedResponses({
+          "200": jsonResponse(
+            "Lapsed members and full total",
+            pageSchema(lapsedMemberRowSchema).extend({
+              total: z.number().int().nonnegative(),
+            }),
+          ),
+          "400": apiErrorResponse,
+          "404": apiErrorResponse,
+        }),
+      },
+    },
+    "/api/admin/gyms/{gymId}/reports/export": {
+      get: {
+        tags: ["admin"],
+        operationId: "exportGymReport",
+        summary: "Download a gym dataset as CSV",
+        ...requiredRole(
+          "owner | admin (gym in scope)",
+          "Audited as data-exported with gymId and dataset. Inactive and lapsed include a gymId column and use the same definitions as their lists. days applies to inactive (1–365, default 14); from/to apply to lapsed and existing datasets (default last 30 days, maximum 366 days). Inactive is a current snapshot, independent of from/to",
+        ),
+        requestParams: {
+          path: gymIdPathParams,
+          query: z.object({
+            dataset: z.enum([
+              "members",
+              "subscriptions",
+              "entries",
+              "payments",
+              "inactive",
+              "lapsed",
+            ]),
+            days: z.coerce.number().int().min(1).max(365).default(14),
+            from: z.iso.datetime().optional(),
+            to: z.iso.datetime().optional(),
+          }),
+        },
+        responses: protectedResponses({
+          "200": {
+            description: "UTF-8 CSV with BOM and formula-safe cells",
+            content: { "text/csv": { schema: z.string() } },
+          },
           "400": apiErrorResponse,
           "404": apiErrorResponse,
         }),

@@ -409,6 +409,31 @@ export const debtorRowSchema = withId(
   "DebtorRow",
 );
 
+export const inactiveMemberRowSchema = withId(
+  z.object({
+    userId: objectIdSchema,
+    name: z.string(),
+    email: z.string(),
+    phone: z.string(),
+    lastEntryAt: isoDateTimeSchema.nullable(),
+    daysSinceLastEntry: z.number().int().nonnegative().nullable(),
+    periodEndsAt: isoDateTimeSchema,
+  }),
+  "InactiveMemberRow",
+);
+
+export const lapsedMemberRowSchema = withId(
+  z.object({
+    userId: objectIdSchema,
+    name: z.string(),
+    email: z.string(),
+    phone: z.string(),
+    endedAt: isoDateTimeSchema,
+    lastEntryAt: isoDateTimeSchema.nullable(),
+  }),
+  "LapsedMemberRow",
+);
+
 export const sharingConfigSchema = withId(
   z.object({
     memberMaxSessions: z.number().int().min(1).max(10),

@@ -61,6 +61,7 @@ const sectionLabels: Record<string, WebTranslationKey> = {
   reports: "Reports",
   cash: "Daily cash",
   debtors: "Debtors",
+  "lost-members": "Lost members",
   packages: "Packages",
   devices: "Devices",
   settings: "Settings",
@@ -213,6 +214,11 @@ export function Shell({ children }: { children: React.ReactNode }) {
         { to: `${gymBase}/renewals`, label: "Renewals", icon: RefreshCw },
         { to: `${gymBase}/reports`, label: "Reports", icon: BarChart3 },
         { to: `${gymBase}/debtors`, label: "Debtors", icon: Wallet },
+        {
+          to: `${gymBase}/lost-members`,
+          label: "Lost members",
+          icon: UsersIcon,
+        },
         ...(canAdmin
           ? [
               { to: `${gymBase}/cash`, label: "Daily cash", icon: Banknote },

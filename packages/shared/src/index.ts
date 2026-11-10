@@ -1073,6 +1073,32 @@ export interface EntryTrend {
   points: EntryTrendPoint[];
 }
 
+/** Active member who has not visited this gym within the selected threshold. */
+export interface InactiveMemberRow {
+  userId: string;
+  name: string;
+  email: string;
+  phone: string;
+  lastEntryAt: string | null;
+  daysSinceLastEntry: number | null;
+  periodEndsAt: string;
+}
+
+/** Member whose latest period at this gym ended within the report range. */
+export interface LapsedMemberRow {
+  userId: string;
+  name: string;
+  email: string;
+  phone: string;
+  endedAt: string;
+  lastEntryAt: string | null;
+}
+
+/** Report pagination retains the shared cursor contract and adds the full total. */
+export interface LostMembersPage<T> extends Page<T> {
+  total: number;
+}
+
 /** Member whose subscription expires soon (renewal list row) */
 export interface RenewalDueMember {
   userId: string;
@@ -1127,4 +1153,4 @@ export interface ChainSummary {
 
 /** CSV export datasets */
 export type ExportDataset =
-  "members" | "subscriptions" | "entries" | "payments";
+  "members" | "subscriptions" | "entries" | "payments" | "inactive" | "lapsed";
