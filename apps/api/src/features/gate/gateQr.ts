@@ -1,5 +1,6 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
 import { ObjectId } from "mongodb";
+import type { DeviceDirection } from "@opengym/shared";
 import { env } from "../../core/env.js";
 
 const GATE_QR_PREFIX = "OGGATE1";
@@ -18,20 +19,39 @@ export function gateQrContent(deviceId: string): string {
   return `${GATE_QR_PREFIX}.${deviceId}.${sign(deviceId)}`;
 }
 
-export type GateQrVerifyResult = { ok: true; deviceId: string } | { ok: false };
+/** Signs a specific face of a bidirectional turnstile using a distinct input. */
+export function sidedGateQrContent(
+  deviceId: string,
+  side: DeviceDirection,
+): string {
+  return `${GATE_QR_PREFIX}.${deviceId}.${side}.${sign(`${deviceId}.${side}`)}`;
+}
+
+export type GateQrVerifyResult =
+  { ok: true; deviceId: string; side: DeviceDirection | null } | { ok: false };
 
 // Verifies the signature of the static turnstile QR scanned by the member
 export function verifyGateQr(content: string): GateQrVerifyResult {
   const parts = content.split(".");
-  if (parts.length !== 3 || parts[0] !== GATE_QR_PREFIX) {
+  if (
+    (parts.length !== 3 && parts.length !== 4) ||
+    parts[0] !== GATE_QR_PREFIX
+  ) {
     return { ok: false };
   }
-  const [, deviceId, signature] = parts;
+  const deviceId = parts[1];
+  const side = parts.length === 4 ? parts[2] : null;
+  if (side !== null && side !== "in" && side !== "out") {
+    return { ok: false };
+  }
+  const signature = parts[parts.length - 1];
   if (!deviceId || !signature || !ObjectId.isValid(deviceId)) {
     return { ok: false };
   }
 
-  const expectedSignature = sign(deviceId);
+  const expectedSignature = sign(
+    side === null ? deviceId : `${deviceId}.${side}`,
+  );
   const sigBuf = Buffer.from(signature, "base64url");
   const expectedBuf = Buffer.from(expectedSignature, "base64url");
   if (
@@ -41,5 +61,5 @@ export function verifyGateQr(content: string): GateQrVerifyResult {
     return { ok: false };
   }
 
-  return { ok: true, deviceId };
+  return { ok: true, deviceId, side };
 }

@@ -65,7 +65,9 @@ function connect() {
     }
 
     if (msg.type === "open") {
-      console.log(`OPEN — relay triggered for ${msg.openMs ?? 500} ms`);
+      console.log(
+        `OPEN — side ${msg.side}, relay triggered for ${msg.openMs ?? 500} ms`,
+      );
     }
   });
 

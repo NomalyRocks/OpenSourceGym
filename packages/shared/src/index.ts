@@ -761,18 +761,23 @@ export interface GateScanResponse {
 /** Turnstile direction: "in" for entry (occupancy +1), "out" for exit (occupancy -1, subscription check skipped) */
 export type DeviceDirection = "in" | "out";
 
+/** Physical turnstile mode: a single direction or both directions with a QR on each face. */
+export type DeviceMode = DeviceDirection | "both";
+
 export interface Device {
   id: string;
   gymId: string;
   name: string;
-  direction: DeviceDirection;
+  direction: DeviceMode;
   online: boolean;
   lastSeenAt: string | null;
   createdAt: string;
   /** Percentage of time online in the last 24 hours (0-100) — KPI-4 */
   uptime24h: number;
-  /** Printable static QR content (OGGATE1.…) */
+  /** Printable static QR content (OGGATE1.…); entry face when the mode is "both". */
   qrContent: string;
+  /** Exit-face QR for mode "both"; null for a single-direction device. */
+  exitQrContent: string | null;
 }
 
 /** Device creation response — the token appears only once in this response */
@@ -780,9 +785,12 @@ export interface DeviceCreated {
   id: string;
   gymId: string;
   name: string;
-  direction: DeviceDirection;
+  direction: DeviceMode;
   token: string;
+  /** Printable static QR content; entry face when the mode is "both". */
   qrContent: string;
+  /** Exit-face QR for mode "both"; null for a single-direction device. */
+  exitQrContent: string | null;
 }
 
 export interface EntryEvent {
@@ -858,6 +866,8 @@ export type DeviceServerMessage =
       type: "open";
       /** Relay activation duration (ms) — the device opens for this long */
       openMs: number;
+      /** Which way the turnstile must turn; a single-direction agent may ignore it. */
+      side: DeviceDirection;
     };
 
 // ---- Phase 5: MFA / Occupancy / Data protection ----

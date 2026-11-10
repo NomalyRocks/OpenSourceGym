@@ -310,8 +310,8 @@ Source: `apps/api/src/features/devices/router.ts`, mounted by the gyms router at
 - Source: `apps/api/src/features/devices/router.ts`
 - Auth: `requireGymAccess("owner", "admin")`; `mustChangePassword` gate applies.
 - Path params: `gymId: string` gym id.
-- Body: `{ name: string trim min 1 max 100; direction?: "in" | "out" default "in" }`.
-- Success: `200` JSON, `DeviceCreated` (`packages/shared/src/index.ts`): `{ id: string; gymId: string; name: string; direction: "in" | "out"; token: string; qrContent: string }`. `token` is shown only in this response; only its SHA-256 hash is stored.
+- Body: `{ name: string trim min 1 max 100; direction?: "in" | "out" | "both" default "in" }`.
+- Success: `200` JSON, `DeviceCreated` (`packages/shared/src/index.ts`): `{ id: string; gymId: string; name: string; direction: "in" | "out" | "both"; token: string; qrContent: string; exitQrContent: string | null }`. `token` is shown only in this response; only its SHA-256 hash is stored.
 - Errors: common `requireGymAccess`; `400 INVALID_DEVICE_NAME "Invalid device name."`; terminal errors.
 - Rate limit: none.
 - Audit-logged: yes, `device-created` (details `{ name, direction }`, with `gymId`).
@@ -321,7 +321,7 @@ Source: `apps/api/src/features/devices/router.ts`, mounted by the gyms router at
 - Source: `apps/api/src/features/devices/router.ts`
 - Auth: `requireGymAccess("owner", "admin")`; `mustChangePassword` gate applies.
 - Path params: `gymId: string` gym id.
-- Success: `200` JSON, `Device[]` (`packages/shared/src/index.ts`) of that gym, newest first: each `{ id; gymId; name; direction; online; lastSeenAt; createdAt; uptime24h; qrContent }`.
+- Success: `200` JSON, `Device[]` (`packages/shared/src/index.ts`) of that gym, newest first: each `{ id; gymId; name; direction; online; lastSeenAt; createdAt; uptime24h; qrContent; exitQrContent }`.
 - Errors: common `requireGymAccess`; terminal errors.
 - Rate limit: none.
 - Audit-logged: no.
@@ -335,6 +335,12 @@ Source: `apps/api/src/features/devices/router.ts`, mounted by the gyms router at
 - Errors: common `requireGymAccess`; `404 DEVICE_NOT_FOUND "Device not found."` (malformed id, unknown device, or device in another gym); terminal errors.
 - Rate limit: none.
 - Audit-logged: yes, `device-deleted` (with `gymId`).
+
+#### Bidirectional turnstiles
+
+A single physical turnstile can be registered with `direction: "both"`. Print both QRs from the Devices page: attach `qrContent` to the entry face and `exitQrContent` to the exit face. Each uses `OGGATE1.<deviceId>.<side>.<sig>`, where `side` is `in` or `out` and the HMAC signs `<deviceId>.<side>`. The QR explicitly selects the direction; the server never infers it from occupancy. A reachable bidirectional device counts as an exit device for strict anti-passback.
+
+Single-direction devices keep the unchanged `OGGATE1.<deviceId>.<sig>` format, signing only `<deviceId>`, and return `exitQrContent: null`. A sided QR on a single-direction device or a legacy QR on a bidirectional device is refused with `INVALID_QR` and logged in `entry_events`. Scan responses and event directions remain `"in" | "out"`; existing entry checks apply only to entry scans. Gateway open commands include `side: "in" | "out"`, which bidirectional agents must honor; a single-direction agent may ignore it. The simulator accepts `"Name:both"` during setup and logs the received side.
 
 ### Gym Reports Router (`/api/admin/gyms/:gymId/reports`)
 
@@ -935,7 +941,7 @@ Source: `apps/api/src/features/members/controlsRouter.ts` (`memberControlsRouter
 - Auth: device-gateway auth. Client must send first JSON text frame within `5000ms`: `{ type: "auth"; deviceId: string; token: string }` (`packages/shared/src/index.ts`). `deviceId` must be a valid Mongo ObjectId; token SHA-256 must timing-safe-equal stored `tokenHash`.
 - Success server message: `DeviceServerMessage` `{"type":"auth_ok","deviceName":string}` (`packages/shared/src/index.ts`).
 - Error server message: `{"type":"auth_error","message":"Device authentication failed."}` then socket close.
-- Other server messages after auth: `{"type":"open","openMs":number}` when `/api/me/gate-scan` opens the device.
+- Other server messages after auth: `{"type":"open","openMs":number,"side":"in"|"out"}` when `/api/me/gate-scan` opens the device. `side` is the resolved scan direction; single-direction agents may ignore it.
 - Request body/query: none; WebSocket max payload `4096` bytes.
 - Rate limit: none; unauthenticated sockets are closed after auth timeout.
 - Audit-logged: no.

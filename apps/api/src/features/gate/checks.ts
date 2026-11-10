@@ -138,7 +138,10 @@ export function checkGymGeofence(
 async function hasUsableExitDevice(gymId: string): Promise<boolean> {
   const exitDevices = await db
     .collection("devices")
-    .find({ gymId, direction: "out" }, { projection: { _id: 1 } })
+    .find(
+      { gymId, direction: { $in: ["out", "both"] } },
+      { projection: { _id: 1 } },
+    )
     .toArray();
   return exitDevices.some((device) => isDeviceOnline(device._id.toString()));
 }

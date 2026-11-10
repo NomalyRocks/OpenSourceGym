@@ -577,17 +577,27 @@ export const deviceDirectionSchema = withId(
   "DeviceDirection",
 );
 
+export const deviceModeSchema = withId(
+  z.enum(["in", "out", "both"]),
+  "DeviceMode",
+);
+
 export const deviceSchema = withId(
   z.object({
     id: objectIdSchema,
     gymId: objectIdSchema,
     name: z.string(),
-    direction: deviceDirectionSchema,
+    direction: deviceModeSchema,
     online: z.boolean(),
     lastSeenAt: isoDateTimeSchema.nullable(),
     createdAt: isoDateTimeSchema,
     uptime24h: z.number().min(0).max(100),
-    qrContent: z.string(),
+    qrContent: z.string().meta({
+      description: 'Static QR; entry-face QR when direction is "both"',
+    }),
+    exitQrContent: z.string().nullable().meta({
+      description: 'Exit-face QR when direction is "both"; otherwise null',
+    }),
   }),
   "Device",
 );
@@ -597,9 +607,14 @@ export const deviceCreatedSchema = withId(
     id: objectIdSchema,
     gymId: objectIdSchema,
     name: z.string(),
-    direction: deviceDirectionSchema,
+    direction: deviceModeSchema,
     token: z.string(),
-    qrContent: z.string(),
+    qrContent: z.string().meta({
+      description: 'Static QR; entry-face QR when direction is "both"',
+    }),
+    exitQrContent: z.string().nullable().meta({
+      description: 'Exit-face QR when direction is "both"; otherwise null',
+    }),
   }),
   "DeviceCreated",
 );
@@ -925,7 +940,7 @@ export const setUserGymsRequestSchema = withId(
 export const createDeviceRequestSchema = withId(
   z.object({
     name: z.string().trim().min(1).max(100),
-    direction: deviceDirectionSchema.default("in"),
+    direction: deviceModeSchema.default("in"),
   }),
   "CreateDeviceRequest",
 );

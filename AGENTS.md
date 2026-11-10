@@ -82,7 +82,7 @@ not schema migrations.
 - `phone_identity_conflicts` — unresolved legacy duplicate phones; resolved records are deleted
 - `migration_markers` — idempotent one-time data repair markers
 - `entry_events` — turnstile scan log; carries `distanceM`, the metres between the scanning phone and the gym, so a disputed scan can be reviewed later (null on older records and when either position was unknown). **Every refusal is logged, throttled ones included** (`RATE_LIMITED`) — a burst of refusals that leaves no record is the case the log exists for. The rate-limit row alone carries no device or distance: the throttle deliberately runs before the QR is parsed.
-- `devices` — turnstile devices; token sha256 hash + per-device static `qrContent` (see API surface)
+- `devices` — turnstile devices; `direction: "in" | "out" | "both"`, token sha256 hash + static QR credentials; single-direction devices use the legacy `qrContent`, while bidirectional devices use sided QRs (`qrContent` for entry, `exitQrContent` for exit) (see API surface)
 - `device_status_log` — device connect/disconnect events backing the 24 h uptime figure on the panel's Devices page
 - `sharing_signals` — account-sharing detection signals with a 30-day TTL (`apps/api/src/features/gate/sharing.ts`)
 - `deletion_requests` — member account-deletion request workflow (`/api/me/deletion-request` + admin approve/reject)

@@ -1126,7 +1126,7 @@ export const openApiDocument: OpenApiDocument = createDocument({
         requestParams: { path: gymPathParams },
         ...requiredRole(
           "owner | admin (scoped to the gym)",
-          "Returns devices with online status and 24-hour uptime; each row carries qrContent, which is itself the gate credential",
+          "Returns devices with online status and 24-hour uptime; qrContent and the bidirectional exitQrContent are gate credentials",
         ),
         responses: protectedResponses({
           "200": jsonResponse("Devices", z.array(deviceSchema)),
@@ -1139,7 +1139,7 @@ export const openApiDocument: OpenApiDocument = createDocument({
         requestParams: { path: gymPathParams },
         ...requiredRole(
           "owner | admin (scoped to the gym)",
-          "Registers the device; the plaintext device token appears only in this response",
+          "Registers an entry, exit, or bidirectional device; bidirectional devices have a signed QR per face. The plaintext device token appears only in this response",
         ),
         requestBody: jsonBody(createDeviceRequestSchema),
         responses: protectedResponses({

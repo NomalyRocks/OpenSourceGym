@@ -798,6 +798,9 @@ const tr = {
   "Void the period’s payments before cancelling it. Refund the money in person first.":
     "Dönemi iptal etmeden önce ödemelerini iptal edin. Önce para iadesini yüz yüze yapın.",
   "Choose a valid calendar day.": "Geçerli bir takvim günü seçin.",
+  Bidirectional: "Çift yönlü",
+  "Entry side": "Giriş yüzü",
+  "Exit side": "Çıkış yüzü",
 } as const;
 
 const en = Object.fromEntries(Object.keys(tr).map((key) => [key, key])) as {
