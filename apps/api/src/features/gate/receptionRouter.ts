@@ -1,13 +1,14 @@
 import { Router } from "express";
 import { ObjectId } from "mongodb";
-import { z } from "zod";
 import type {
   ApiErrorCode,
   DeviceMode,
   GateDeviceSummary,
 } from "@opengym/shared";
 import { db, userCollection } from "../../core/db.js";
-import { isGateOpenRateLimited } from "./locks.js";
+import { isGateOpenRateLimited, withGateUserLifecycleLock } from "./locks.js";
+import { gateOpenIdentitySchema, gateOpenSchema } from "./receptionInput.js";
+import { SubscriptionLockTimeoutError } from "../subscriptions/subscriptions.js";
 import { sendApiError } from "../../core/apiError.js";
 import { logAudit } from "../../core/audit.js";
 import { gymScoped, requireGymAccess } from "../../core/middleware.js";
@@ -15,13 +16,6 @@ import { isDeviceOnline } from "../devices/gateway.js";
 import { passGate, type PassingUser, type PassageEvent } from "./pass.js";
 
 export const receptionRouter: Router = Router({ mergeParams: true });
-
-export const gateOpenSchema = z.object({
-  userId: z.string().regex(/^[a-f\d]{24}$/i),
-  deviceId: z.string().regex(/^[a-f\d]{24}$/i),
-  direction: z.enum(["in", "out"]),
-  reason: z.string().trim().min(3).max(200),
-});
 
 receptionRouter.get(
   "/gate-devices",
@@ -49,30 +43,28 @@ receptionRouter.post(
   requireGymAccess("owner", "admin", "staff"),
   gymScoped(async (req, res) => {
     const gymId = req.gym._id.toHexString();
+    const actor = { ...req.user, id: new ObjectId(req.user.id).toHexString() };
     const parsed = gateOpenSchema.safeParse(req.body ?? {});
     let deviceName = "";
     let memberName: string | null = null;
-    // Invalid requests still have an event and audit trail; retain only validated fields.
-    const identity = z.object({
-      userId: gateOpenSchema.shape.userId.optional().catch(undefined),
-      deviceId: gateOpenSchema.shape.deviceId.optional().catch(undefined),
-      direction: gateOpenSchema.shape.direction.optional().catch(undefined),
-      reason: gateOpenSchema.shape.reason.optional().catch(undefined),
-    });
+    // Valid IDs are already canonical, including on otherwise malformed requests.
     const fields = parsed.success
       ? parsed.data
-      : identity.partial().safeParse(req.body).data;
+      : gateOpenIdentitySchema.safeParse(req.body).data;
+    let targetExists = false;
+    let assertLifecycleOwned: (() => Promise<void>) | null = null;
     async function record(
       allowed: boolean,
       code: ApiErrorCode | null,
       event?: PassageEvent,
     ) {
+      // Outside the lifecycle lock (including timeouts), never retain target PII.
+      const retainTarget = targetExists && assertLifecycleOwned !== null;
+      await assertLifecycleOwned?.();
       await db.collection("entry_events").insertOne({
         gymId,
         deviceId: fields?.deviceId ?? "",
         deviceName,
-        userId: fields?.userId ?? null,
-        memberName,
         direction: fields?.direction ?? "in",
         distanceM: null,
         at: new Date(),
@@ -81,18 +73,20 @@ receptionRouter.post(
         // Validation errors are API codes; only passage refusals belong in reason.
         reason: event?.reason ?? (code === "RATE_LIMITED" ? code : null),
         source: "reception",
-        actorId: req.user.id,
-        actorName: req.user.name,
-        staffReason: fields?.reason ?? null,
+        actorId: actor.id,
+        actorName: actor.name,
+        userId: retainTarget ? fields!.userId : null,
+        memberName: retainTarget ? memberName : null,
+        staffReason: retainTarget ? (fields?.reason ?? null) : null,
       });
       await logAudit(
-        req.user,
+        actor,
         allowed ? "gate-opened-by-staff" : "gate-open-refused",
-        fields?.userId,
+        retainTarget ? fields?.userId : undefined,
         {
           deviceId: fields?.deviceId ?? null,
           direction: fields?.direction ?? null,
-          staffReason: fields?.reason ?? null,
+          staffReason: retainTarget ? (fields?.reason ?? null) : null,
           code,
         },
         gymId,
@@ -102,75 +96,104 @@ receptionRouter.post(
       await record(false, code);
       sendApiError(res, status, code, message);
     }
-    // Count every scoped request, including invalid requests and repeated refusals.
-    if (await isGateOpenRateLimited(req.user.id)) {
+    // Count malformed and refused requests too; their logging still obeys lifecycle serialization.
+    const limited = await isGateOpenRateLimited(actor.id);
+    async function attempt() {
+      const target = fields?.userId
+        ? await userCollection().findOne({ _id: new ObjectId(fields.userId) })
+        : null;
+      targetExists =
+        target !== null &&
+        typeof target.name === "string" &&
+        typeof target.email === "string";
+      memberName = targetExists ? target!.name : null;
+      if (limited) {
+        await refuse(
+          429,
+          "RATE_LIMITED",
+          "Too many requests. Please wait a moment.",
+        );
+        return;
+      }
+      if (!parsed.success) {
+        await refuse(400, "INVALID_REQUEST", "Invalid request.");
+        return;
+      }
+      if (!target || !targetExists) {
+        await refuse(404, "USER_NOT_FOUND", "The user was not found.");
+        return;
+      }
+      const { userId, deviceId, direction } = parsed.data;
+      const device = await db
+        .collection("devices")
+        .findOne({ _id: new ObjectId(deviceId), gymId });
+      if (!device) {
+        await refuse(404, "DEVICE_NOT_FOUND", "The device was not found.");
+        return;
+      }
+      deviceName = device.name as string;
+      const mode = (device.direction as DeviceMode | undefined) ?? "in";
+      if (mode !== "both" && mode !== direction) {
+        await refuse(
+          400,
+          "INVALID_DIRECTION",
+          "The device does not support this direction.",
+        );
+        return;
+      }
+      memberName = target.name;
+      const role = target.role ?? "member";
+      const user: PassingUser = {
+        id: userId,
+        name: target.name,
+        email: target.email,
+        role,
+        gymIds:
+          role === "admin" || role === "staff" ? (target.gymIds ?? []) : [],
+        ban: target.ban
+          ? {
+              reason: target.ban.reason,
+              bannedAt: target.ban.bannedAt.toISOString(),
+            }
+          : null,
+      };
+      const result = await passGate({
+        user,
+        gym: req.gym,
+        deviceId,
+        deviceName,
+        direction,
+        distanceM: null,
+        record: (event) => record(event.allowed, event.reason, event),
+      });
+      if (result.ok) res.json(result.body);
+      else
+        sendApiError(
+          res,
+          result.failure.status ?? 403,
+          result.failure.code,
+          result.failure.message,
+        );
+    }
+    if (!fields?.userId) {
+      await attempt();
+      return;
+    }
+    try {
+      await withGateUserLifecycleLock(fields.userId, async (assertOwned) => {
+        assertLifecycleOwned = assertOwned;
+        await assertOwned();
+        await attempt();
+      });
+    } catch (error) {
+      if (!(error instanceof SubscriptionLockTimeoutError)) throw error;
+      assertLifecycleOwned = null;
+      targetExists = false;
       await refuse(
-        429,
-        "RATE_LIMITED",
-        "Too many requests. Please wait a moment.",
+        503,
+        "SUBSCRIPTION_BUSY",
+        "A member operation is in progress. Please try again.",
       );
-      return;
     }
-    if (!parsed.success) {
-      await refuse(400, "INVALID_REQUEST", "Invalid request.");
-      return;
-    }
-    const { userId, deviceId, direction } = parsed.data;
-    const device = await db
-      .collection("devices")
-      .findOne({ _id: new ObjectId(deviceId), gymId });
-    if (!device) {
-      await refuse(404, "DEVICE_NOT_FOUND", "The device was not found.");
-      return;
-    }
-    deviceName = device.name as string;
-    const mode = (device.direction as DeviceMode | undefined) ?? "in";
-    if (mode !== "both" && mode !== direction) {
-      await refuse(
-        400,
-        "INVALID_DIRECTION",
-        "The device does not support this direction.",
-      );
-      return;
-    }
-    const target = await userCollection().findOne({
-      _id: new ObjectId(userId),
-    });
-    if (!target) {
-      await refuse(404, "USER_NOT_FOUND", "The user was not found.");
-      return;
-    }
-    memberName = target.name;
-    const role = target.role ?? "member";
-    const user: PassingUser = {
-      id: userId,
-      name: target.name,
-      email: target.email,
-      role,
-      gymIds: role === "admin" || role === "staff" ? (target.gymIds ?? []) : [],
-      ban: target.ban
-        ? {
-            reason: target.ban.reason,
-            bannedAt: target.ban.bannedAt.toISOString(),
-          }
-        : null,
-    };
-    const result = await passGate({
-      user,
-      gym: req.gym,
-      deviceId,
-      deviceName,
-      direction,
-      distanceM: null,
-      record: (event) => record(event.allowed, event.reason, event),
-    });
-    if (result.ok) res.json(result.body);
-    else
-      sendApiError(
-        res,
-        result.failure.status ?? 403,
-        result.failure.code,
-        result.failure.message,
-      );
   }),
 );

@@ -1,3 +1,5 @@
+import { ObjectId } from "mongodb";
+import { withRedisLock } from "../subscriptions/subscriptions.js";
 import { redis, releaseLock } from "../../core/redis.js";
 
 // The original QR passage lease used the key now specified for actor counters.
@@ -24,10 +26,22 @@ redis.call('expire', KEYS[1], 600, 'NX')
 return count
 `;
 
-const keysFor = (userId: string) => [
-  `og:gate-open:${userId}`,
-  `og:lock:gate-open:${userId}`,
-];
+const keysFor = (userId: string) => {
+  const id = new ObjectId(userId).toHexString();
+  return [`og:gate-open:${id}`, `og:lock:gate-open:${id}`];
+};
+
+/** Always acquire before the subscription lock: gate freeze handling takes it internally. */
+export const gateUserLifecycleLockKey = (userId: string): string =>
+  `og:lock:gate-lifecycle:${new ObjectId(userId).toHexString()}`;
+
+/** Serialize target reads, passage and awaited logs with deletion's complete erasure sweep. */
+export function withGateUserLifecycleLock<T>(
+  userId: string,
+  work: (assertOwned: () => Promise<void>) => Promise<T>,
+): Promise<T> {
+  return withRedisLock(gateUserLifecycleLockKey(userId), 10_000, 1_000, work);
+}
 
 export async function acquirePassageLock(
   userId: string,

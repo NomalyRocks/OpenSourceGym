@@ -80,6 +80,9 @@ export async function passGate({
   beforeSubscription?: () => Promise<GateFailure | null>;
   beforePassage?: () => Promise<GateFailure | null>;
 }): Promise<GatePassResult> {
+  // Callers share the same Redis identities and gateway registry regardless of input casing.
+  user = { ...user, id: new ObjectId(user.id).toHexString() };
+  deviceId = new ObjectId(deviceId).toHexString();
   const gymId = gym._id.toHexString();
   async function deny(
     codeOrFailure: GateRejectCode | GateFailure,

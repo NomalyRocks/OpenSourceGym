@@ -14,7 +14,7 @@ selection; single-direction devices show their fixed direction.
   response omit QR contents, device tokens and token hashes.
 - `POST /api/admin/gyms/:gymId/gate-open` accepts
   `{ userId, deviceId, direction: "in" | "out", reason }`. Both IDs must be valid
-  ObjectIds and the trimmed reason must contain 3–200 characters. The device
+  ObjectIds (any letter casing is accepted and immediately normalized to lowercase) and the trimmed reason must contain 3–200 characters. The device
   must belong to the gym (`404 DEVICE_NOT_FOUND` otherwise), and must support the
   direction (`400 INVALID_DIRECTION` otherwise). An unknown target returns
   `404 USER_NOT_FOUND`.
@@ -86,6 +86,19 @@ label read from `reason`. The entries CSV includes separate `reason` (rejection
 code), `source`, `actor` and `staffReason` columns.
 
 ## KVKK erasure
+
+Reception and deletion approval share `og:lock:gate-lifecycle:<userId>` through
+`withGateUserLifecycleLock`. It has a one-second acquisition wait and a renewable
+ten-second lease; it is released as soon as the operation finishes. Both paths
+acquire it before any subscription lock. This separate outer lock avoids
+reacquiring the subscription lock during the gate's freeze settlement or unfreeze.
+Reception re-reads the target while holding the lifecycle lock and awaits both
+the entry-event insert and final audit before releasing it. Deletion keeps the
+same lock through its erasure and audit sweeps. A missing or anonymised target
+returns `404 USER_NOT_FOUND`; a lock timeout returns `503 SUBSCRIPTION_BUSY`.
+Those refusals omit target identity and staff text from their logs. Other
+refusals, including rate limits and malformed requests carrying a valid target
+ID, follow the same lifecycle serialization. QR event queueing is unchanged.
 
 Deletion-request approval nulls reception entry-event `staffReason` before
 removing the member identity from retained event rows. It also unsets

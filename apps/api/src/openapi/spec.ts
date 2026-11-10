@@ -1155,6 +1155,7 @@ export const openApiDocument: OpenApiDocument = createDocument({
           "400": apiErrorResponse,
           "404": apiErrorResponse,
           "429": apiErrorResponse,
+          "503": apiErrorResponse,
         }),
       },
     },
