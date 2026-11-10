@@ -260,6 +260,8 @@ test(
               gymIds: [gymA.toHexString()],
               packageId: pkg.body.id,
               expectedPriceMinor: 1_000,
+              expectedCurrency: "EUR",
+              expectedDuration: month,
               requestId: randomUUID(),
             };
             await request(

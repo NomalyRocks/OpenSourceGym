@@ -801,6 +801,8 @@ const tr = {
   Bidirectional: "Çift yönlü",
   "Entry side": "Giriş yüzü",
   "Exit side": "Çıkış yüzü",
+  "The sale terms changed. Review the refreshed catalog and confirm the sale again.":
+    "Satış koşulları değişti. Güncellenen kataloğu inceleyip satışı tekrar onaylayın.",
 } as const;
 
 const en = Object.fromEntries(Object.keys(tr).map((key) => [key, key])) as {

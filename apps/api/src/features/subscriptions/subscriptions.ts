@@ -27,6 +27,7 @@ import {
   previewFreezeCredit,
   summarizeGymAccess,
   summarizeSubscriptionTimeline,
+  type SubscriptionPeriod,
   type SubscriptionSummary,
   type SubscriptionTimelineRecord,
 } from "./subscriptionTimeline.js";
@@ -472,6 +473,8 @@ export async function listActiveSubscriptionGymIds(
 interface MemberTimeline {
   openFreeze: { startedAt: Date; maxDays: number } | null;
   summary: SubscriptionSummary;
+  /** Period dates in the same freeze-adjusted view as `summary`. */
+  periods: readonly (SubscriptionPeriod & { id: string })[];
   /** Gyms the member may use now, in the same view as `summary`. */
   gymIds: ObjectId[];
   gymWindows: Map<string, SubscriptionSummary>;
@@ -517,6 +520,7 @@ async function loadMemberTimeline(
     return {
       openFreeze,
       summary: summarizeSubscriptionTimeline(previewed, now),
+      periods: previewed,
       gymIds,
       gymWindows: summarizeGymAccess(
         previewed,
@@ -537,6 +541,11 @@ async function loadMemberTimeline(
   return {
     openFreeze: null,
     summary,
+    periods: docs.map((doc) => ({
+      id: doc._id.toHexString(),
+      startsAt: doc.startsAt,
+      endsAt: doc.endsAt,
+    })),
     gymIds,
     gymWindows: summarizeGymAccess(
       docs.map((doc) => ({
@@ -589,11 +598,9 @@ export async function getSubscriptionSummary(
       billing: null,
     };
   }
-  const { openFreeze, summary, gymIds, gymWindows } = await loadMemberTimeline(
-    new ObjectId(userId),
-    now,
-  );
-  const billing = await loadMyBilling(new ObjectId(userId), now);
+  const { openFreeze, summary, periods, gymIds, gymWindows } =
+    await loadMemberTimeline(new ObjectId(userId), now);
+  const billing = await loadMyBilling(new ObjectId(userId), now, periods);
   const gymDocs =
     gymIds.length > 0
       ? await gymCollection()
@@ -642,6 +649,7 @@ export async function getSubscriptionSummary(
 async function loadMyBilling(
   owner: ObjectId,
   now: Date,
+  periods: MemberTimeline["periods"],
 ): Promise<MyBilling | null> {
   const priced = await subscriptionCollection()
     .find({ userId: owner, sale: { $exists: true } })
@@ -649,9 +657,12 @@ async function loadMyBilling(
     .toArray();
   if (priced.length === 0) return null;
   const paid = await sumPaidBySubscription(priced.map((doc) => doc._id));
-  const covering = priced.find(
-    (doc) => doc.startsAt <= now && doc.endsAt >= now,
+  const coveringIds = new Set(
+    periods
+      .filter((period) => period.startsAt <= now && period.endsAt >= now)
+      .map((period) => period.id),
   );
+  const covering = priced.find((doc) => coveringIds.has(doc._id.toHexString()));
   const owing = priced.flatMap((doc) => {
     const sale = doc.sale!;
     const balance = sale.priceMinor - (paid.get(doc._id.toHexString()) ?? 0);

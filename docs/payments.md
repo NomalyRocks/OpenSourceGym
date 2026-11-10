@@ -57,9 +57,9 @@ Types live in `packages/shared`; this page is the behavioural contract.
 
 ```ts
 // catalog sale: owner/admin/staff
-{ userId, gymIds, packageId, priceMinor?, expectedPriceMinor?, nextPaymentDue?, note?, requestId }
+{ userId, gymIds, packageId, priceMinor?, expectedPriceMinor?, expectedCurrency, expectedDuration, nextPaymentDue?, note?, requestId }
 // custom grant: owner/admin only
-{ userId, gymIds, custom: { days, priceMinor, label? }, nextPaymentDue?, note?, requestId }
+{ userId, gymIds, custom: { days, priceMinor, label? }, expectedCurrency, expectedDuration, nextPaymentDue?, note?, requestId }
 ```
 
 - **Staff sells at the catalog price.** `priceMinor` (a per-sale override) and
@@ -73,6 +73,10 @@ Types live in `packages/shared`; this page is the behavioural contract.
   catalog price, including zero; a different or cleared price returns
   `409 PACKAGE_PRICE_CHANGED` without creating a period. Replays still return
   the existing period even if the catalog price changed later.
+- Every sale must include the confirmed `expectedCurrency` and
+  `expectedDuration: { unit, value }`. A currency or duration mismatch also
+  returns `409 PACKAGE_PRICE_CHANGED`, including custom grants and price
+  overrides. The web client refreshes the catalog and requires confirmation again.
 - Duration: month packages keep today's clamped calendar-month arithmetic
   (generalised from `1|3|6|12` to `1..24`); day packages and custom grants add
   `days × 24 h`. Periods still stack after the member's latest period.
@@ -101,6 +105,10 @@ Types live in `packages/shared`; this page is the behavioural contract.
   row) instead of creating a second one, even if the package was deactivated or
   repriced in between. An id already used for another member's period is
   `409 REQUEST_ID_CONFLICT`.
+- Replays are resolved before checking gym availability. Owners, or callers
+  with at least one gym on the existing period in scope, receive the original
+  success even after gym deactivation. Inaccessible periods follow normal
+  create validation and never return an existing period's details.
 
 ## Payments (`payments`)
 
@@ -203,6 +211,9 @@ is also removed from `payment-voided` audit rows.
 - `sale`, balance and payments on `GET /api/admin/users/:id/subscriptions` and
   in the member drawer are shown to a non-owner only for periods with a gym in
   their scope. Other periods return `sale: null`.
+- The period list includes the latest 50 plus every older period with a positive
+  balance visible to the caller, without duplicates, in the same descending
+  end/creation/id order. Older debt stays available for recording payments.
 - Members see their own package name, balance and next due date on
   `GET /api/me/subscription` (mobile subscription card) as `billing`. It is null
   when the member never had a priced period; the balance spans every priced

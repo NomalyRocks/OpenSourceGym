@@ -137,6 +137,7 @@ export function NewPeriodModal({
     formatCatalogMoney(value, currency, dateLocale(i18n.resolvedLanguage));
   const valid =
     loaded &&
+    currency !== null &&
     !!duration &&
     Number.isInteger(duration.value) &&
     duration.value >= 1 &&
@@ -152,7 +153,8 @@ export function NewPeriodModal({
         paymentGyms.some((g) => g.id === paymentGym)));
 
   async function confirm() {
-    if (guard.current || !valid || salePrice === null) return;
+    if (guard.current || !valid || salePrice === null || !currency || !duration)
+      return;
     guard.current = true;
     setBusy(true);
     setError(null);
@@ -161,6 +163,8 @@ export function NewPeriodModal({
       const base = {
         userId: member.id,
         gymIds,
+        expectedCurrency: currency,
+        expectedDuration: duration,
         nextPaymentDue: due ? dayEndIso(due) : null,
         note: note.trim() || undefined,
         requestId: saleRequestId,
@@ -210,7 +214,13 @@ export function NewPeriodModal({
         });
       onGranted(created.current.startsAt, created.current.endsAt);
     } catch (err) {
-      setError(errorMessage(err, t, "Could not save changes."));
+      const message =
+        err instanceof ApiError && err.code === "PACKAGE_PRICE_CHANGED"
+          ? t(
+              "The sale terms changed. Review the refreshed catalog and confirm the sale again.",
+            )
+          : errorMessage(err, t, "Could not save changes.");
+      setError(message);
       if (!created.current && isDefinitiveSaleRejection(err)) {
         payload.current = null;
         setAttempted(false);
@@ -229,7 +239,7 @@ export function NewPeriodModal({
           } catch (refreshError) {
             setPackages([]);
             setError(
-              `${errorMessage(err, t, "Could not save changes.")} ${errorMessage(refreshError, t, "Could not load data.")}`,
+              `${message} ${errorMessage(refreshError, t, "Could not load data.")}`,
             );
           }
         }

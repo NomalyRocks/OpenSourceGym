@@ -833,6 +833,8 @@ export const setSubscriptionGymsRequestSchema = withId(
 
 const saleRequestBase = {
   userId: z.string(),
+  expectedCurrency: currencySchema,
+  expectedDuration: packageDurationSchema,
   gymIds: z.array(z.string()).min(1).meta({
     description: "Active gyms the member may enter during this period",
   }),

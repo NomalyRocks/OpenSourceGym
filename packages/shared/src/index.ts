@@ -209,6 +209,9 @@ interface CreateSubscriptionBase {
   userId: string;
   /** Non-empty; every id must be an active gym the caller has access to */
   gymIds: string[];
+  /** Currency and duration displayed when the operator confirmed the sale. */
+  expectedCurrency: CurrencyCode;
+  expectedDuration: PackageDuration;
   nextPaymentDue?: string | null;
   note?: string;
   /** Client-generated UUID; a repeat returns the existing period instead of a second one */

@@ -283,6 +283,8 @@ test(
         call(cookie, "POST", "/api/admin/subscriptions", {
           userId,
           packageId: monthly.body.id,
+          expectedCurrency: "TRY",
+          expectedDuration: { unit: "month", value: 1 },
           gymIds,
           requestId: randomUUID(),
         });

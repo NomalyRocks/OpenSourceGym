@@ -16,19 +16,16 @@ import {
   cancelScheduledSubscription,
   createSequentialSubscription,
   findSubscription,
-  listUserSubscriptions,
   RequestIdConflictError,
   setSubscriptionGymIds,
   subscriptionCollection,
   SubscriptionLockTimeoutError,
   type SaleSnapshot,
 } from "./subscriptions.js";
-import {
-  catalogPriceChanged,
-  createSubscriptionSchema,
-  mayChoosePrice,
-} from "./sale.js";
-import { toSubscriptionDtos } from "./subscriptionDto.js";
+import { mayChoosePrice } from "./sale.js";
+import { confirmedSaleSchema, saleTermsChanged } from "./confirmedSale.js";
+import { canSeeSale, toSubscriptionDtos } from "./subscriptionDto.js";
+import { listSubscriptionsWithDebt } from "./subscriptionsWithDebt.js";
 
 export const subscriptionsRouter: Router = Router();
 
@@ -65,7 +62,7 @@ subscriptionsRouter.post(
   "/subscriptions",
   requireRole("owner", "admin", "staff"),
   authed(async (req, res) => {
-    const parsed = createSubscriptionSchema.safeParse(req.body ?? {});
+    const parsed = confirmedSaleSchema.safeParse(req.body ?? {});
     const targetId = parsed.success ? toObjectId(parsed.data.userId) : null;
     if (!parsed.success || !targetId) {
       sendApiError(
@@ -77,40 +74,43 @@ subscriptionsRouter.post(
       return;
     }
     const body = parsed.data;
-    // Staff sells at the catalog price: no override, no custom grant.
-    if (!mayChoosePrice(req.user.role, body)) {
-      sendApiError(
-        res,
-        403,
-        "PRICE_OVERRIDE_FORBIDDEN",
-        "Only an owner or admin can override the price or grant a custom period.",
-      );
-      return;
-    }
-    const gymCheck = await validateSubscriptionGymIds(body.gymIds, req.user);
-    if (!gymCheck.ok) {
-      sendGymCheckError(res, gymCheck.reason);
-      return;
-    }
-    const target = await userCollection().findOne({ _id: targetId });
-    if (!target) {
-      sendApiError(res, 404, "USER_NOT_FOUND", "User not found.");
-      return;
-    }
     try {
       // A repeat of an earlier submit answers with that period even if the
-      // package was deactivated or repriced in between.
+      // gyms or package were deactivated or the sale terms changed in between.
       const earlier = await subscriptionCollection().findOne({
         requestId: body.requestId,
-        userId: targetId,
       });
-      if (earlier) {
+      if (earlier && canSeeSale(req.user, earlier.gymIds ?? [])) {
+        if (!earlier.userId.equals(targetId))
+          throw new RequestIdConflictError();
         res.json({
           ok: true,
           id: earlier._id.toHexString(),
           startsAt: earlier.startsAt.toISOString(),
           endsAt: earlier.endsAt.toISOString(),
         });
+        return;
+      }
+
+      // An inaccessible request id follows the same validation path as a new
+      // request; never return that period through the lower-level replay.
+      if (!mayChoosePrice(req.user.role, body)) {
+        sendApiError(
+          res,
+          403,
+          "PRICE_OVERRIDE_FORBIDDEN",
+          "Only an owner or admin can override the price or grant a custom period.",
+        );
+        return;
+      }
+      const gymCheck = await validateSubscriptionGymIds(body.gymIds, req.user);
+      if (!gymCheck.ok) {
+        sendGymCheckError(res, gymCheck.reason);
+        return;
+      }
+      const target = await userCollection().findOne({ _id: targetId });
+      if (!target) {
+        sendApiError(res, 404, "USER_NOT_FOUND", "User not found.");
         return;
       }
 
@@ -121,6 +121,17 @@ subscriptionsRouter.post(
       let listPriceMinor: number | null = null;
       if ("custom" in body) {
         duration = { unit: "day", value: body.custom.days };
+        if (
+          saleTermsChanged(body, currency, duration, body.custom.priceMinor)
+        ) {
+          sendApiError(
+            res,
+            409,
+            "PACKAGE_PRICE_CHANGED",
+            "The sale terms have changed. Review them before selling.",
+          );
+          return;
+        }
         sale = {
           packageId: null,
           packageName: body.custom.label ?? `${body.custom.days} days`,
@@ -145,12 +156,12 @@ subscriptionsRouter.post(
           );
           return;
         }
-        if (catalogPriceChanged(body, pkg.priceMinor)) {
+        if (saleTermsChanged(body, currency, pkg.duration, pkg.priceMinor)) {
           sendApiError(
             res,
             409,
             "PACKAGE_PRICE_CHANGED",
-            "The catalog price has changed. Review the current price before selling.",
+            "The sale terms have changed. Review them before selling.",
           );
           return;
         }
@@ -177,6 +188,7 @@ subscriptionsRouter.post(
         };
       }
 
+      if (earlier) throw new RequestIdConflictError();
       const created = await createSequentialSubscription({
         userId: targetId,
         duration,
@@ -186,6 +198,12 @@ subscriptionsRouter.post(
         sale,
         requestId: body.requestId,
       });
+      if (created.replayed) {
+        const period = await findSubscription(created.id);
+        if (!period || !canSeeSale(req.user, period.gymIds ?? [])) {
+          throw new RequestIdConflictError();
+        }
+      }
       if (!created.replayed) {
         const gymHexIds = gymCheck.ids.map((id) => id.toHexString());
         await logAuditPerGym(
@@ -433,7 +451,7 @@ subscriptionsRouter.get(
       sendApiError(res, 400, "INVALID_USER", "Invalid user.");
       return;
     }
-    const docs = await listUserSubscriptions(targetId);
+    const docs = await listSubscriptionsWithDebt(targetId, req.user);
     res.json(await toSubscriptionDtos(docs, req.user));
   }),
 );

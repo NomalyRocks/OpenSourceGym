@@ -628,7 +628,7 @@ export const openApiDocument: OpenApiDocument = createDocument({
         summary: "Sell a subscription period",
         ...requiredRole(
           "owner | admin | staff (access to every listed gym)",
-          "Appends a sequential, priced period to the member's timeline: a catalog package (staff sells at the catalog price) or, owner/admin only, a price override or a custom day grant. A repeated requestId returns the existing period. Errors: PRICE_OVERRIDE_FORBIDDEN, PACKAGE_PRICE_UNSET, PACKAGE_PRICE_CHANGED (expectedPriceMinor differs without override), PACKAGE_INACTIVE, REQUEST_ID_CONFLICT",
+          "Appends a sequential, priced period to the member's timeline: a catalog package (staff sells at the catalog price) or, owner/admin only, a price override or a custom day grant. A repeated requestId returns the existing period if a gym on it is in the caller's scope, even after gym deactivation. Errors: PRICE_OVERRIDE_FORBIDDEN, PACKAGE_PRICE_UNSET, PACKAGE_PRICE_CHANGED (confirmed currency or duration differs, or expectedPriceMinor differs without override), PACKAGE_INACTIVE, REQUEST_ID_CONFLICT",
         ),
         requestBody: jsonBody(createSubscriptionRequestSchema),
         responses: protectedResponses({
@@ -856,7 +856,7 @@ export const openApiDocument: OpenApiDocument = createDocument({
         summary: "List user subscriptions",
         ...requiredRole(
           "owner | admin | staff",
-          "Returns subscription periods belonging to the target user",
+          "Returns the latest 50 subscription periods plus every older period with an outstanding balance visible to the caller, ordered by end date, creation date and id descending",
         ),
         requestParams: { path: idPathParams },
         responses: protectedResponses({

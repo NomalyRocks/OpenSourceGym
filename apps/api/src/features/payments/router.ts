@@ -328,15 +328,19 @@ paymentsRouter.patch(
       );
       return;
     }
-    const updated = await subscriptionCollection().findOneAndUpdate(
+    const before = await subscriptionCollection().findOneAndUpdate(
       { _id: id, sale: { $exists: true } },
       { $set: { "sale.nextPaymentDue": parsed.data.nextPaymentDue } },
-      { returnDocument: "after" },
+      { returnDocument: "before" },
     );
-    if (!updated) {
+    if (!before) {
       sendSubscriptionNotFound(res);
       return;
     }
+    const updated = {
+      ...before,
+      sale: { ...before.sale!, nextPaymentDue: parsed.data.nextPaymentDue },
+    };
     const gymHexIds = (updated.gymIds ?? []).map((gym) => gym.toHexString());
     await logAuditPerGym(
       req.user,
@@ -344,8 +348,8 @@ paymentsRouter.patch(
       updated.userId.toHexString(),
       {
         subscriptionId: id.toHexString(),
-        before: subscription.sale.nextPaymentDue?.toISOString() ?? null,
-        after: parsed.data.nextPaymentDue?.toISOString() ?? null,
+        before: before.sale!.nextPaymentDue?.toISOString() ?? null,
+        after: updated.sale.nextPaymentDue?.toISOString() ?? null,
       },
       gymHexIds,
     );
