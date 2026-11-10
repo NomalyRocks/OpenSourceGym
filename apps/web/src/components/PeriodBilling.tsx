@@ -18,8 +18,10 @@ import { dateLocale } from "../i18n/format";
 import { errorMessage } from "../i18n/errors";
 import { Modal, ConfirmModal, useDateFormatter } from "./Modal";
 import { PaymentFields, paymentMethodKeys } from "./PaymentFields";
+import { OverflowMenu } from "./OverflowMenu";
+import { ChevronDown, ChevronRight } from "lucide-react";
 
-function RecordPaymentModal({
+export function RecordPaymentModal({
   subscription,
   onClose,
   onSaved,
@@ -200,7 +202,7 @@ function VoidPaymentModal({
   );
 }
 
-function DueDateModal({
+export function DueDateModal({
   subscription,
   onClose,
   onSaved,
@@ -294,7 +296,7 @@ export function PeriodBilling({
   const [payments, setPayments] = useState<Payment[] | null>(null);
   const [version, setVersion] = useState(0);
   const [error, setError] = useState<string | null>(null);
-  const [action, setAction] = useState<"record" | "due" | Payment | null>(null);
+  const [action, setAction] = useState<Payment | null>(null);
   const hasSale = !!subscription.sale;
   useEffect(() => {
     if (!hasSale) return;
@@ -314,13 +316,12 @@ export function PeriodBilling({
           setError(errorMessage(err, t, "Could not load data."));
       });
     return () => controller.abort();
-  }, [hasSale, subscription.id, version, t]);
+  }, [hasSale, subscription.id, subscription.paidMinor, version, t]);
   const sale = subscription.sale;
   if (!sale) return null;
   const money = (n: number) =>
     formatMoney(n, sale.currency, dateLocale(i18n.resolvedLanguage));
   const balance = subscription.balanceMinor ?? 0;
-  const visiblePayments = expanded ? payments : payments?.slice(0, 3);
   const overdue =
     balance > 0 &&
     !!sale.nextPaymentDue &&
@@ -332,54 +333,48 @@ export function PeriodBilling({
   };
   return (
     <div className="period-billing">
-      <div className="period-billing-heading">
-        <span className="hint">{t("Billing")}</span>
-        <strong>{sale.packageName}</strong>
+      <div className="period-money">
+        <strong>{money(sale.priceMinor)}</strong>
+        <progress
+          className="payment-progress"
+          max={sale.priceMinor || 1}
+          value={
+            sale.priceMinor === 0
+              ? 1
+              : Math.min(sale.priceMinor, subscription.paidMinor ?? 0)
+          }
+          aria-label={t("Paid")}
+        />
+        <span className="hint">
+          {t("{{paid}} paid · {{balance}} left", {
+            paid: money(subscription.paidMinor ?? 0),
+            balance: money(balance),
+          })}
+        </span>
       </div>
-      <dl className="billing-summary">
-        <div>
-          <dt>{t("Price")}</dt>
-          <dd>{money(sale.priceMinor)}</dd>
-        </div>
-        <div>
-          <dt>{t("Paid")}</dt>
-          <dd>{money(subscription.paidMinor ?? 0)}</dd>
-        </div>
-        <div>
-          <dt>{t("Balance")}</dt>
-          <dd className={balance > 0 ? "billing-balance" : ""}>
-            {money(balance)}{" "}
-            {overdue && <span className="badge warn">{t("Overdue")}</span>}
-          </dd>
-        </div>
-        <div>
-          <dt>{t("Next payment date")}</dt>
-          <dd>{sale.nextPaymentDue ? formatDate(sale.nextPaymentDue) : "—"}</dd>
-        </div>
-      </dl>
-      <div className="row billing-actions">
-        {balance > 0 && (
-          <button className="ghost" onClick={() => setAction("record")}>
-            {t("Record payment")}
-          </button>
+      {balance > 0 && sale.nextPaymentDue && (
+        <p className="hint period-due">
+          {t("Next payment date")}: {formatDate(sale.nextPaymentDue)}{" "}
+          {overdue && <span className="badge warn">{t("Overdue")}</span>}
+        </p>
+      )}
+      <button
+        type="button"
+        className="ghost payment-disclosure"
+        aria-expanded={expanded}
+        aria-controls={historyId}
+        onClick={() => setExpanded(!expanded)}
+      >
+        {expanded ? (
+          <ChevronDown size={14} aria-hidden="true" />
+        ) : (
+          <ChevronRight size={14} aria-hidden="true" />
         )}
-        {canAdmin && (
-          <button className="ghost" onClick={() => setAction("due")}>
-            {t("Edit next payment date")}
-          </button>
-        )}
-        {payments && payments.length > 3 && (
-          <button
-            className="ghost"
-            aria-expanded={expanded}
-            aria-controls={historyId}
-            onClick={() => setExpanded(!expanded)}
-          >
-            {expanded ? t("Show recent payments") : t("Show all payments")}
-          </button>
-        )}
-      </div>
-      <div className="payment-history" id={historyId}>
+        {payments
+          ? t("{{count}} payments", { count: payments.length })
+          : t("Payments")}
+      </button>
+      <div className="payment-history" id={historyId} hidden={!expanded}>
         {error && (
           <div className="msg error">
             {error}
@@ -390,7 +385,7 @@ export function PeriodBilling({
         )}
         {!payments && !error && <p className="hint">{t("Loading…")}</p>}
         {payments?.length === 0 && <p className="hint">{t("No payments.")}</p>}
-        {visiblePayments?.map((p) => (
+        {payments?.map((p) => (
           <div key={p.id} className="payment-history-row">
             <div className="payment-history-details">
               <div className={p.void ? "payment-voided" : ""}>
@@ -417,28 +412,21 @@ export function PeriodBilling({
               canAdmin &&
               (profile?.role === "owner" ||
                 profile?.gymIds.includes(p.gymId)) && (
-                <button className="ghost" onClick={() => setAction(p)}>
-                  {t("Void")}
-                </button>
+                <OverflowMenu
+                  label={t("Payment actions")}
+                  items={[
+                    {
+                      label: t("Void payment"),
+                      destructive: true,
+                      onSelect: () => setAction(p),
+                    },
+                  ]}
+                />
               )}
           </div>
         ))}
       </div>
-      {action === "record" && (
-        <RecordPaymentModal
-          subscription={subscription}
-          onClose={closeAction}
-          onSaved={closeAction}
-        />
-      )}
-      {action === "due" && (
-        <DueDateModal
-          subscription={subscription}
-          onClose={closeAction}
-          onSaved={closeAction}
-        />
-      )}
-      {action && typeof action === "object" && (
+      {action && (
         <VoidPaymentModal
           payment={action}
           onClose={closeAction}
