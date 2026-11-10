@@ -28,8 +28,10 @@ test(
   },
   async (t) => {
     process.env.MONGODB_URI = `${mongoUri}/opengym_reception_security_${randomUUID().replaceAll("-", "")}`;
+    // Sibling integration files call flushDb() on TEST_REDIS_URL in parallel;
+    // a dedicated logical DB keeps this file's locks and counters intact.
     const url = new URL(redisUri!);
-    url.pathname = "/13";
+    url.pathname = "/1";
     process.env.REDIS_URL = url.toString();
     process.env.BETTER_AUTH_URL = "http://localhost:3000";
     process.env.BETTER_AUTH_SECRET =

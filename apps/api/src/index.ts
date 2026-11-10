@@ -14,6 +14,7 @@ import { seedInitialAdmin } from "./auth/seed.js";
 import { ensureIndexes } from "./core/indexes.js";
 import { adminRouter } from "./features/admin/router.js";
 import { meRouter } from "./features/me/router.js";
+import { publicInvitesRouter } from "./features/invites/router.js";
 import { gymsRouter } from "./features/gyms/router.js";
 import { memberControlsRouter } from "./features/members/controlsRouter.js";
 import { chainReportsRouter } from "./features/reports/router.js";
@@ -44,6 +45,7 @@ import { seedLegacyMonthPackages } from "./repairs/seedLegacyPackages.js";
 import { openApiRouter } from "./openapi/router.js";
 
 const app = express();
+if (env.trustProxy > 0) app.set("trust proxy", env.trustProxy);
 
 // BetterAuth parses its own body; it must be mounted BEFORE express.json()
 app.all("/api/auth/{*splat}", toNodeHandler(auth));
@@ -51,6 +53,7 @@ app.all("/api/auth/{*splat}", toNodeHandler(auth));
 app.use(express.json());
 
 app.use("/api", openApiRouter);
+app.use("/api/invites", publicInvitesRouter);
 // BEFORE adminRouter: adminRouter defines broad paths, so the more specific
 // prefixes must match first. Gym-scoped routes (including devices and per-gym
 // reports) live under /api/admin/gyms/:gymId/...
@@ -153,7 +156,15 @@ app.use(
       return;
     }
 
-    console.error(`request error: ${req.method} ${req.originalUrl}`, error);
+    // Body-parser errors carry the raw request body (passwords, invite tokens)
+    // on `error.body` and in their message, so only the type is logged.
+    if (parserErrorType) {
+      console.error(
+        `request error: ${req.method} ${req.originalUrl} (${parserErrorType})`,
+      );
+    } else {
+      console.error(`request error: ${req.method} ${req.originalUrl}`, error);
+    }
 
     // Once response streaming starts, the body cannot change; let Express close it
     if (res.headersSent) {

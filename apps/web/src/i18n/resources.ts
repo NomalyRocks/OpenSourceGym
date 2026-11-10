@@ -1,4 +1,63 @@
 const tr = {
+  "Invite member": "Üye davet et",
+  "Pending invites": "Bekleyen davetler",
+  "Send invitation": "Davet gönder",
+  "First name": "Ad",
+  "Last name": "Soyad",
+  "Created by": "Oluşturan",
+  Created: "Oluşturulma",
+  Expires: "Son geçerlilik",
+  Resends: "Yeniden gönderim",
+  "Resend invitation": "Daveti yeniden gönder",
+  "Cancel invitation": "Daveti iptal et",
+  "The member gives consent and sets a password using the email link. The invitation expires in 7 days.":
+    "Üye, e-posta bağlantısından onaylarını verir ve şifresini belirler. Davet 7 gün sonra sona erer.",
+  "Only invitations for the selected gym are shown.":
+    "Yalnızca seçili salonun davetleri gösterilir.",
+  "No pending invitations.": "Bekleyen davet yok.",
+  "Invitation sent.": "Davet gönderildi.",
+  "Invitation cancelled.": "Davet iptal edildi.",
+  "Invitation resent. The previous link no longer works.":
+    "Davet yeniden gönderildi. Önceki bağlantı artık geçerli değil.",
+  "Cancel the invitation for {{name}}? The email link will stop working.":
+    "{{name}} için davet iptal edilsin mi? E-posta bağlantısı artık çalışmayacak.",
+  "Could not send the invitation.": "Davet gönderilemedi.",
+  "Could not load invitations.": "Davetler yüklenemedi.",
+  "Could not resend the invitation.": "Davet yeniden gönderilemedi.",
+  "Could not cancel the invitation.": "Davet iptal edilemedi.",
+  "An account with this email already exists.":
+    "Bu e-posta adresiyle bir hesap zaten var.",
+  "A pending invitation for this email already exists.":
+    "Bu e-posta adresi için bekleyen bir davet zaten var.",
+  "This invitation has reached its resend limit.":
+    "Bu davet için yeniden gönderim sınırına ulaşıldı.",
+  "This invitation is being accepted. Please try again shortly.":
+    "Bu davet şu anda kabul ediliyor. Biraz sonra tekrar deneyin.",
+  "The legal documents changed. Read them again and give both consents.":
+    "Yasal belgeler değişti. Belgeleri yeniden okuyup her iki onayı verin.",
+  "This invitation link is invalid or has expired. Ask the gym for a new one.":
+    "Bu davet bağlantısı geçersiz veya süresi dolmuş. Salondan yeni bir davet isteyin.",
+  "Welcome aboard": "Aramıza hoş geldiniz",
+  "Your account is ready. Sign in with the OpenGym mobile app.":
+    "Hesabınız hazır. OpenGym mobil uygulamasından giriş yapın.",
+  "Invitation unavailable": "Davet kullanılamıyor",
+  "Hello, {{name}}": "Merhaba, {{name}}",
+  "Read the documents below and set a password to create your account.":
+    "Hesabınızı oluşturmak için aşağıdaki belgeleri okuyup bir şifre belirleyin.",
+  "Your consent": "Onaylarınız",
+  "I have read and accept the data processing notice.":
+    "Aydınlatma metnini okudum ve kabul ediyorum.",
+  "I have read and accept the privacy policy.":
+    "Gizlilik politikasını okudum ve kabul ediyorum.",
+  "Read data processing notice": "Aydınlatma metnini oku",
+  "Read privacy policy": "Gizlilik politikasını oku",
+  "Use 8 to 128 characters.": "8 ile 128 karakter kullanın.",
+  "Confirm password": "Şifreyi doğrula",
+  "Create my account": "Hesabımı oluştur",
+  "Try again": "Tekrar dene",
+  "Could not load the invitation.": "Davet yüklenemedi.",
+  "Could not accept the invitation.": "Davet kabul edilemedi.",
+
   "FACILITY MANAGEMENT SYSTEM": "TESİS YÖNETİM SİSTEMİ",
   "SET.": "AYARLA.",
   "REP.": "TEKRARLA.",

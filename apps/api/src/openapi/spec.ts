@@ -5,8 +5,15 @@ import {
   type ZodOpenApiRequestBodyObject,
   type ZodOpenApiResponseObject,
 } from "zod-openapi";
+import {
+  acceptInviteSchema,
+  createInviteSchema,
+  lookupInviteSchema,
+} from "../features/invites/schemas.js";
 import { userDirectoryQuerySchema } from "../features/members/userDirectory.js";
 import {
+  memberInviteSchema,
+  inviteLookupResponseSchema,
   adminStatsSchema,
   apiErrorSchema,
   auditLogSchema,
@@ -320,6 +327,130 @@ export const openApiDocument: OpenApiDocument = createDocument({
             description: "Redirect to the UI path with a trailing slash",
           },
         },
+      },
+    },
+    "/api/invites/lookup": {
+      post: {
+        tags: ["admin"],
+        operationId: "lookupMemberInvite",
+        summary: "Look up an unexpired member invitation",
+        description:
+          "Public. Shares a 20 requests / 10 minutes per-IP limit with acceptance. Unknown and expired tokens return identical INVITE_INVALID responses. Responses must not be cached.",
+        security: [],
+        requestBody: jsonBody(lookupInviteSchema),
+        responses: {
+          "200": jsonResponse(
+            "Invitation and current legal documents",
+            inviteLookupResponseSchema,
+          ),
+          "404": jsonResponse("INVITE_INVALID", apiErrorSchema),
+          "429": apiErrorResponse,
+        },
+      },
+    },
+    "/api/invites/accept": {
+      post: {
+        tags: ["admin"],
+        operationId: "acceptMemberInvite",
+        summary: "Accept a one-time invitation and create a verified member",
+        description:
+          "Public, IP-limited. Requires both personal consents, the current legal version and an 8–128 character password. Creates the account through BetterAuth, verifies email without OTP, deletes the invite and creates no session. The member signs in on mobile. Concurrent or reused tokens fail.",
+        security: [],
+        requestBody: jsonBody(acceptInviteSchema),
+        responses: {
+          "200": jsonResponse("Account ready; no session", okSchema),
+          "400": jsonResponse(
+            "Invalid consent/password or PHONE_ALREADY_EXISTS",
+            apiErrorSchema,
+          ),
+          "404": jsonResponse("INVITE_INVALID", apiErrorSchema),
+          "409": jsonResponse(
+            "LEGAL_VERSION_CHANGED or EMAIL_TAKEN",
+            apiErrorSchema,
+          ),
+          "429": apiErrorResponse,
+        },
+      },
+    },
+    "/api/admin/gyms/{gymId}/invites": {
+      get: {
+        tags: ["admin"],
+        operationId: "listMemberInvites",
+        summary: "List pending invites for this gym",
+        ...requiredRole(
+          "owner, admin, staff",
+          "Only unexpired invites within the caller's gym scope are returned.",
+        ),
+        requestParams: { path: gymPathParams },
+        responses: protectedResponses({
+          "200": jsonResponse(
+            "Pending invitations",
+            z.array(memberInviteSchema),
+          ),
+          "404": apiErrorResponse,
+        }),
+      },
+      post: {
+        tags: ["admin"],
+        operationId: "createMemberInvite",
+        summary: "Invite a member by email",
+        ...requiredRole(
+          "owner, admin, staff",
+          "Creates no account or consent. The link expires in seven days; only its SHA-256 hash is stored. Limit: 20 creation requests per actor per hour. The email uses PUBLIC_WEB_URL/invite#token=... .",
+        ),
+        requestParams: { path: gymPathParams },
+        requestBody: jsonBody(createInviteSchema),
+        responses: protectedResponses({
+          "201": jsonResponse("Invitation emailed", memberInviteSchema),
+          "400": jsonResponse(
+            "Invalid input or PHONE_ALREADY_EXISTS",
+            apiErrorSchema,
+          ),
+          "404": apiErrorResponse,
+          "409": jsonResponse("EMAIL_TAKEN or INVITE_EXISTS", apiErrorSchema),
+          "429": apiErrorResponse,
+        }),
+      },
+    },
+    "/api/admin/gyms/{gymId}/invites/{id}/resend": {
+      post: {
+        tags: ["admin"],
+        operationId: "resendMemberInvite",
+        summary: "Rotate and resend an invitation",
+        ...requiredRole(
+          "owner, admin, staff",
+          "Invalidates the old link and resets expiry to seven days. Maximum five resends; at least 60 seconds between sends.",
+        ),
+        requestParams: { path: gymPathParams.extend({ id: objectIdSchema }) },
+        responses: protectedResponses({
+          "200": jsonResponse("Invitation resent", memberInviteSchema),
+          "404": jsonResponse(
+            "INVITE_INVALID, including an invite belonging to another gym",
+            apiErrorSchema,
+          ),
+          "409": jsonResponse("INVITE_RESEND_LIMIT", apiErrorSchema),
+          "429": apiErrorResponse,
+        }),
+      },
+    },
+    "/api/admin/gyms/{gymId}/invites/{id}": {
+      delete: {
+        tags: ["admin"],
+        operationId: "cancelMemberInvite",
+        summary: "Cancel and delete an invitation",
+        ...requiredRole(
+          "owner, admin, staff",
+          "Deletes the pending invite and invalidates its email link. Audit records contain no invite contact information.",
+        ),
+        requestParams: { path: gymPathParams.extend({ id: objectIdSchema }) },
+        responses: protectedResponses({
+          "200": jsonResponse("Invitation cancelled", okSchema),
+          "404": jsonResponse(
+            "INVITE_INVALID, including an invite belonging to another gym",
+            apiErrorSchema,
+          ),
+          "429": apiErrorResponse,
+        }),
       },
     },
     "/api/legal": {

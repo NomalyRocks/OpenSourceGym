@@ -3,10 +3,12 @@ import { APIError, createAuthMiddleware } from "better-auth/api";
 import { mongodbAdapter } from "better-auth/adapters/mongodb";
 import { emailOTP, twoFactor } from "better-auth/plugins";
 import { expo } from "@better-auth/expo";
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
+import { AsyncLocalStorage } from "node:async_hooks";
+import { getLegalConfig } from "../features/settings/legal.js";
 import { MongoServerError } from "mongodb";
 import { db, userCollection } from "../core/db.js";
-import { redis } from "../core/redis.js";
+import { acquireLock, redis } from "../core/redis.js";
 import { createAuthSecondaryStorage } from "./authStorage.js";
 import { sendMail } from "../core/mailer.js";
 import { env } from "../core/env.js";
@@ -60,6 +62,26 @@ function normalizePhoneForApi(value: unknown): string {
     }
     throw error;
   }
+}
+
+// This context can only be entered by server code after validating an invite.
+// Headers and request bodies cannot opt out of normal signup verification.
+const inviteSignup = new AsyncLocalStorage<{ legalVersion: number }>();
+
+export function runAsInviteSignup<T>(
+  legalVersion: number,
+  action: () => Promise<T>,
+): Promise<T> {
+  return inviteSignup.run({ legalVersion }, action);
+}
+
+function inviteAwareEmailOTP(options: Parameters<typeof emailOTP>[0]) {
+  const plugin = emailOTP(options);
+  for (const hook of plugin.hooks.after) {
+    const matches = hook.matcher;
+    hook.matcher = (context) => !inviteSignup.getStore() && matches(context);
+  }
+  return plugin;
 }
 
 const DEV_TEST_EMAIL_DOMAIN = "@test.com";
@@ -158,6 +180,24 @@ async function assertPhoneAvailable(phoneE164: string): Promise<void> {
   if (existingUser || activeConflict) throw duplicatePhoneError();
 }
 
+// The read-only precheck above cannot stop two concurrent signups with the
+// same phone: both can pass it before either insert lands. The unique index
+// then rejects the second insert, but better-auth's sign-up route reaches the
+// raw Mongo adapter without our wrapper and reports FAILED_TO_CREATE_USER (422)
+// instead of PHONE_ALREADY_EXISTS. An atomic short-lived reservation makes the
+// second request fail inside the hook with the proper 400. The reservation is
+// left to expire rather than released, so it also covers the insert itself.
+const PHONE_SIGNUP_RESERVATION_MS = 15_000;
+
+async function reservePhoneForSignup(phoneE164: string): Promise<void> {
+  const reserved = await acquireLock(
+    `og:phone-signup:${phoneE164}`,
+    randomUUID(),
+    PHONE_SIGNUP_RESERVATION_MS,
+  );
+  if (!reserved) throw duplicatePhoneError();
+}
+
 export const auth = betterAuth({
   baseURL: env.betterAuthUrl,
   secret: env.betterAuthSecret,
@@ -230,6 +270,12 @@ export const auth = betterAuth({
       privacyAccepted: { type: "boolean", required: true },
       dataProcessingAcceptedAt: { type: "date", required: false, input: false },
       privacyAcceptedAt: { type: "date", required: false, input: false },
+      legalVersionAccepted: {
+        type: "number",
+        required: false,
+        defaultValue: null,
+        input: false,
+      },
       // Member-provided age, height, and weight for mobile calorie calculator
       // defaults. `input: false`: BetterAuth's generic `update-user` and `sign-up`
       // endpoints cannot write them because those endpoints pass only through
@@ -346,8 +392,18 @@ export const auth = betterAuth({
           const phoneE164 = isInitialAdminSeed
             ? null
             : normalizePhoneForApi(candidate.phone);
-          if (phoneE164) await assertPhoneAvailable(phoneE164);
-
+          const legal = await getLegalConfig();
+          const invitation = inviteSignup.getStore();
+          if (invitation && invitation.legalVersion !== legal.version) {
+            throw new APIError("CONFLICT", {
+              code: "LEGAL_VERSION_CHANGED",
+              message: "The legal documents changed. Review them again.",
+            });
+          }
+          if (phoneE164) {
+            await assertPhoneAvailable(phoneE164);
+            await reservePhoneForSignup(phoneE164);
+          }
           const now = new Date();
           return {
             data: {
@@ -358,6 +414,7 @@ export const auth = betterAuth({
               role: "member",
               dataProcessingAcceptedAt: now,
               privacyAcceptedAt: now,
+              legalVersionAccepted: legal.version,
             },
           };
         },
@@ -429,7 +486,7 @@ export const auth = betterAuth({
 
   plugins: [
     expo(),
-    emailOTP({
+    inviteAwareEmailOTP({
       sendVerificationOnSignUp: true,
       otpLength: 6,
       expiresIn: 600,

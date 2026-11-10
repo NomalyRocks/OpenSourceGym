@@ -661,6 +661,12 @@ export type ApiErrorCode =
   | "PROFILE_PHOTO_BUSY"
   | "PROFILE_PHOTO_RATE_LIMITED"
   | "PROFILE_PHOTO_UNAVAILABLE"
+  | "EMAIL_TAKEN"
+  | "INVITE_EXISTS"
+  | "INVITE_INVALID"
+  | "INVITE_ACCEPTING"
+  | "INVITE_RESEND_LIMIT"
+  | "LEGAL_VERSION_CHANGED"
   | "INVALID_REQUEST"
   | "DELETION_MEMBER_ONLY"
   | "DELETION_ALREADY_PENDING"
@@ -1141,3 +1147,47 @@ export interface ChainSummary {
 /** CSV export datasets */
 export type ExportDataset =
   "members" | "subscriptions" | "entries" | "payments";
+
+/** A pending invitation; no account exists until the member accepts it. */
+export interface MemberInvite {
+  id: string;
+  email: string;
+  firstName: string;
+  lastName: string;
+  expiresAt: string;
+  createdAt: string;
+  createdByName: string;
+  resendCount: number;
+}
+
+export interface CreateMemberInviteRequest {
+  email: string;
+  firstName: string;
+  lastName: string;
+  phone: string;
+}
+
+export type MemberInviteListResponse = MemberInvite[];
+export type CreateMemberInviteResponse = MemberInvite;
+export type ResendMemberInviteResponse = MemberInvite;
+export interface CancelMemberInviteResponse {
+  ok: true;
+}
+export interface InviteLookupRequest {
+  token: string;
+}
+export interface InviteLookupResponse {
+  firstName: string;
+  email: string;
+  chainName: string;
+  legal: LegalConfig;
+}
+export interface AcceptMemberInviteRequest extends InviteLookupRequest {
+  password: string;
+  dataProcessingAccepted: true;
+  privacyAccepted: true;
+  legalVersion: number;
+}
+export interface AcceptMemberInviteResponse {
+  ok: true;
+}

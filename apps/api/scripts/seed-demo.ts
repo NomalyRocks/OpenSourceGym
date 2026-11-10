@@ -355,6 +355,24 @@ for (const [index, def] of GYM_DEFS.entries()) {
 }
 const gymHex = (index: number) => gyms[index]!.id.toHexString();
 
+// Pending invitations contain no account or consent record.
+for (const [index, firstName] of ["Alex", "Sam"].entries()) {
+  const token = randomBytes(32).toString("base64url");
+  await db.collection("member_invites").insertOne({
+    email: `pending-${index + 1}@example.com`,
+    firstName,
+    lastName: "Invite",
+    phone: `+90530000900${index}`,
+    gymId: gymHex(0),
+    tokenHash: createHash("sha256").update(token).digest("hex"),
+    expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+    createdBy: ownerId,
+    createdAt: new Date(),
+    resentAt: null,
+    resendCount: 0,
+  });
+}
+
 // --- turnstile devices: one entry and one exit per gym ---
 const devices: { id: string; gymId: ObjectId; direction: "in" | "out" }[] = [];
 for (const gym of gyms) {

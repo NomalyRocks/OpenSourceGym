@@ -1163,3 +1163,27 @@ export const gateOpenRequestSchema = withId(
   }),
   "GateOpenRequest",
 );
+
+export const memberInviteSchema = withId(
+  z.object({
+    id: objectIdSchema,
+    email: z.email(),
+    firstName: z.string(),
+    lastName: z.string(),
+    expiresAt: isoDateTimeSchema,
+    createdAt: isoDateTimeSchema,
+    createdByName: z.string(),
+    resendCount: z.number().int().min(0).max(5),
+  }),
+  "MemberInvite",
+);
+
+export const inviteLookupResponseSchema = withId(
+  z.object({
+    firstName: z.string(),
+    email: z.email(),
+    chainName: z.string(),
+    legal: legalConfigSchema,
+  }),
+  "InviteLookupResponse",
+);
