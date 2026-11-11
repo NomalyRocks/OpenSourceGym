@@ -119,16 +119,32 @@ export async function inactiveMembersPipeline(
   ];
 }
 
+/**
+ * Lapsed rows sorted for paging, without identity/visit enrichment. The
+ * enrichment stages only add fields and never drop rows, so the paged list
+ * runs them after skip/limit and its total still equals the summary count.
+ */
+async function lapsedMembersSortedStages(
+  range: ReportRangeInput,
+  gymId: string,
+  database: Db,
+): Promise<Document[]> {
+  return [
+    ...(await lapsedMembersStages(range, gymId, database)),
+    { $set: { sortAt: "$latestEnd" } },
+    { $sort: sortSpec("sortAt") },
+  ];
+}
+
+/** Full enriched pipeline (CSV export). */
 export async function lapsedMembersPipeline(
   range: ReportRangeInput,
   gymId: string,
   database: Db = db,
 ): Promise<Document[]> {
   return [
-    ...(await lapsedMembersStages(range, gymId, database)),
+    ...(await lapsedMembersSortedStages(range, gymId, database)),
     ...memberDetailsStages(gymId),
-    { $set: { sortAt: "$latestEnd" } },
-    { $sort: sortSpec("sortAt") },
   ];
 }
 
@@ -190,6 +206,8 @@ async function listPage<T>(
   direction: "asc" | "desc",
   map: (row: LostMemberDocument) => T,
   database: Db,
+  // Stages that only add fields; they run on the requested page alone.
+  pageStages: Document[] = [],
 ): Promise<LostMembersPage<T>> {
   const cursor = params.cursor ? decodeCursor(params.cursor) : null;
   if (params.cursor && !cursor) throw new InvalidCursorError();
@@ -211,6 +229,7 @@ async function listPage<T>(
               ? [{ $skip: (params.page - 1) * params.limit }]
               : []),
             { $limit: params.limit + 1 },
+            ...pageStages,
           ],
         },
       },
@@ -243,10 +262,11 @@ export async function listLapsedMembers(
   database: Db = db,
 ): Promise<LostMembersPage<LapsedMemberRow>> {
   return listPage(
-    await lapsedMembersPipeline(params, params.gymId, database),
+    await lapsedMembersSortedStages(params, params.gymId, database),
     params,
     "desc",
     lapsedMemberRow,
     database,
+    memberDetailsStages(params.gymId),
   );
 }

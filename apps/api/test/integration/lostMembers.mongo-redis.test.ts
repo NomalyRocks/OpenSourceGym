@@ -329,7 +329,18 @@ test(
           assert.equal(page.items[0]!.userId, expired.toHexString());
           assert.equal(page.items[0]!.endedAt, at(-4).toISOString());
           assert.equal(page.items[0]!.lastEntryAt, at(-20).toISOString());
+          assert.equal(page.items[0]!.name, "Expired Tester");
           assert.ok(page.nextCursor);
+          // Enrichment runs after skip/limit; a numbered page must still be
+          // enriched and keep the full total.
+          const second = await lost.listLapsedMembers(
+            { ...range, gymId: A, limit: 1, page: 2 },
+            db,
+          );
+          assert.equal(second.total, summary.lapsedMembers);
+          assert.equal(second.items.length, 1);
+          assert.equal(second.items[0]!.userId, olderLapsed.toHexString());
+          assert.equal(second.items[0]!.name, "OlderLapsed Tester");
           const next = await lost.listLapsedMembers(
             { ...range, gymId: A, limit: 1, cursor: page.nextCursor },
             db,
