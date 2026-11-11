@@ -45,7 +45,6 @@ import {
 import { countFrozenMembers } from "../freeze/frozenMembers.js";
 import { countActiveMembers, countRenewalsDue } from "../reports/reports.js";
 import { receptionRouter } from "../gate/receptionRouter.js";
-import { adminInvitesRouter } from "../invites/router.js";
 import { devicesRouter } from "../devices/router.js";
 import { gymReportsRouter } from "../reports/router.js";
 
@@ -462,6 +461,5 @@ gymsRouter.get(
 
 gymsRouter.use("/:gymId", receptionRouter);
 
-gymsRouter.use("/:gymId/invites", adminInvitesRouter);
 gymsRouter.use("/:gymId/devices", devicesRouter);
 gymsRouter.use("/:gymId/reports", gymReportsRouter);

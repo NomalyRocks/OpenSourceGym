@@ -4,7 +4,6 @@ import { mongodbAdapter } from "better-auth/adapters/mongodb";
 import { emailOTP, twoFactor } from "better-auth/plugins";
 import { expo } from "@better-auth/expo";
 import { createHash, randomUUID } from "node:crypto";
-import { AsyncLocalStorage } from "node:async_hooks";
 import { getLegalConfig } from "../features/settings/legal.js";
 import { MongoServerError } from "mongodb";
 import { db, userCollection } from "../core/db.js";
@@ -62,26 +61,6 @@ function normalizePhoneForApi(value: unknown): string {
     }
     throw error;
   }
-}
-
-// This context can only be entered by server code after validating an invite.
-// Headers and request bodies cannot opt out of normal signup verification.
-const inviteSignup = new AsyncLocalStorage<{ legalVersion: number }>();
-
-export function runAsInviteSignup<T>(
-  legalVersion: number,
-  action: () => Promise<T>,
-): Promise<T> {
-  return inviteSignup.run({ legalVersion }, action);
-}
-
-function inviteAwareEmailOTP(options: Parameters<typeof emailOTP>[0]) {
-  const plugin = emailOTP(options);
-  for (const hook of plugin.hooks.after) {
-    const matches = hook.matcher;
-    hook.matcher = (context) => !inviteSignup.getStore() && matches(context);
-  }
-  return plugin;
 }
 
 const DEV_TEST_EMAIL_DOMAIN = "@test.com";
@@ -393,13 +372,6 @@ export const auth = betterAuth({
             ? null
             : normalizePhoneForApi(candidate.phone);
           const legal = await getLegalConfig();
-          const invitation = inviteSignup.getStore();
-          if (invitation && invitation.legalVersion !== legal.version) {
-            throw new APIError("CONFLICT", {
-              code: "LEGAL_VERSION_CHANGED",
-              message: "The legal documents changed. Review them again.",
-            });
-          }
           if (phoneE164) {
             await assertPhoneAvailable(phoneE164);
             await reservePhoneForSignup(phoneE164);
@@ -486,7 +458,7 @@ export const auth = betterAuth({
 
   plugins: [
     expo(),
-    inviteAwareEmailOTP({
+    emailOTP({
       sendVerificationOnSignUp: true,
       otpLength: 6,
       expiresIn: 600,

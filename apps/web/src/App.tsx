@@ -16,7 +16,6 @@ import {
   useGyms,
 } from "./lib/gyms";
 import { Shell } from "./components/Shell";
-import { Invite } from "./pages/Invite";
 import { Login } from "./pages/Login";
 import { ChangePassword } from "./pages/ChangePassword";
 import { Overview } from "./pages/Overview";
@@ -108,61 +107,52 @@ function Gate() {
   const canAdmin = isOwner || profile.role === "admin";
 
   return (
-    <GymsProvider>
-      <Shell>
-        <Routes>
-          <Route path="/gyms/:gymId" element={<GymScope />}>
-            <Route path="overview" element={<Overview />} />
-            <Route path="users" element={<Users />} />
-            <Route
-              path="members"
-              element={<Navigate to="../users" replace />}
-            />
-            <Route path="entries" element={<Entries />} />
-            <Route path="renewals" element={<Renewals />} />
-            <Route path="reports" element={<Reports />} />
-            <Route path="debtors" element={<Debtors />} />
-            {canAdmin && <Route path="cash" element={<Cash />} />}
-            {canAdmin && <Route path="devices" element={<Devices />} />}
-            {canAdmin && <Route path="settings" element={<Settings />} />}
-            <Route path="*" element={<Navigate to="overview" replace />} />
-            <Route index element={<Navigate to="overview" replace />} />
-          </Route>
-          <Route path="/security" element={<Security />} />
-          {isOwner && <Route path="/chain" element={<ChainSummary />} />}
-          {isOwner && <Route path="/chain/packages" element={<Packages />} />}
-          {isOwner && <Route path="/chain/gyms" element={<Gyms />} />}
-          {isOwner && <Route path="/chain/staff" element={<StaffGyms />} />}
-          {canAdmin && (
-            <Route path="/chain/settings" element={<ChainSettings />} />
-          )}
-          {canAdmin && <Route path="/audit" element={<Audit />} />}
-          {isOwner && (
-            <Route path="/data-requests" element={<DataRequests />} />
-          )}
-          <Route path="*" element={<HomeRedirect />} />
-        </Routes>
-      </Shell>
-    </GymsProvider>
+    <BrowserRouter>
+      <GymsProvider>
+        <Shell>
+          <Routes>
+            <Route path="/gyms/:gymId" element={<GymScope />}>
+              <Route path="overview" element={<Overview />} />
+              <Route path="users" element={<Users />} />
+              <Route
+                path="members"
+                element={<Navigate to="../users" replace />}
+              />
+              <Route path="entries" element={<Entries />} />
+              <Route path="renewals" element={<Renewals />} />
+              <Route path="reports" element={<Reports />} />
+              <Route path="debtors" element={<Debtors />} />
+              {canAdmin && <Route path="cash" element={<Cash />} />}
+              {canAdmin && <Route path="devices" element={<Devices />} />}
+              {canAdmin && <Route path="settings" element={<Settings />} />}
+              <Route path="*" element={<Navigate to="overview" replace />} />
+              <Route index element={<Navigate to="overview" replace />} />
+            </Route>
+            <Route path="/security" element={<Security />} />
+            {isOwner && <Route path="/chain" element={<ChainSummary />} />}
+            {isOwner && <Route path="/chain/packages" element={<Packages />} />}
+            {isOwner && <Route path="/chain/gyms" element={<Gyms />} />}
+            {isOwner && <Route path="/chain/staff" element={<StaffGyms />} />}
+            {canAdmin && (
+              <Route path="/chain/settings" element={<ChainSettings />} />
+            )}
+            {canAdmin && <Route path="/audit" element={<Audit />} />}
+            {isOwner && (
+              <Route path="/data-requests" element={<DataRequests />} />
+            )}
+            <Route path="*" element={<HomeRedirect />} />
+          </Routes>
+        </Shell>
+      </GymsProvider>
+    </BrowserRouter>
   );
 }
 
-function StaffApp() {
+export function App() {
   const { user } = useSessionUser();
   return (
     <ProfileProvider enabled={!!user}>
       <Gate />
     </ProfileProvider>
-  );
-}
-
-export function App() {
-  return (
-    <BrowserRouter>
-      <Routes>
-        <Route path="/invite" element={<Invite />} />
-        <Route path="*" element={<StaffApp />} />
-      </Routes>
-    </BrowserRouter>
   );
 }

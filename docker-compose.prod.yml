@@ -59,9 +59,6 @@ services:
       INITIAL_ADMIN_PASSWORD: ${INITIAL_ADMIN_PASSWORD:-}
       BETTER_AUTH_URL: https://${DOMAIN}
       TRUSTED_ORIGINS: https://${DOMAIN}
-      # Base URL of the admin panel, used in member invite links. Required by
-      # the API in production; the panel is served on the same domain.
-      PUBLIC_WEB_URL: ${PUBLIC_WEB_URL:-https://${DOMAIN}}
       # Caddy is the only proxy hop in front of the API, so Express trusts one
       # hop for req.ip; per-IP rate limits would otherwise share Caddy's address.
       # Keep the API port unpublished, or clients could forge X-Forwarded-For.

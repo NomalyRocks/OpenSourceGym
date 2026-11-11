@@ -55,12 +55,6 @@ const envSchema = z.object({
   // variable is dead weight and should be removed from the environment.
   INITIAL_ADMIN_PASSWORD: z.string().min(1).optional(),
   BETTER_AUTH_URL: z.url().default("http://localhost:3000"),
-  PUBLIC_WEB_URL: (isProduction
-    ? z.url()
-    : z.url().default("http://localhost:5173")
-  )
-    .refine((value) => /^https?:\/\//.test(value), "must use HTTP or HTTPS")
-    .transform((value) => value.replace(/\/$/, "")),
   // Number of reverse-proxy hops in front of the API (Express "trust proxy").
   // 0 trusts none: req.ip is the socket address. Behind Caddy in production it
   // must be 1, otherwise every client shares Caddy's address and each per-IP
@@ -113,7 +107,6 @@ export const env = {
   betterAuthSecret: raw.BETTER_AUTH_SECRET,
   initialAdminPassword: raw.INITIAL_ADMIN_PASSWORD,
   betterAuthUrl: raw.BETTER_AUTH_URL,
-  publicWebUrl: raw.PUBLIC_WEB_URL,
   trustProxy: raw.TRUST_PROXY,
   trustedOrigins: raw.TRUSTED_ORIGINS,
   reportsTimeZone: raw.REPORTS_TIME_ZONE,

@@ -24,7 +24,6 @@ import type {
   UserDirectoryRow,
 } from "@opengym/shared";
 import { api, isAbortError } from "../lib/api";
-import { InviteMemberModal, PendingInvites } from "../components/MemberInvites";
 import { PageHeader } from "../components/PageHeader";
 import { Avatar } from "../components/Avatar";
 import { MemberDrawer } from "../components/MemberDrawer";
@@ -87,7 +86,6 @@ export function Users() {
   const { gyms } = useGyms();
   const gymName = (id: string) => gyms.find((g) => g.id === id)?.name ?? id;
 
-  const [inviteOpen, setInviteOpen] = useState(false);
   const [view, setView] = useState<View>("table");
   const [searchText, setSearchText] = useState("");
   const [q, setQ] = useState("");
@@ -248,12 +246,6 @@ export function Users() {
     <div className="stagger">
       <PageHeader
         title={t("Users")}
-        actions={
-          <button type="button" onClick={() => setInviteOpen(true)}>
-            <Mail size={15} />
-            {t("Invite member")}
-          </button>
-        }
         count={total}
         subtitle={t("Search members, manage roles and grant subscriptions.")}
       />
@@ -602,18 +594,6 @@ export function Users() {
           </button>
         </div>
       </div>
-
-      <PendingInvites reloadTick={reloadTick} />
-      {inviteOpen && (
-        <InviteMemberModal
-          onClose={() => setInviteOpen(false)}
-          onCreated={() => {
-            setInviteOpen(false);
-            reload();
-            setMsg({ kind: "success", text: t("Invitation sent.") });
-          }}
-        />
-      )}
 
       {selectedId && (
         <MemberDrawer

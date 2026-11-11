@@ -14,7 +14,6 @@ import { seedInitialAdmin } from "./auth/seed.js";
 import { ensureIndexes } from "./core/indexes.js";
 import { adminRouter } from "./features/admin/router.js";
 import { meRouter } from "./features/me/router.js";
-import { publicInvitesRouter } from "./features/invites/router.js";
 import { gymsRouter } from "./features/gyms/router.js";
 import { memberControlsRouter } from "./features/members/controlsRouter.js";
 import { chainReportsRouter } from "./features/reports/router.js";
@@ -53,7 +52,6 @@ app.all("/api/auth/{*splat}", toNodeHandler(auth));
 app.use(express.json());
 
 app.use("/api", openApiRouter);
-app.use("/api/invites", publicInvitesRouter);
 // BEFORE adminRouter: adminRouter defines broad paths, so the more specific
 // prefixes must match first. Gym-scoped routes (including devices and per-gym
 // reports) live under /api/admin/gyms/:gymId/...
@@ -156,7 +154,7 @@ app.use(
       return;
     }
 
-    // Body-parser errors carry the raw request body (passwords, invite tokens)
+    // Body-parser errors carry the raw request body (passwords)
     // on `error.body` and in their message, so only the type is logged.
     if (parserErrorType) {
       console.error(

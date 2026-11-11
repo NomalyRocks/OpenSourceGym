@@ -4,15 +4,6 @@ import { ApiError } from "../lib/api";
 import type { WebTranslationKey } from "./resources";
 
 const codeMessages: Record<ApiErrorCode, WebTranslationKey> = {
-  EMAIL_TAKEN: "An account with this email already exists.",
-  INVITE_EXISTS: "A pending invitation for this email already exists.",
-  INVITE_INVALID:
-    "This invitation link is invalid or has expired. Ask the gym for a new one.",
-  INVITE_RESEND_LIMIT: "This invitation has reached its resend limit.",
-  INVITE_ACCEPTING:
-    "This invitation is being accepted. Please try again shortly.",
-  LEGAL_VERSION_CHANGED:
-    "The legal documents changed. Read them again and give both consents.",
   AUTH_REQUIRED: "A session is required.",
   FORBIDDEN: "You are not authorized for this operation.",
   INTERNAL_ERROR: "An unexpected error occurred. Please try again.",

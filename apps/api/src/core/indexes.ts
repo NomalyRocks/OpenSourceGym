@@ -43,21 +43,6 @@ async function ensureIndex(
 // bootstrap. ensureIndex is idempotent and recreates conflicting options, so it
 // can safely run at every startup.
 export async function ensureIndexes(database: Db = db): Promise<void> {
-  await ensureIndex(
-    database,
-    "member_invites",
-    { expiresAt: 1 },
-    { expireAfterSeconds: 0 },
-  );
-  await ensureIndex(
-    database,
-    "member_invites",
-    { tokenHash: 1 },
-    { unique: true },
-  );
-  await ensureIndex(database, "member_invites", { email: 1 }, { unique: true });
-  await ensureIndex(database, "member_invites", { gymId: 1, createdAt: -1 });
-
   // phoneE164 exists only on validated and deduplicated documents. Because old
   // duplicate documents lack the field, the partial index preserves them while
   // atomically preventing new races.
