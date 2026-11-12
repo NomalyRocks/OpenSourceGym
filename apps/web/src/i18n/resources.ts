@@ -803,6 +803,16 @@ const tr = {
   "Exit side": "Çıkış yüzü",
   "The sale terms changed. Review the refreshed catalog and confirm the sale again.":
     "Satış koşulları değişti. Güncellenen kataloğu inceleyip satışı tekrar onaylayın.",
+  "Open turnstile": "Turnikeyi aç",
+  "Could not open turnstile.": "Turnike açılamadı.",
+  "Turnstile opened.": "Turnike açıldı.",
+  "No online turnstiles at this gym.": "Bu salonda çevrimiçi turnike yok.",
+  "Select a turnstile": "Bir turnike seçin",
+  "Reason (3–200 characters)": "Gerekçe (3–200 karakter)",
+  Source: "Kaynak",
+  QR: "QR",
+  Reception: "Resepsiyon",
+  "The device does not support this direction.": "Cihaz bu yönü desteklemiyor.",
 } as const;
 
 const en = Object.fromEntries(Object.keys(tr).map((key) => [key, key])) as {

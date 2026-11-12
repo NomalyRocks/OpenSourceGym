@@ -543,6 +543,9 @@ export const entryEventSchema = withId(
     userId: z.string().nullable(),
     memberName: z.string().nullable(),
     allowed: z.boolean(),
+    source: z.enum(["qr", "reception"]),
+    actorName: z.string().nullable(),
+    staffReason: z.string().nullable(),
     reason: gateRejectCodeSchema.nullable(),
     at: isoDateTimeSchema,
     distanceM: z.number().int().nonnegative().nullable().meta({
@@ -1139,4 +1142,24 @@ export const myBusyHoursSchema = withId(
     ),
   }),
   "MyBusyHours",
+);
+
+export const gateDeviceSummarySchema = withId(
+  z.object({
+    id: objectIdSchema,
+    name: z.string(),
+    direction: z.enum(["in", "out", "both"]),
+    online: z.boolean(),
+  }),
+  "GateDeviceSummary",
+);
+
+export const gateOpenRequestSchema = withId(
+  z.object({
+    userId: objectIdSchema,
+    deviceId: objectIdSchema,
+    direction: z.enum(["in", "out"]),
+    reason: z.string().trim().min(3).max(200),
+  }),
+  "GateOpenRequest",
 );

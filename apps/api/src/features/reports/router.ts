@@ -15,7 +15,7 @@ import type {
 } from "@opengym/shared";
 import { sendApiError } from "../../core/apiError.js";
 import { logAudit } from "../../core/audit.js";
-import { csvRow, UTF8_BOM } from "./csv.js";
+import { csvRow, UTF8_BOM, entryCsvHeader, entryCsvValues } from "./csv.js";
 import { db, toObjectId } from "../../core/db.js";
 import {
   gymScoped,
@@ -485,28 +485,12 @@ const EXPORTS: Record<ExportDataset, ExportSpec> = {
   },
   entries: {
     collection: "entry_events",
-    header: [
-      "id",
-      "gymId",
-      "at",
-      "deviceName",
-      "memberName",
-      "allowed",
-      "reason",
-    ],
+    header: entryCsvHeader,
     pipeline: ({ from, to }, gymId) => [
       { $match: { gymId, at: { $gte: from, $lte: to } } },
       { $sort: { at: 1, _id: 1 } },
     ],
-    row: (doc) => [
-      doc._id,
-      doc.gymId,
-      doc.at,
-      doc.deviceName,
-      doc.memberName,
-      doc.allowed,
-      doc.reason,
-    ],
+    row: entryCsvValues,
   },
 };
 

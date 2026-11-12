@@ -44,6 +44,7 @@ import {
 } from "../../lib/pagination.js";
 import { countFrozenMembers } from "../freeze/frozenMembers.js";
 import { countActiveMembers, countRenewalsDue } from "../reports/reports.js";
+import { receptionRouter } from "../gate/receptionRouter.js";
 import { devicesRouter } from "../devices/router.js";
 import { gymReportsRouter } from "../reports/router.js";
 
@@ -384,6 +385,7 @@ gymsRouter.get(
 );
 
 const entryEventQuerySchema = pageQuerySchema.extend({
+  source: z.enum(["qr", "reception"]).optional(),
   deviceId: z.string().min(1).max(64).optional(),
   userId: z.string().min(1).max(64).optional(),
   // Query parameters always arrive as strings; z.coerce.boolean() also turns
@@ -408,11 +410,18 @@ gymsRouter.get(
       );
       return;
     }
-    const { cursor, limit, deviceId, userId, allowed, from, to } = query.data;
+    const { cursor, limit, deviceId, userId, allowed, source, from, to } =
+      query.data;
 
     const filters: Record<string, unknown>[] = [
       { gymId: req.gym._id.toHexString() },
     ];
+    if (source)
+      filters.push(
+        source === "qr"
+          ? { $or: [{ source: "qr" }, { source: { $exists: false } }] }
+          : { source },
+      );
     if (deviceId) filters.push({ deviceId });
     if (userId) filters.push({ userId });
     if (allowed) filters.push({ allowed: allowed === "true" });
@@ -437,6 +446,9 @@ gymsRouter.get(
         memberName: d.memberName ?? null,
         allowed: d.allowed,
         reason: d.reason ?? null,
+        source: d.source ?? "qr",
+        actorName: d.actorName ?? null,
+        staffReason: d.staffReason ?? null,
         at: (d.at as Date).toISOString(),
         // Absent on events recorded before distance was tracked.
         distanceM: typeof d.distanceM === "number" ? d.distanceM : null,
@@ -446,6 +458,8 @@ gymsRouter.get(
     res.json(body);
   }),
 );
+
+gymsRouter.use("/:gymId", receptionRouter);
 
 gymsRouter.use("/:gymId/devices", devicesRouter);
 gymsRouter.use("/:gymId/reports", gymReportsRouter);

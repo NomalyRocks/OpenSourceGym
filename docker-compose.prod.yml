@@ -59,6 +59,10 @@ services:
       INITIAL_ADMIN_PASSWORD: ${INITIAL_ADMIN_PASSWORD:-}
       BETTER_AUTH_URL: https://${DOMAIN}
       TRUSTED_ORIGINS: https://${DOMAIN}
+      # Caddy is the only proxy hop in front of the API, so Express trusts one
+      # hop for req.ip; per-IP rate limits would otherwise share Caddy's address.
+      # Keep the API port unpublished, or clients could forge X-Forwarded-For.
+      TRUST_PROXY: ${TRUST_PROXY:-1}
       # So that report days are cut according to the gym's local day.
       REPORTS_TIME_ZONE: ${REPORTS_TIME_ZONE:-Europe/Istanbul}
       # R2 is REQUIRED in production: the API validates the configuration at

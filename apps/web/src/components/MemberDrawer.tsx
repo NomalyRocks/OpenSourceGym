@@ -14,6 +14,7 @@ import { useGyms } from "../lib/gyms";
 import { errorMessage } from "../i18n/errors";
 import { roleKey } from "../lib/roleKey";
 import { usePresenceFormat } from "../lib/presence";
+import { ReceptionGateOpen } from "./ReceptionGateOpen";
 import { Avatar } from "./Avatar";
 import { MemberControls } from "./MemberControls";
 import { ConfirmModal, Modal, useDateFormatter } from "./Modal";
@@ -300,6 +301,17 @@ export function MemberDrawer({
             <div className="hint">{loadError ? "" : t("Loading…")}</div>
           )}
           <div className="drawer-header-actions">
+            {target &&
+              (role === "owner" || role === "admin" || role === "staff") && (
+                <ReceptionGateOpen
+                  member={target}
+                  onOpened={() => {
+                    setMsg({ kind: "success", text: t("Turnstile opened.") });
+                    setReloadKey((key) => key + 1);
+                    void refresh();
+                  }}
+                />
+              )}
             {detail && target?.role === "member" && (
               <MemberControls
                 detail={detail}

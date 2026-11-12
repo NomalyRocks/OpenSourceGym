@@ -55,6 +55,11 @@ const envSchema = z.object({
   // variable is dead weight and should be removed from the environment.
   INITIAL_ADMIN_PASSWORD: z.string().min(1).optional(),
   BETTER_AUTH_URL: z.url().default("http://localhost:3000"),
+  // Number of reverse-proxy hops in front of the API (Express "trust proxy").
+  // 0 trusts none: req.ip is the socket address. Behind Caddy in production it
+  // must be 1, otherwise every client shares Caddy's address and each per-IP
+  // rate limit collapses into one global bucket.
+  TRUST_PROXY: z.coerce.number().int().min(0).max(10).default(0),
   // prefault (not default): the fallback must also pass through transformation
   // and validation; otherwise Zod short-circuits on output and leaves a raw string.
   TRUSTED_ORIGINS: originList.prefault("http://localhost:5173"),
@@ -102,6 +107,7 @@ export const env = {
   betterAuthSecret: raw.BETTER_AUTH_SECRET,
   initialAdminPassword: raw.INITIAL_ADMIN_PASSWORD,
   betterAuthUrl: raw.BETTER_AUTH_URL,
+  trustProxy: raw.TRUST_PROXY,
   trustedOrigins: raw.TRUSTED_ORIGINS,
   reportsTimeZone: raw.REPORTS_TIME_ZONE,
   r2: {

@@ -44,6 +44,7 @@ import { seedLegacyMonthPackages } from "./repairs/seedLegacyPackages.js";
 import { openApiRouter } from "./openapi/router.js";
 
 const app = express();
+if (env.trustProxy > 0) app.set("trust proxy", env.trustProxy);
 
 // BetterAuth parses its own body; it must be mounted BEFORE express.json()
 app.all("/api/auth/{*splat}", toNodeHandler(auth));
@@ -153,7 +154,15 @@ app.use(
       return;
     }
 
-    console.error(`request error: ${req.method} ${req.originalUrl}`, error);
+    // Body-parser errors carry the raw request body (passwords)
+    // on `error.body` and in their message, so only the type is logged.
+    if (parserErrorType) {
+      console.error(
+        `request error: ${req.method} ${req.originalUrl} (${parserErrorType})`,
+      );
+    } else {
+      console.error(`request error: ${req.method} ${req.originalUrl}`, error);
+    }
 
     // Once response streaming starts, the body cannot change; let Express close it
     if (res.headersSent) {
