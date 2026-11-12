@@ -1,4 +1,20 @@
 const tr = {
+  "No members match these filters.": "Bu filtrelere uyan üye yok.",
+  "Membership ended": "Üyelik bitişi",
+  "Period ends": "Dönem bitişi",
+  "Days since last visit": "Son ziyaretten beri geçen gün",
+  "Last visit": "Son ziyaret",
+  "Download CSV": "CSV indir",
+  "Memberships ended in the last 30 days without renewal.":
+    "Son 30 günde sona eren ve yenilenmeyen üyelikler.",
+  "Days without a visit": "Gelmeme süresi (gün)",
+  "Find members who stopped visiting or did not renew.":
+    "Gelmeyi bırakan veya üyeliğini yenilemeyen üyeleri bulun.",
+  days: "gün",
+  "Never visited": "Hiç gelmedi",
+  "Not renewed": "Yenilemeyenler",
+  "Not visiting": "Gelmeyenler",
+  "Lost members": "Kayıp üyeler",
   "FACILITY MANAGEMENT SYSTEM": "TESİS YÖNETİM SİSTEMİ",
   "SET.": "AYARLA.",
   "REP.": "TEKRARLA.",

@@ -36,6 +36,15 @@ import {
   MAX_REPORT_RANGE_DAYS,
 } from "./reports.js";
 import {
+  inactiveDaysSchema,
+  inactiveMembersQuerySchema,
+  lostMembersQuerySchema,
+  inactiveMembersPipeline,
+  lapsedMembersPipeline,
+  listInactiveMembers,
+  listLapsedMembers,
+} from "./lostMembers.js";
+import {
   findRenewalTarget,
   listRenewalsDue,
   MAX_RENEWAL_WINDOW_DAYS,
@@ -322,18 +331,145 @@ gymReportsRouter.get(
   }),
 );
 
+gymReportsRouter.get(
+  "/inactive-members",
+  requireGymAccess("owner", "admin", "staff"),
+  gymScoped(async (req, res) => {
+    const query = inactiveMembersQuerySchema.safeParse(req.query);
+    if (!query.success) {
+      sendApiError(
+        res,
+        400,
+        "INVALID_REQUEST",
+        "Invalid list query parameters.",
+      );
+      return;
+    }
+    try {
+      res.json(
+        await listInactiveMembers({
+          ...query.data,
+          gymId: req.gym._id.toHexString(),
+        }),
+      );
+    } catch (err) {
+      if (err instanceof InvalidCursorError) {
+        sendApiError(res, 400, "INVALID_REQUEST", "Invalid pagination cursor.");
+        return;
+      }
+      throw err;
+    }
+  }),
+);
+
+gymReportsRouter.get(
+  "/lapsed-members",
+  requireGymAccess("owner", "admin", "staff"),
+  gymScoped(async (req, res) => {
+    const query = lostMembersQuerySchema.safeParse(req.query);
+    if (!query.success) {
+      sendApiError(
+        res,
+        400,
+        "INVALID_REQUEST",
+        "Invalid list query parameters.",
+      );
+      return;
+    }
+    const range = parseRange(res, req.query);
+    if (!range) return;
+    try {
+      res.json(
+        await listLapsedMembers({
+          ...query.data,
+          ...range,
+          gymId: req.gym._id.toHexString(),
+        }),
+      );
+    } catch (err) {
+      if (err instanceof InvalidCursorError) {
+        sendApiError(res, 400, "INVALID_REQUEST", "Invalid pagination cursor.");
+        return;
+      }
+      throw err;
+    }
+  }),
+);
+
 const exportQuerySchema = rangeQuerySchema.extend({
-  dataset: z.enum(["members", "subscriptions", "entries", "payments"]),
+  dataset: z.enum([
+    "members",
+    "subscriptions",
+    "entries",
+    "payments",
+    "inactive",
+    "lapsed",
+  ]),
+  days: inactiveDaysSchema,
 });
 
 interface ExportSpec {
   collection: string;
   header: string[];
-  pipeline: (range: ResolvedRange, gymId: string) => Document[];
-  row: (doc: Document) => unknown[];
+  pipeline: (
+    range: ResolvedRange,
+    gymId: string,
+    days: number,
+    now: Date,
+  ) => Document[] | Promise<Document[]>;
+  row: (doc: Document, now: Date) => unknown[];
 }
 
 const EXPORTS: Record<ExportDataset, ExportSpec> = {
+  inactive: {
+    collection: "subscriptions",
+    header: [
+      "gymId",
+      "userId",
+      "name",
+      "email",
+      "phone",
+      "lastEntryAt",
+      "daysSinceLastEntry",
+      "periodEndsAt",
+    ],
+    pipeline: (_range, gymId, days, now) =>
+      inactiveMembersPipeline(gymId, days, now),
+    row: (doc, now) => [
+      doc._id,
+      [doc.member?.firstName, doc.member?.lastName].filter(Boolean).join(" ") ||
+        doc.member?.name,
+      doc.member?.email,
+      doc.member?.phone,
+      doc.lastEntryAt,
+      doc.lastEntryAt
+        ? Math.floor((now.getTime() - doc.lastEntryAt.getTime()) / DAY_MS)
+        : null,
+      doc.periodEndsAt,
+    ],
+  },
+  lapsed: {
+    collection: "subscriptions",
+    header: [
+      "gymId",
+      "userId",
+      "name",
+      "email",
+      "phone",
+      "endedAt",
+      "lastEntryAt",
+    ],
+    pipeline: (range, gymId) => lapsedMembersPipeline(range, gymId),
+    row: (doc) => [
+      doc._id,
+      [doc.member?.firstName, doc.member?.lastName].filter(Boolean).join(" ") ||
+        doc.member?.name,
+      doc.member?.email,
+      doc.member?.phone,
+      doc.latestEnd,
+      doc.lastEntryAt,
+    ],
+  },
   members: {
     collection: "user",
     header: [
@@ -529,6 +665,7 @@ gymReportsRouter.get(
       return;
     }
 
+    const now = new Date();
     const dataset = parsed.data.dataset;
     const spec = EXPORTS[dataset];
     const stamp = range.to.toISOString().slice(0, 10);
@@ -539,6 +676,7 @@ gymReportsRouter.get(
       undefined,
       {
         dataset,
+        ...(dataset === "inactive" ? { days: parsed.data.days } : {}),
         from: range.from.toISOString(),
         to: range.to.toISOString(),
       },
@@ -558,12 +696,16 @@ gymReportsRouter.get(
 
     const cursor = db
       .collection(spec.collection)
-      .aggregate<Document>(spec.pipeline(range, gymId));
+      .aggregate<Document>(
+        await spec.pipeline(range, gymId, parsed.data.days, now),
+      );
 
     try {
       await writeChunk(res, UTF8_BOM + csvRow(spec.header), controller.signal);
       for await (const doc of cursor) {
-        await writeChunk(res, csvRow(spec.row(doc)), controller.signal);
+        const row = spec.row(doc, now);
+        if (dataset === "inactive" || dataset === "lapsed") row.unshift(gymId);
+        await writeChunk(res, csvRow(row), controller.signal);
       }
       res.end();
     } catch (err) {

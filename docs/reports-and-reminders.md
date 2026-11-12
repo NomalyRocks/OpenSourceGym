@@ -50,6 +50,45 @@ also returned with zeros.
 | `allowed`        | Allowed entries on that day.                        |
 | `denied`         | Denied entries on that day.                         |
 
+## Lost members
+
+All routes in this section are scoped to `/api/admin/gyms/:gymId/reports`.
+Owners can access every gym; admins and staff can access only their assigned gyms.
+The panel's **Lost members** page has **Not visiting** and **Not renewed** tabs,
+and each member row opens the shared member drawer.
+
+- `GET /inactive-members?days=14&page=1&limit=50`: members with a period covering
+  now at this gym who last visited more than `days` days ago or never visited.
+  Open freezes and expired memberships are excluded. A visit is an allowed
+  `direction: "in"` event at this gym with a non-null user id; refused scans,
+  exits, anonymised events, and visits at another gym do not count. `days` is an
+  integer from 1 to 365, default 14; invalid values return `400 INVALID_REQUEST`.
+  Never-visited members sort first, then oldest last visits. Rows include
+  `userId`, `name`, `email`, `phone`, `lastEntryAt`, `daysSinceLastEntry`, and
+  `periodEndsAt` (the latest end among currently active periods). The two visit
+  fields are null for members who never visited.
+- `GET /lapsed-members?page=1&limit=50`: uses exactly the summary's
+  `lapsedMembers` definition. The member's maximum period end **at this gym**
+  must fall in the inclusive `from`/`to` range, with no later period at this gym;
+  open freezes are excluded. Optional `from` and `to` have the summary's defaults
+  (last 30 days through now) and 366-day range bound. Renewals at other gyms do
+  not affect this gym's result. Rows include `userId`, `name`, `email`, `phone`,
+  `endedAt`, and `lastEntryAt`; most recently ended first. The full `total`
+  equals summary `lapsedMembers` for the same gym, range, and database state.
+
+Both lists return `{ items, nextCursor, total }`, reusing the report cursor
+contract. Use `cursor` to continue or `page` (1-based) to select a numbered page;
+these parameters cannot be combined. `limit` defaults to 50 and accepts 1–100.
+Time ties use the user id for stable pagination. The panel uses cursor paging
+and fixes its 30-day lapsed range while paging.
+
+Owner/admin only: `GET /export?dataset=inactive&days=14` and
+`GET /export?dataset=lapsed&from=...&to=...` download the complete matching
+lists, including a `gymId` column. Inactive export is a current snapshot;
+`days` selects its threshold. Lapsed export uses the summary range. Both reuse
+the existing `data-exported` audit action with `gymId`, `dataset`, the applied
+range, and (for inactive) `days`. Staff can view the lists but cannot export.
+
 ## REPORTS_TIME_ZONE
 
 `REPORTS_TIME_ZONE` determines the day boundaries in the daily entry trend. As

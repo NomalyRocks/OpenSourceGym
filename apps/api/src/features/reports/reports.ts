@@ -184,6 +184,23 @@ export interface ReportRangeInput {
   to: Date;
 }
 
+/**
+ * Shared lapsed definition for the summary, list, and CSV export. The latest
+ * end at this gym must remain in the range, so even a future renewal excludes
+ * the member. An open freeze means paused, not lapsed.
+ */
+export async function lapsedMembersStages(
+  { from, to }: ReportRangeInput,
+  gymId: string,
+  database: Db = db,
+): Promise<Document[]> {
+  return [
+    ...(await excludeFrozenMembersStages(database)),
+    ...gymScopeStages(gymId),
+    ...latestEndPipeline({ $gte: from, $lte: to }),
+  ];
+}
+
 export async function buildReportSummary(
   { from, to }: ReportRangeInput,
   gymId: string,
@@ -225,16 +242,8 @@ export async function buildReportSummary(
       gymIds: new ObjectId(gymId),
       createdAt: { $gte: from, $lte: to },
     }),
-    // Members ending in the range AND not renewed by range end: if the latest
-    // end remains within the range, the member is unsubscribed at range end.
-    // A frozen member whose nominal end passed during the freeze is paused,
-    // not lapsed.
-    excludeFrozenMembersStages(database).then((frozenStages) =>
-      countFrom(database, "subscriptions", [
-        ...frozenStages,
-        ...gymScopeStages(gymId),
-        ...latestEndPipeline({ $gte: from, $lte: to }),
-      ]),
+    lapsedMembersStages({ from, to }, gymId, database).then((stages) =>
+      countFrom(database, "subscriptions", stages),
     ),
     countFrozenMembers(database, now),
     aggregateEntryTotals(database, from, to, gymId),
